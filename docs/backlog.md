@@ -63,3 +63,8 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | Record an estimated cost for provider calls that time out or are aborted | the vendor may still bill generated tokens; the global cap can under-report | Phase 9 |
 | Check the user allowance before buffering a multipart upload | memory use under an upload flood; route-level limit exists | Phase 9 |
 | A real UI must escape or sanitise every model and engine string it renders | the dev page does; model output is also guarded against markup only indirectly | when the real client is built |
+| Wire the real recogniser (transformers.js Whisper on WebGPU, Moonshine on WASM, Silero VAD) and the microphone worklet into the seams | browser code, measured by the owner in spike S3 | with S1 and S4 |
+| Per-language glossaries and models | English only | when demand appears |
+| Spoken-form correction is rule based; learn corrections from edited transcripts | edits are not recorded (and must not contain audio) | after beta |
+| The nightly workflow has never run | no GitHub remote yet | when a remote exists |
+| Model licences not reviewed by the owner | Whisper, Moonshine, Silero published as permissive | before launch |

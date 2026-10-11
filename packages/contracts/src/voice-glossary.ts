@@ -224,8 +224,32 @@ export function correctTranscript(input: string, g: Glossary): CorrectionResult 
     )
     .join(' ');
 
-  // 3. Timeframe phrases.
+  // 3. Timeframe phrases, and the number after "setup" ("show setup too" is "show setup 2").
   text = timeframes(text, changes);
+  text = text.replace(/\bset up\b/g, (m) => {
+    changes.push({ from: m, to: 'setup' });
+    return 'setup';
+  });
+  text = text.replace(
+    /\bsetup (won|one|too|to|two|tree|three|for|four|five)\b/g,
+    (whole, w: string) => {
+      const n = {
+        won: 1,
+        one: 1,
+        too: 2,
+        to: 2,
+        two: 2,
+        tree: 3,
+        three: 3,
+        for: 4,
+        four: 4,
+        five: 5,
+      }[w];
+      if (n === undefined) return whole;
+      changes.push({ from: whole, to: `setup ${n}` });
+      return `setup ${n}`;
+    },
+  );
 
   // 4. One-edit slips on longer single-word terms ("liquidty").
   const singles = g.terms.map((t) => t.canonical).filter((c) => /^[a-z]{6,}$/.test(c));

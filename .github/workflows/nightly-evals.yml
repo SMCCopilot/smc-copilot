@@ -1,0 +1,41 @@
+name: Nightly evals
+
+# Free, offline checks that must keep passing: the AI guardrail harness, the voice correction and grammar set, and the
+# pinned speech models. Live-model and real-microphone evaluations cost money or need a person, so they are run by hand
+# (docs/how-to-enable-ai.md, docs/how-to-test-voice.md).
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: AI guardrail harness (offline)
+        run: node tools/ai-eval/src/eval.mjs --report ai-eval-harness-check.md
+      - name: Voice correction and grammar set (text only)
+        run: node tools/voice-eval/src/eval.mjs --report voice-eval-report.md
+      - name: Speech models still match their pinned hashes
+        run: node tools/voice-eval/src/pin-models.mjs --verify
+      - name: No audio or image storage anywhere in the schema, and frames never persist
+        run: pnpm --filter @smc/api test -- explain.e2e voice.e2e
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: |
+            ai-eval-harness-check.md
+            voice-eval-report.md

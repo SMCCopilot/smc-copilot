@@ -114,6 +114,12 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
     <pre id="aispendout"></pre>
   </section>
 
+  <section><h2>11. Voice commands (typed)</h2>
+    <div class="muted">Type what you would say, the way a speech engine might write it: "bee tee see perp", "switch to fifteen minute", "next setup", "explain this chart". The same correction and rules apply as for real speech. Confirming, logging, risk, deleting and paying are refused.</div>
+    <div class="row"><input id="vsay" size="50" placeholder="switch to fifteen minute"><button id="vsend">Say it</button></div>
+    <pre id="vout"></pre>
+  </section>
+
   <section><h2>Event log</h2><pre id="log2"></pre></section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -193,6 +199,8 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
     socket.on('disconnect', function () { $('sock').textContent = 'disconnected'; });
     ['session.state', 'analysis.update', 'setup.event', 'feed.status', 'warning', 'error', 'gate.state', 'position.event', 'notification', 'context.updated', 'narrative.done', 'chat.chunk', 'chat.done', 'budget.update', 'voice.final'].forEach(function (t) {
       socket.on(t, function (env) {
+        if (t === 'voice.final') { vlog('understood: ' + env.payload.command + (env.payload.needsPick ? ' (which market? ' + env.payload.candidates.join(', ') + ')' : '') + (env.payload.corrected ? ' [heard as: ' + env.payload.heard + ']' : '')); }
+        if (t === 'error' && env.payload && env.payload.code === 'VOICE_FORBIDDEN_ACTION') { vlog('refused: ' + env.payload.detail); }
         if (t === 'narrative.done') { renderNarr(env.payload); return; }
         if (t === 'chat.chunk') { chatChunk(env.payload); return; }
         if (t === 'chat.done') { chatDone(env.payload); return; }
@@ -360,6 +368,14 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
       });
     });
   }
+  function vlog(t) { $('vout').textContent = t + '\n' + $('vout').textContent.slice(0, 1500); }
+  $('vsend').onclick = function () {
+    var t = $('vsay').value.trim();
+    if (!t || !socket) return;
+    socket.emit('voice.command', { utteranceId: crypto.randomUUID(), text: t, sttConfidence: 1, sttEngine: 'typed' });
+    vlog('you said: ' + t);
+  };
+  $('vsay').onkeydown = function (e) { if (e.key === 'Enter') $('vsend').click(); };
   $('aiload').onclick = loadProviders;
   $('aispend').onclick = function () { adminApi('GET', '/v1/admin/ai/spend').then(function (r) { $('aispendout').textContent = JSON.stringify(r, null, 2); }); };
 })();

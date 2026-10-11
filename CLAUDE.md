@@ -33,6 +33,8 @@ pnpm engine:fetch-history --symbol BTCUSDT --market SPOT --from 2025-09-01 --to 
 pnpm engine:backtest --candles data/history/X.ndjson [--candles ...] --from 2025-10-01 --to 2026-10-01 --report docs/backtest-report.md [--db]
 pnpm ai:eval                                   # AI guardrail harness check (free, offline); add --live --provider X --judge Y for a real model (prints a cost estimate, needs --yes)
 pnpm ai:session-hour --provider anthropic      # measure the cost of a replayed session hour (estimate first, needs --yes)
+pnpm voice:eval                                # voice correction + grammar on the 200-phrase set (offline); --print-script to read aloud, --results file.json to score an engine
+pnpm voice:pin-models                          # pin speech model files by revision and SHA-256 (--check, --verify)
 ```
 
 ## Layout and dependency rules (A01 section 6)

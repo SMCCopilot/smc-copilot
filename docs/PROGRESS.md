@@ -118,3 +118,16 @@ Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 
 - [x] Evaluation harness with 100 fixtures; developer client extended (narrative, chat, chart upload, provider switches).
 - Tests: ai 289, capture-kit 21, ai-eval 7, api 263 (all 22 turbo tasks green).
 - [ ] **Not measured, because it costs money or needs a browser**: live provider calls (request shapes are covered by tests with a fake network only), narrative faithfulness and first-pass validity, cost per session-hour, OCR accuracy on real screenshots, image-read accuracy. All are in docs/how-to-enable-ai.md with cost estimates.
+
+## Phase 6: voice (all on `main`)
+
+**Status: built; independent review pending.**
+
+- [x] Shared voice grammar, forbidden-action rules and glossary correction in contracts (82 contract tests), re-used by the AI package.
+- [x] Pinned on-device speech models (revision, SHA-256, size; verify command), `GET /v1/voice/config`, `/v1/voice/glossary`, `POST /v1/voice/events`; assets copied at build.
+- [x] Server voice handling: correction, forbidden checks on heard and corrected text, market switching with a pick prompt, setup navigation, mute/watch/explain handed to the browser, voice log; audio events refused.
+- [x] Browser logic in `@smc/capture-kit`: engine chain, verified model loading, voice activity detection, push-to-talk controller (denied microphone, fallbacks, wiped recordings, latency), payload guard.
+- [x] 200-phrase set and scorer (`pnpm voice:eval`, WER and latency from a real engine's results file); nightly workflow written.
+- [x] Dev client: typed voice section.
+- Tests: contracts 82, capture-kit 42, voice-eval 11, api 272.
+- [ ] **Not measured (needs the owner's voice and browser)**: real word error rate, command accuracy and latency of Whisper/Moonshine, the browser network capture, the recogniser wiring (spike S3, docs/how-to-test-voice.md).

@@ -63,3 +63,9 @@ Questions to answer from the text (or by email to the venue's API support):
 Record each answer as a `venue_terms` row (decision `DISPLAY_OK`, `INTERNAL_ONLY`, `BYO_ONLY` or `PROHIBITED`) through
 `POST /v1/admin/venues/{id}/terms` once that endpoint exists (Phase 1). Until a row exists every instrument stays
 `INTERNAL_ONLY`: overlays and analysis only, no raw prices to the browser. The product works either way.
+
+## S3: speech (status at the end of Phase 6)
+
+**Built and tested without audio:** pinned model manifest (Whisper tiny English, Moonshine tiny, Silero VAD, each file by commit, SHA-256 and size; `pnpm voice:pin-models --verify`), capability-based engine chain (Whisper on WebGPU, then Moonshine on WASM, then typing), verified loading, push-to-talk controller, glossary correction and command grammar (200-phrase text check: command accuracy 100%, forbidden requests 100%, jargon and symbols 100%, no question mistaken for a command).
+
+**Needs the owner's voice (no number yet):** word error rate per engine and device, command accuracy after correction on real audio, release-to-transcript latency, and the browser network capture showing zero audio on the wire. Procedure: `docs/how-to-test-voice.md`. Bars: commands at least 95%, WER at most 12% (clean), p95 latency under 2.5 s.

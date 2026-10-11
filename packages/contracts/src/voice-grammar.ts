@@ -103,7 +103,7 @@ const FORBIDDEN: readonly (readonly [VoiceForbiddenAction, RegExp])[] = [
   ],
   [
     'confirm_trade',
-    /\b(?:confirm|approve|accept|execute|place|submit)\s+(?:the\s+|my\s+|this\s+)?(?:trade|order)\b/i,
+    /\b(?:confirm|approve|accept|execute|place|submit)\s+(?:the\s+|my\s+|this\s+|an?\s+)?(?:trade|order)\b/i,
   ],
   ['log_trade', /\blog\s+(?:this\s+|my\s+|the\s+)?trade\b/i],
   [
