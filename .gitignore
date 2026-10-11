@@ -30,6 +30,8 @@ docs/*
 !docs/backlog.md
 !docs/spikes.md
 !docs/engine-fidelity.md
+!docs/backtest-criteria.md
+!docs/backtest-report.md
 
 # More secret-bearing files
 .envrc
