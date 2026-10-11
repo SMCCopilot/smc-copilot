@@ -1,6 +1,7 @@
 export { createEngine, feed, step, WINDOW_BARS } from './engine.js';
 export type { FactsOptions } from './facts.js';
 export { buildFacts } from './facts.js';
+export { countEventsByType, eventStreamHash } from './hash.js';
 export type { Bias } from './mtf.js';
 export { biasAt, htfAt, orderByClose } from './mtf.js';
 export type { DealingRange, PremiumDiscount } from './ranges.js';

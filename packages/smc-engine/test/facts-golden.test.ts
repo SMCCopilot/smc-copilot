@@ -1,6 +1,13 @@
 import { MarketFactsSchema } from '@smc/contracts';
 import { describe, expect, it } from 'vitest';
-import { buildFacts, createEngine, type EngineEvent, feed, sha1, step } from '../src/index.js';
+import {
+  buildFacts,
+  countEventsByType as countsOf,
+  createEngine,
+  feed,
+  step,
+  eventStreamHash as streamHash,
+} from '../src/index.js';
 import { genCandles } from './gen.js';
 import { config, INSTRUMENT, run } from './helpers.js';
 import { WORKED_BASE_OPEN_MS, WORKED_ROWS } from './worked-example.js';
@@ -9,15 +16,6 @@ declare const performance: { now(): number };
 
 const cfg = config();
 const data = genCandles(INSTRUMENT, 11, 288 * 20);
-
-/** Stable digest of an event stream: ids, types, times and payloads in emission order. */
-export const streamHash = (events: readonly EngineEvent[]): string =>
-  sha1(events.map((e) => JSON.stringify([e.id, e.type, e.tf, e.scale, e.time, e.data])).join('\n'));
-export const countsOf = (events: readonly EngineEvent[]): Record<string, number> => {
-  const out: Record<string, number> = {};
-  for (const e of events) out[e.type] = (out[e.type] ?? 0) + 1;
-  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
-};
 
 describe('ChartFacts', () => {
   const { state } = feed(createEngine(INSTRUMENT), data, cfg);

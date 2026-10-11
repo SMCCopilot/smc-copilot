@@ -1,0 +1,19 @@
+{
+  "name": "@smc/tool-engine",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "lint": "biome check .",
+    "test": "vitest run",
+    "replay": "node src/replay.mjs"
+  },
+  "dependencies": {
+    "@smc/contracts": "workspace:*",
+    "@smc/smc-engine": "workspace:*",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  }
+}
