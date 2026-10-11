@@ -290,6 +290,43 @@ describe('BackfillService and seeding', () => {
       expect(await count()).toBe(400 + 500 + 800 + 1000 + 1000);
     });
 
+    it('queues the whole 1m window when only the newest minutes are present (interrupted seed)', async () => {
+      const top = Math.floor(clock.now() / MIN) * MIN;
+      await store.ensurePartitions(top - 20 * MIN, top);
+      for (let i = 1; i <= 10; i++) {
+        await store.insertCandle({
+          instrumentId: id(),
+          tf: '1m',
+          openTime: top - i * MIN,
+          o: 1,
+          h: 2,
+          l: 0.5,
+          c: 1,
+          v: 1,
+          closed: true,
+          providerId: 'binance',
+          flags: 0,
+          status: 'CLOSED',
+        });
+      }
+      venue.data = [];
+      await backfill.seed(instrument() as NonNullable<ReturnType<typeof instrument>>);
+      const [job] = queue.enqueued.filter((j) => j.name === 'md.backfill');
+      expect(job?.data).toMatchObject({ fromMs: top - 2880 * MIN, toMs: top });
+    });
+
+    it('does not queue a 1m backfill when the window is already covered', async () => {
+      const top = Math.floor(clock.now() / MIN) * MIN;
+      const from = top - 2880 * MIN;
+      await store.ensurePartitions(from, top);
+      await sql`insert into candles (instrument_id, tf, open_time, o, h, l, c, v, provider_id, status, flags)
+                select ${id()}, '1m', to_timestamp(g / 1000.0), 1, 2, 0.5, 1, 1, 'binance', 'CLOSED', 0
+                from generate_series(${from}::bigint, ${top - MIN}::bigint, 60000) g`;
+      venue.data = [];
+      await backfill.seed(instrument() as NonNullable<ReturnType<typeof instrument>>);
+      expect(queue.enqueued.filter((j) => j.name === 'md.backfill')).toEqual([]);
+    });
+
     it('never stores the bucket that is still forming', async () => {
       const tfMs = TIMEFRAME_MS['1h'];
       const current = Math.floor(clock.now() / tfMs) * tfMs;

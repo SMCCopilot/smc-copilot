@@ -243,14 +243,17 @@ export class BackfillService {
       await this.seedTimeframe(instrument, provider, tf, fromMs, toMs, now);
     }
 
+    // Judge the window by what is actually stored, not by the newest candle: an interrupted seed or a restart can
+    // leave the newest minutes present and the older ones missing. Existing rows are skipped as duplicates.
     const toMs = Math.floor(now / MINUTE) * MINUTE;
-    const last = await this.store.latestOpenTime(instrument.id, '1m');
-    const fromMs = Math.max(toMs - SEED_1M_MINUTES * MINUTE, last === null ? 0 : last + MINUTE);
-    if (fromMs < toMs) {
+    const fromMs = toMs - SEED_1M_MINUTES * MINUTE;
+    await this.store.ensurePartitions(fromMs, toMs);
+    const stored = (await this.store.range(instrument.id, '1m', fromMs, toMs)).length;
+    if (stored < SEED_1M_MINUTES * 0.98) {
       await this.queue.enqueue<BackfillJob>(
         'md.backfill',
         { instrumentId: instrument.id, fromMs, toMs },
-        { singletonKey: `${instrument.id}:${fromMs}` },
+        { singletonKey: `${instrument.id}:seed:${fromMs}` },
       );
     }
   }
