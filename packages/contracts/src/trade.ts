@@ -41,12 +41,6 @@ export const TradeCloseSchema = z.strictObject({
   fee: z.number().finite().nonnegative().optional(),
 });
 
-export const NotificationPrefsSchema = z.strictObject({
-  position: z.boolean().default(true),
-  setup: z.boolean().default(true),
-  system: z.boolean().default(true),
-});
-
 export const JournalNoteSchema = z.strictObject({
   notes: z.string().min(1).max(4000),
   tags: z.array(z.string().min(1).max(32)).max(12).default([]),

@@ -61,10 +61,10 @@ async function armedPlan(state = 'ARMED') {
   >`select id from strategy_versions order by version desc limit 1`;
   const [s] = await sql<{ id: string }[]>`
     insert into setups (setup_key, strategy_version_id, instrument_id, template, direction, entry_tf, bias_tf, state, components, poi, invalidation, created_at)
-    values (${randomUUID()}, ${sv?.id}, ${inst?.id}, 'T1', 'LONG', '15m', '4h', ${state}, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, now())
+    values (${randomUUID()}, ${sv?.id as string}, ${inst?.id as string}, 'T1', 'LONG', '15m', '4h', ${state}, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, now())
     returning id`;
   const [p] = await sql<{ id: string }[]>`
-    insert into trade_plans (setup_id, plan, plan_hash) values (${s?.id}, '{}'::jsonb, 'hash-v1-aaaaaaaa') returning id`;
+    insert into trade_plans (setup_id, plan, plan_hash) values (${s?.id as string}, '{}'::jsonb, 'hash-v1-aaaaaaaa') returning id`;
   return { setupId: s?.id ?? '', planId: p?.id ?? '', instrumentId: inst?.id ?? '' };
 }
 

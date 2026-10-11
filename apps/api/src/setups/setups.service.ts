@@ -185,12 +185,6 @@ export class SetupsService {
       on conflict (setup_id, cohort_id) do nothing`;
   }
 
-  private base(): ReturnType<Sql['unsafe']> {
-    return this.sql.unsafe(`select ${SELECT}
-      from setups s join instruments i on i.id = s.instrument_id
-      left join lateral (select * from trade_plans tp where tp.setup_id = s.id order by tp.plan_version desc limit 1) p on true`);
-  }
-
   async list(
     workspaceId: string,
     f: SetupFilters,
