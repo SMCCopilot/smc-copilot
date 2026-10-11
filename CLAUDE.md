@@ -23,6 +23,9 @@ node tools/hooks/install-gitleaks.mjs        # pinned, checksum-verified local g
 pnpm --filter @smc/db db:migrate -- --shims  # local plain Postgres only; never --shims on Supabase
 node tools/spikes/src/s2-venue-probe.mjs --minutes 4 --dns 1.1.1.1   # venue reachability + lag
 node apps/api/dist/main.js                    # after build; NODE_ENV=development for local
+node tools/dev/src/dev-db.mjs                 # persistent local Postgres (no Docker), prints DATABASE_URL
+# live ingest locally: INGEST_ENABLED=true DNS_SERVERS=1.1.1.1 DATABASE_URL=... node apps/api/dist/main.js
+node tools/spikes/src/verify-frames-vs-rest.mjs --dns 1.1.1.1   # recorded frames vs venue REST
 ```
 
 ## Layout and dependency rules (A01 section 6)

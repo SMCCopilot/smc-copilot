@@ -2,7 +2,7 @@
 
 Running state. A fresh session should be able to resume from this file and `CLAUDE.md` alone.
 
-- **Current phase:** 0 (Foundations and risk spikes)
+- **Current phase:** 1 (Market data core) built and verified locally; awaiting the owner's approval of Phase 2
 - **Owner priority:** build the tech and make it work through live testing; defer everything else.
 - **Branches:** step 1-2 on `phase-0/step-1-monorepo-scaffold`, step 3 on `phase-0/step-3-api-skeleton`, steps 4-5 on `phase-0/step-5-spike-s2` (cumulative; the last holds everything)
 
@@ -52,3 +52,10 @@ Running state. A fresh session should be able to resume from this file and `CLAU
 - **`.gitignore` lines `.claude` and `docs/*`** were added by someone after I wrote the file. I kept them and un-ignored only the process docs (`DECISIONS`, `PROGRESS`, `backlog`, `spikes`, `engine-fidelity`). `docs/plan/` is already committed on this branch; say if you want the plan untracked.
 - Supabase dev project credentials in `.env.local` (never in chat); key names are in `.env.example`.
 - Spike inputs: 40 chart screenshots, 200 recorded phrases, device list.
+
+## Phase 1: market data core (branches `phase-1/*`, cumulative on `phase-1/step-1-validation-aggregation`)
+
+- `packages/market-data` (122 tests): normalisation and validation V1-V9, UTC aggregation (property-tested against a reference), Binance spot/perp + Bybit providers, self-healing connection (backoff, jitter, silence watchdog, rotation without a gap), replay + FX stub, feed-status watchdog, instrument resolver, stream registry.
+- `apps/api` (118 tests on real Postgres): ingest pipeline (atomic 1m + higher-timeframe writes, events after commit, quarantine, gaps, backfill via pg-boss, V7 both directions, INCOMPLETE handling), seeding, nightly reconcile, feed monitor, markets and admin endpoints, licence guard.
+- Live run on this machine (DNS override): Binance spot + perp and Bybit connected; history seeded; all 8 feeds OK; recorded frames replay to the same candles as REST (7/7 on each venue, 0 differences).
+- Not yet done: 24 h and 72 h soak and the p95 feed-lag figure (need the VM), Supabase run (needs credentials), CI on GitHub (needs a remote).

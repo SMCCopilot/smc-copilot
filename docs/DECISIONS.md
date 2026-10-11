@@ -61,3 +61,26 @@ Re-verify from the VM region in Phase 1 **[verify]**.
 ## D-010: Problem types and catalogue additions
 
 - **Choice:** problem `type` is a URN (`urn:smc-copilot:error:<code>`) because no docs domain exists yet. Added codes `PAYLOAD_TOO_LARGE` (413), `NOT_READY` (503) and `AUTH_UNAVAILABLE` (503) to the A07 catalogue. Framework 4xx errors other than 401/403/404/409/413/429 are reported as `VALIDATION_FAILED` (422). Startup does not require the database; `/readyz` reports it (the B02 section 9 self-test lives there).
+
+## D-011: Bybit instruments are stored as their own series
+
+- **Context:** A03 says a cross-check feed never writes candles, but B03 seeds `BYBIT:PERP:BTCUSDT` and `ETHUSDT` as instruments ("cross-check series") with a PRIMARY alias.
+- **Choice:** Bybit candles go through the same pipeline and are stored (1m plus aggregated higher timeframes). `venues.analysis_enabled = false` keeps them out of `GET /v1/instruments` and away from the engine. They serve as the V7 peer for the Binance perps (BTC, ETH). Peers only count on venues with `crosscheck_enabled`, so the seeded Coinbase/Kraken/OKX peers are ignored until M6.
+- **Consequences:** about 2 more series of storage; promoting Bybit to an analysis venue later needs no data migration.
+
+## D-012: Warm-up history comes from the venues' native candles
+
+- **Context:** the engine needs 400 daily, 500 4h, 800 1h and 1000 15m/5m bars (A03 section 7). Aggregating those from 1m would mean about 576,000 rows per instrument, far over Supabase Free (500 MB).
+- **Choice:** seed 5m/15m/1h/4h/1d from the venue's own candles (UTC boundaries match ours), flagged BACKFILLED, and keep only 2,880 minutes (2 days) of 1m. Live aggregation continues from the next bucket; the nightly reconcile (03:00 UTC) compares ours with the venue's native 1h/4h/1d and opens a `RECONCILE` incident on difference, never overwriting.
+
+## D-013: Backfills announce once, not per candle
+
+- A backfill publishes one `candle.backfilled {fromMs,toMs}` when it finishes; per-candle `candle.closed` events are for live data only. Consumers recompute from the range (A04 section 12). Without this a 2,880-minute seed would flood the bus.
+
+## D-014: Candle partitions are created on demand for history
+
+- `candles` is partitioned by month and the schema pre-creates only the current month plus three. Backfill and seeding call `ensure_candle_partition` for every month they touch; `maintain_partitions` also runs at boot and every 6 hours. (Found by a test: seeding a year of daily candles failed with "no partition of relation".)
+
+## D-015: Development database without Docker
+
+- `node tools/dev/src/dev-db.mjs` runs a persistent embedded Postgres 17 under `.dev-pg/` (git-ignored) with the auth shims applied. It is not Supabase and exists only for local live runs; Supabase remains the real database (decision D-007).
