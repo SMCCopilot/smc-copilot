@@ -110,11 +110,11 @@ Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 
 
 ## Phase 5: AI layer (all on `main`)
 
-**Status: built; independent review pending.**
+**Status: built, independently reviewed (20 findings, 2 HIGH, fixed; D-038).**
 
 - [x] **W12 router, guardrails, narratives, budgets**: `@smc/ai` with Anthropic, OpenAI and Gemini adapters, an owner-switchable `LlmRouter` (order, data classes, retries, circuit breakers, cost on every call), prompt versions, the output pipeline (schema, references, number scan, language, one repair retry, template), seed-phrase and key detector, template narratives, shared narrative service with a facts-hash cache, per-user and global ledgers with an automatic global cap, kill switches, admin endpoints for providers, spend and costs.
 - [x] **W13 chat, data classes, cost**: grounded chat over the socket and as server-sent events, deterministic screens (advice, certainty, leverage, trade placement, other users, distress), red-team set (75 critical prompts at 100%, 25 injection prompts against a hostile model), data-class policy per provider, per-IP and per-device shared allowances, voice-command guard (confirm, log, risk, delete and pay refused by voice, recorded), session-hour cost script.
 - [x] **W14 OCR and Explain**: `@smc/capture-kit` (logic complete and tested), server `context.hint` (two-hint rule, feed reconcile, mismatch suggestion without prices), Explain with a reader and a writer, in-memory image handling, grounded and approximate modes, no-frame-persistence tests (schema scan, every table, logs, temp directory).
 - [x] Evaluation harness with 100 fixtures; developer client extended (narrative, chat, chart upload, provider switches).
-- Tests: ai 274, capture-kit 21, ai-eval 7, api 259.
+- Tests: ai 289, capture-kit 21, ai-eval 7, api 263 (all 22 turbo tasks green).
 - [ ] **Not measured, because it costs money or needs a browser**: live provider calls (request shapes are covered by tests with a fake network only), narrative faithfulness and first-pass validity, cost per session-hour, OCR accuracy on real screenshots, image-read accuracy. All are in docs/how-to-enable-ai.md with cost estimates.

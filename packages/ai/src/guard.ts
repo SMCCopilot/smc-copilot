@@ -96,9 +96,30 @@ const ALLOWED_DECIMALS = new Set([
   '0.79',
 ]);
 
+/**
+ * Text as the checks should see it: compatibility-normalised (fullwidth digits become ASCII) with zero-width, soft-hyphen
+ * and other invisible format characters removed, so "w\u200Bill" or a fullwidth number cannot slip past a pattern.
+ */
+export function normalizeForScan(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replaceAll('\u034F', '')
+    .replace(/[\uFE00-\uFE0F]/g, '')
+    .replace(/[\u180B-\u180E]/g, '')
+    .replace(
+      /[\u00AD\u061C\u115F\u1160\u17B4\u17B5\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFEFF]/g,
+      '',
+    );
+}
+
+const NUMBER_WORDS =
+  /\b(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)[-\s]+)*(?:hundred|thousand|million|billion|grand)\b/i;
+
+const NUMBER_WORDS_G = new RegExp(NUMBER_WORDS.source, 'gi');
+
 /** Price-like literals outside placeholders. The model may not write a number a user could mistake for a level. */
 export function scanNumbers(text: string): string[] {
-  const t = text.replace(PLACEHOLDER_RE, ' ');
+  const t = normalizeForScan(text).replace(PLACEHOLDER_RE, ' ');
   const bad: string[] = [];
   const add = (re: RegExp, keep?: (m: string) => boolean) => {
     for (const m of t.matchAll(re)) if (!keep?.(m[0])) bad.push(m[0].trim().slice(0, 24));
@@ -106,8 +127,11 @@ export function scanNumbers(text: string): string[] {
   add(/\$\s?\d[\d,.]*/g);
   add(/\b\d+(?:\.\d+)?\s?[kK]\b/g);
   add(/\d{1,3}(?:,\d{3})+(?:\.\d+)?/g);
-  add(/\b\d+\.\d{2,}\b(?!\s?%)/g, (m) => ALLOWED_DECIMALS.has(m));
-  add(/\b\d{4,}\b/g);
+  add(/\b\d+\.\d+\b/g, (m) => ALLOWED_DECIMALS.has(m));
+  add(/\b\d+(?:\.\d+)?\s?%/g);
+  add(/(?<![\d.,])\d{3,}(?!\d|[.,]\d)/g);
+  add(/\d{1,3}(?:[ \u00A0\u202F]\d{3})+\b/g);
+  add(NUMBER_WORDS_G);
   return [...new Set(bad)];
 }
 

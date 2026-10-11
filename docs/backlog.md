@@ -60,3 +60,6 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | Price comparison for OCR reconcile reveals a little about the price (capped at 60 an hour) | accepted under "analysis only"; could be replaced by a coarser match signal | Phase 9 |
 | Narrative language is English only; Explain/chat in other languages not translated | A05 6.5 | when demand appears |
 | The dev client builds HTML by string concatenation of server text | acceptable for a local test harness; escape before any public use | before any public use |
+| Record an estimated cost for provider calls that time out or are aborted | the vendor may still bill generated tokens; the global cap can under-report | Phase 9 |
+| Check the user allowance before buffering a multipart upload | memory use under an upload flood; route-level limit exists | Phase 9 |
+| A real UI must escape or sanitise every model and engine string it renders | the dev page does; model output is also guarded against markup only indirectly | when the real client is built |

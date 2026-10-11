@@ -1,5 +1,6 @@
 import type { MarketFacts } from '@smc/contracts';
 import { z } from 'zod';
+import { redact } from './chat.js';
 import { factsHash, formatPrice, type RefSpace, refSpaceOf, substitute } from './guard.js';
 import {
   factsForPrompt,
@@ -433,7 +434,7 @@ export async function generateExplain(router: LlmRouter, i: ExplainInput): Promi
     i.read
       ? `IMAGE DESCRIPTORS: ${descriptorsForPrompt(i.read, i.visual, i.precision)}`
       : 'IMAGE DESCRIPTORS: none.',
-    i.question ? `<user_question>\n${i.question}\n</user_question>` : '',
+    i.question ? `<user_question>\n${redact(i.question)}\n</user_question>` : '',
   ]
     .filter(Boolean)
     .join('\n\n');

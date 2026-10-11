@@ -97,8 +97,23 @@ export class ContextService {
       select c from candles
        where instrument_id = ${instrumentId} and tf = '1m' and status = 'CLOSED'
          and scope_id = '00000000-0000-0000-0000-000000000000'
+         and open_time > now() - interval '15 minutes'
        order by open_time desc limit 1`;
+    // A stale feed price would make a genuine screenshot look wrong and an old one look right: say "cannot verify".
     return r ? Number(r.c) : null;
+  }
+
+  /** Compares a price read from a screen with the feed, under the per-user cap on such comparisons. */
+  async compare(
+    userId: string,
+    instrumentId: string,
+    base: string,
+    shown: number,
+  ): Promise<{ match: 'MATCH' | 'MISMATCH' | 'UNVERIFIED'; deltaPct: number | null }> {
+    if (this.reconcileLimiter.hit(`recon:${userId}`, RECONCILE_PER_HOUR, 3_600_000) !== null) {
+      return { match: 'UNVERIFIED', deltaPct: null };
+    }
+    return priceMatch(shown, await this.feedPrice(instrumentId), CORE_BASES.has(base));
   }
 
   private best(

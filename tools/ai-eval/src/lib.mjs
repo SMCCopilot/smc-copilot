@@ -148,10 +148,17 @@ export async function runNarrativeSuite({
     spent += cost;
     const checks = checkReleased(r.content, facts, precision);
     let faithful = null;
+    let judgeCost = 0;
     if (judge && r.source === 'LLM') {
-      const j = await judge(facts, r.content);
-      faithful = j.faithful;
-      spent += j.costUsd ?? 0;
+      try {
+        const j = await judge(facts, r.content);
+        faithful = j.faithful;
+        spent += j.costUsd ?? 0;
+        judgeCost = j.costUsd ?? 0;
+      } catch {
+        // A judge that cannot answer counts as "not shown faithful" and the run goes on.
+        faithful = false;
+      }
     }
     rows.push({
       source: r.source,
@@ -160,7 +167,7 @@ export async function runNarrativeSuite({
       fallbackReason: r.fallbackReason ?? null,
       checks,
       faithful,
-      cost,
+      cost: cost + judgeCost,
     });
   }
   return { rows, spent };

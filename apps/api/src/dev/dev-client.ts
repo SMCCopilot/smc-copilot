@@ -173,7 +173,7 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
 
   function loadInstruments() {
     return api('GET', '/v1/instruments').then(function (r) {
-      $('inst').innerHTML = r.items.map(function (i) { return '<option value="' + i.id + '" data-c="' + i.canonical + '">' + i.display + '</option>'; }).join('');
+      $('inst').innerHTML = r.items.map(function (i) { return '<option value="' + esc(i.id) + '" data-c="' + esc(i.canonical) + '">' + esc(i.display) + '</option>'; }).join('');
     }).catch(function () {});
   }
 
@@ -280,13 +280,14 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   $('refresh').onclick = function () { loadJournal(); loadTrades(); };
   setInterval(function () { if (token) loadJournal(); }, 30000);
 
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function renderNarr(n) {
     $('narr-src').innerHTML = (n.aiGenerated ? '<b>AI-written</b>' : 'Template text') + (n.generating ? ' - a fuller explanation is being written' : '') + ' | as of ' + n.asOf;
     var c = n.content;
-    $('narr').innerHTML = '<p><b>' + c.headline + '</b></p><p>' + c.bias_summary + '</p>' +
-      c.scenarios.map(function (s) { return '<p><i>' + s.kind.toLowerCase() + ':</i> ' + s.if_then + '</p>'; }).join('') +
-      (c.risks_and_unknowns.length ? '<p class="muted">' + c.risks_and_unknowns.join(' ') + '</p>' : '') +
-      c.history.map(function (h) { return '<p class="muted">' + h.text + '</p>'; }).join('');
+    $('narr').innerHTML = '<p><b>' + esc(c.headline) + '</b></p><p>' + esc(c.bias_summary) + '</p>' +
+      c.scenarios.map(function (s) { return '<p><i>' + esc(s.kind.toLowerCase()) + ':</i> ' + esc(s.if_then) + '</p>'; }).join('') +
+      (c.risks_and_unknowns.length ? '<p class="muted">' + esc(c.risks_and_unknowns.join(' ')) + '</p>' : '') +
+      c.history.map(function (h) { return '<p class="muted">' + esc(h.text) + '</p>'; }).join('');
   }
 
   var chatBuf = '';

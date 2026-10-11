@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { type AccountRequest, UserOnly } from '../account/account.guards.js';
+import { RateLimit } from '../account/rate-limit.js';
 import { ApiProblemError } from '../common/problem.js';
 import { parseWith } from '../common/validation.js';
 import { SessionsService } from '../sessions/sessions.service.js';
@@ -51,6 +52,7 @@ export class ExplainController {
 
   /** `POST /v1/explain` (multipart): an optional image and context. The answer streams as server-sent events. */
   @UserOnly()
+  @RateLimit({ name: 'explain.upload', limit: 12, windowMs: 60_000 })
   @Post('explain')
   async run(@Req() req: AccountRequest, @Res() res: Response): Promise<void> {
     if (!(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {

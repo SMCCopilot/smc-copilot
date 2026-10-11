@@ -48,7 +48,8 @@ export class PriceTable {
   cost(model: string, u: LlmUsage): number {
     const p = this.priceOf(model);
     const cached = Math.min(u.cachedIn, u.tokensIn);
-    const fresh = u.tokensIn - cached;
+    // Cache-write tokens are part of tokensIn but are billed at their own rate, not the plain input rate as well.
+    const fresh = Math.max(0, u.tokensIn - cached - u.cacheWrite);
     const usd =
       (fresh * p.in +
         cached * (p.cachedIn ?? p.in) +

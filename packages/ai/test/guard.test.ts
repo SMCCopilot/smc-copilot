@@ -71,7 +71,7 @@ describe('shared output checks, 50-case corpus', () => {
 
 describe('number scan details', () => {
   it('ignores digits inside placeholders and short timeframe numbers', () => {
-    expect(scanNumbers('{{L:L7}} and 15m and 4h and 1:2 and 61.8%')).toEqual([]);
+    expect(scanNumbers('{{L:L7}} and 15m and 4h and 1:2 and the 0.618 retracement')).toEqual([]);
   });
   it('reports each offending literal once', () => {
     expect(scanNumbers('64020 then 64020 then 63,960').sort()).toEqual(['63,960', '64020']);
@@ -102,5 +102,26 @@ describe('references and substitution', () => {
       'at 64,020.00 in 64,040.00 to 64,110.00',
     );
     expect(formatPrice(1.08523, 4)).toBe('1.0852');
+  });
+});
+
+describe('evasion and invented statistics', () => {
+  it.each([
+    ['a 70% win rate', 'Setups like this win 70% of the time.'],
+    ['short price', 'SOL is near 150.5 today.'],
+    ['three digits', 'Price is at 150 now.'],
+    ['spaced thousands', 'It sits around 65 000.'],
+    ['number words', 'It is near sixty-five thousand.'],
+    ['fullwidth digits', 'Price is ６５０００.'],
+    ['zero-width split', 'Price is 65​000 now.'],
+    ['zero-width in a banned phrase', 'It w​ill rise from here, price will go up.'],
+    ['soft hyphen', 'This is guar­anteed.'],
+  ])('rejects: %s', (_n, text) => {
+    expect(checkProse([text]).length).toBeGreaterThan(0);
+  });
+  it('still accepts ordinary short numbers and timeframes', () => {
+    expect(checkProse(['On the 15m chart there are 2 zones and 3 levels, a 1:2 idea.'])).toEqual(
+      [],
+    );
   });
 });

@@ -5,7 +5,7 @@ import { ApiProblemError } from '../common/problem.js';
 
 /** Fixed-window counter per key. Single process at the MVP (A07 section 10); Valkey replaces the store at M6. */
 export class RateLimiter {
-  private readonly windows = new Map<string, { start: number; count: number }>();
+  private readonly windows = new Map<string, { start: number; count: number; windowMs: number }>();
 
   constructor(private readonly now: () => number = () => Date.now()) {}
 
@@ -14,8 +14,8 @@ export class RateLimiter {
     const t = this.now();
     const w = this.windows.get(key);
     if (!w || t - w.start >= windowMs) {
-      this.windows.set(key, { start: t, count: 1 });
-      this.sweep(t, windowMs);
+      this.windows.set(key, { start: t, count: 1, windowMs });
+      this.sweep(t);
       return null;
     }
     if (w.count >= limit) return Math.max(1, Math.ceil((w.start + windowMs - t) / 1000));
@@ -23,9 +23,10 @@ export class RateLimiter {
     return null;
   }
 
-  private sweep(t: number, windowMs: number): void {
+  /** Each entry expires by its own window, so a short-window key can never clear a day-long counter. */
+  private sweep(t: number): void {
     if (this.windows.size < 5000) return;
-    for (const [k, w] of this.windows) if (t - w.start >= windowMs) this.windows.delete(k);
+    for (const [k, w] of this.windows) if (t - w.start >= w.windowMs) this.windows.delete(k);
   }
 }
 

@@ -167,7 +167,7 @@ export async function main(argv, env = process.env) {
     router,
     fixtures,
     judge,
-    maxUsd: Number(args['max-usd'] ?? Number.POSITIVE_INFINITY),
+    maxUsd: Number(args['max-usd'] ?? (args.live ? 3 : Number.POSITIVE_INFINITY)),
   });
   const summary = summarize(rows);
   const v = verdict(summary, { live: Boolean(args.live) });

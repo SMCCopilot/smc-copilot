@@ -209,8 +209,15 @@ export class ChatService {
   }
 
   /** Condense everything older than the window into a short summary. Best effort; failure only means no summary. */
+  private readonly summarizing = new Set<string>();
+
   private async refreshSummary(c: ChatCaller, threadId: string): Promise<void> {
+    // One at a time per thread, and only while the same switches and budget that allow chat still allow it.
+    if (this.summarizing.has(threadId)) return;
+    this.summarizing.add(threadId);
     try {
+      const v = await this.gate.check(['AI', 'CHAT'], c.workspaceId);
+      if (!v.allowed || v.soft) return;
       const rows = await this.db<{ role: string; content: string }[]>`
         select role, content from chat_messages
          where thread_id = ${threadId} and not retracted and role in ('user','assistant')
@@ -231,6 +238,8 @@ export class ChatService {
         await this.db`update chat_threads set summary = ${summary} where id = ${threadId}`;
     } catch (e) {
       this.log.warn(`summary failed: ${String(e)}`);
+    } finally {
+      this.summarizing.delete(threadId);
     }
   }
 

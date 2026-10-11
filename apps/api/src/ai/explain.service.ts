@@ -9,7 +9,6 @@ import {
   type LlmResult,
   type LlmRouter,
   parsePriceText,
-  priceMatch,
   readImage,
   visualLevels,
 } from '@smc/ai';
@@ -96,11 +95,16 @@ export async function prepareImage(buf: Buffer): Promise<Prepared> {
   if (w < MIN_SIDE || h < MIN_SIDE) {
     throw new ApiProblemError('NOT_A_CHART', 'That image is too small to be a chart.');
   }
-  const out = await sharp(buf)
-    .rotate()
-    .resize({ width: READ_SIDE, height: READ_SIDE, fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: 85 })
-    .toBuffer({ resolveWithObject: true });
+  let out: { data: Buffer };
+  try {
+    out = await sharp(buf, { limitInputPixels: 40_000_000, failOn: 'error' })
+      .rotate()
+      .resize({ width: READ_SIDE, height: READ_SIDE, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer({ resolveWithObject: true });
+  } catch {
+    throw new ApiProblemError('UNSUPPORTED_IMAGE', 'That file could not be read as an image.');
+  }
   return {
     llm: { mime: 'image/jpeg', base64: out.data.toString('base64') },
     bytes: buf.length,
@@ -151,14 +155,17 @@ export class ExplainService {
     return this.sql;
   }
 
+  /** Requests that have passed the cap and not finished yet, so parallel requests cannot all slip under it. */
+  private readonly inflight = new Map<string, number>();
+
   private async dailyCap(workspaceId: string): Promise<void> {
     const [row] = await this.db<{ used: number; lim: string | null }[]>`
       select (select count(*)::int from explain_requests
                where workspace_id = ${workspaceId} and created_at >= date_trunc('day', now() at time zone 'utc')
-                 and outcome in ('OK','OK_APPROXIMATE')) as used,
+                 and outcome in ('OK','OK_APPROXIMATE','NOT_A_CHART')) as used,
              (select limits->>'explain_per_day' from entitlements where workspace_id = ${workspaceId}) as lim`;
     const limit = row?.lim != null ? Number(row.lim) : 3;
-    if ((row?.used ?? 0) >= limit) {
+    if ((row?.used ?? 0) + (this.inflight.get(workspaceId) ?? 0) >= limit) {
       throw new ApiProblemError(
         'DAILY_LIMIT_REACHED',
         'You have used today’s chart explanations. They reset at midnight UTC.',
@@ -168,6 +175,7 @@ export class ExplainService {
 
   async run(c: ExplainCaller, r: ExplainRequest, sink: ExplainSink): Promise<void> {
     const started = Date.now();
+    let counted = false;
     try {
       assertNoSecret(r.question);
       this.allowance.check(c, 'explain', 6, 200);
@@ -176,6 +184,8 @@ export class ExplainService {
         : (['AI', 'EXPLAIN'] as const);
       await this.gate.require(scopes, c.workspaceId);
       await this.dailyCap(c.workspaceId);
+      this.inflight.set(c.workspaceId, (this.inflight.get(c.workspaceId) ?? 0) + 1);
+      counted = true;
       const prepared = r.image ? await prepareImage(r.image) : null;
       await withAiContext(
         {
@@ -187,6 +197,8 @@ export class ExplainService {
         () => this.flow(c, r, prepared, sink, started),
       );
     } finally {
+      if (counted)
+        this.inflight.set(c.workspaceId, Math.max(0, (this.inflight.get(c.workspaceId) ?? 1) - 1));
       // Hygiene: the original upload is wiped as soon as the request is over.
       r.image?.fill(0);
     }
@@ -278,18 +290,15 @@ export class ExplainService {
     let feedMatch: 'MATCH' | 'MISMATCH' | 'UNVERIFIED' = 'UNVERIFIED';
     let deltaPct: number | null = null;
     if (instrument && shown !== null) {
-      const m = priceMatch(
-        shown,
-        await this.context.feedPriceOf(instrument.id),
-        this.context.isCore(instrument.base),
-      );
+      const m = await this.context.compare(c.userId, instrument.id, instrument.base, shown);
       feedMatch = m.match;
       deltaPct = m.deltaPct;
     }
     // A live capture of the instrument the user chose cannot be stale; an upload must positively match.
     const groundedOk =
       instrument !== null &&
-      (r.source === 'SHARE' ? feedMatch !== 'MISMATCH' : feedMatch === 'MATCH');
+      (feedMatch === 'MATCH' ||
+        (r.source === 'SHARE' && feedMatch === 'UNVERIFIED' && resolvedBy !== 'VISION'));
     const warnings: string[] = [];
     if (instrument && feedMatch === 'MISMATCH')
       warnings.push(r.source === 'UPLOAD' ? 'STALE_IMAGE' : 'FEED_MISMATCH');

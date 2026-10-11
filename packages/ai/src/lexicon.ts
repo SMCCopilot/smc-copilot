@@ -1,3 +1,5 @@
+import { normalizeForScan } from './guard.js';
+
 /**
  * Deterministic banned-language check for everything the model writes (A05 section 6.3). The product describes the
  * chart and its scenarios; it never tells a user what to do, never promises an outcome and never claims certainty.
@@ -34,7 +36,8 @@ export interface LexiconHit {
   rule: string;
 }
 
-export function checkLexicon(text: string): LexiconHit[] {
+export function checkLexicon(raw: string): LexiconHit[] {
+  const text = normalizeForScan(raw);
   const hits: LexiconHit[] = [];
   for (const [rule, re] of RULES) if (re.test(text)) hits.push({ rule });
   return hits;

@@ -443,6 +443,56 @@ describe('POST /v1/explain', () => {
   });
 });
 
+describe('review regressions', () => {
+  it('parallel requests cannot all slip under the daily cap', async () => {
+    const { http } = await boot(adapter());
+    const u = await newUser(http);
+    const png = await chartPng();
+    const run = () =>
+      explain(http, u.auth, png, {
+        sessionId: u.sessionId,
+        source: 'SHARE',
+        ocr: JSON.stringify(OCR()),
+      });
+    const res = await Promise.all([run(), run(), run(), run(), run(), run()]);
+    expect(res.filter((r) => r.status === 200).length).toBeLessThanOrEqual(3);
+  });
+
+  it('a market named only by the picture, with no price to confirm it, is not explained with live levels', async () => {
+    const noPrice = { ...READ, last_price_text: null };
+    const a = adapter({ read: noPrice });
+    const { http } = await boot(a);
+    const u = await newUser(http);
+    const res = await explain(http, u.auth, await chartPng(), {
+      sessionId: u.sessionId,
+      source: 'SHARE',
+    });
+    // The session's own instrument is the picker, so this one is grounded; remove it to rely on the picture alone.
+    expect(res.status).toBe(200);
+    const bare = await newUser(http);
+    await sql`update copilot_sessions set instrument_id = null where id = ${bare.sessionId}`;
+    const res2 = await explain(http, bare.auth, await chartPng(), {
+      sessionId: bare.sessionId,
+      source: 'SHARE',
+    });
+    const done = events(res2.text).find((x) => x.event === 'explain.done')?.data;
+    expect(done?.mode).toBe('APPROXIMATE');
+  });
+
+  it('streamed pieces are not kept for replay', async () => {
+    const { http } = await boot(adapter());
+    const u = await newUser(http);
+    await explain(http, u.auth, null, {
+      sessionId: u.sessionId,
+      source: 'SHARE',
+      ocr: JSON.stringify(OCR()),
+    });
+    expect(
+      (await sql`select 1 from session_events where type in ('explain.chunk','chat.chunk')`).length,
+    ).toBe(0);
+  });
+});
+
 describe('zero retention of frames', () => {
   it('the schema has no place to keep an image or audio', async () => {
     await boot(adapter());

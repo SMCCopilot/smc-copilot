@@ -46,7 +46,7 @@ export class ChatController {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
     let aborted = false;
-    req.on('close', () => {
+    res.on('close', () => {
       aborted = true;
     });
     // Errors thrown before the first frame become ordinary problem responses; the exception filter handles them.

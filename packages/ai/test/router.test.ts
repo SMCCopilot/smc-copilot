@@ -208,3 +208,17 @@ describe('cost metering', () => {
     expect(r.costUsd).toBeGreaterThan(0.009); // 1000*5 + 200*25 = 0.01
   });
 });
+
+import { PriceTable } from '../src/pricing.js';
+
+describe('price table', () => {
+  it('bills cache-write tokens once, at their own rate', () => {
+    const t = new PriceTable({ m: { in: 3, out: 15 } });
+    expect(
+      t.cost('m', { tokensIn: 1000, tokensOut: 0, cachedIn: 0, cacheWrite: 1000 }),
+    ).toBeCloseTo(0.00375, 6);
+    expect(
+      t.cost('m', { tokensIn: 1000, tokensOut: 100, cachedIn: 400, cacheWrite: 0 }),
+    ).toBeCloseTo((600 * 3 + 400 * 3 + 100 * 15) / 1e6, 6);
+  });
+});

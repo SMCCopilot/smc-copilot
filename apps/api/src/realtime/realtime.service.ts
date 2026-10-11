@@ -50,6 +50,8 @@ const MAX_SESSION_MS = 240 * 60_000;
 const REPLAY_LIMIT = 500;
 /** Large payloads are not stored in the resume log; a resume sends a fresh snapshot instead. */
 const COMPACT_TYPES = new Set(['analysis.update']);
+/** Streamed pieces are not kept for replay: the closing event carries the whole text. */
+const NOT_LOGGED = new Set(['chat.chunk', 'explain.chunk', 'explain.stage']);
 
 interface Ctx {
   sessionId: string;
@@ -262,7 +264,14 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     };
 
     for (const type of CLIENT_EVENT_TYPES) {
-      socket.on(type, (raw: unknown) => enqueue(() => this.handle(socket, ctx, type, raw)));
+      socket.on(type, (raw: unknown) => {
+        if (type === 'chat.cancel') {
+          const id = (raw as { messageId?: unknown } | null)?.messageId;
+          if (typeof id === 'string' && id.length <= 64) ctx.cancelled.add(id);
+          return;
+        }
+        enqueue(() => this.handle(socket, ctx, type, raw));
+      });
     }
     for (const type of RESERVED_CLIENT_EVENTS) {
       socket.on(type, () =>
@@ -402,7 +411,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       ? socket.handshake.headers['x-forwarded-for']
       : undefined;
     const raw =
-      (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim() ||
+      (Array.isArray(fwd) ? fwd.join(',') : fwd)?.split(',').at(-1)?.trim() ||
       socket.handshake.address ||
       'unknown';
     const device: unknown = socket.handshake.auth?.deviceId;
@@ -593,7 +602,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     const stored = COMPACT_TYPES.has(type)
       ? { snapshotId: (payload as { snapshotId?: string }).snapshotId ?? null }
       : payload;
-    if (this.sql) {
+    if (this.sql && !NOT_LOGGED.has(type)) {
       this.sql`
         insert into session_events (session_id, seq, type, payload)
         values (${ctx.sessionId}, ${env.seq}, ${type}, ${this.sql.json(stored as never)})
