@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMC labeling</title>
+<style>
+  :root { --bg:#0f1318; --panel:#171d25; --line:#2a3340; --text:#dbe3ee; --mute:#8a97a8; --up:#2fbf71; --down:#e5484d; --acc:#5aa9ff; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f4f6f9; --panel:#fff; --line:#d5dbe3; --text:#17202b; --mute:#5b6878; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif; }
+  .wrap { display:grid; grid-template-columns:minmax(0,1fr) 310px; gap:12px; padding:12px; }
+  @media (max-width: 900px) { .wrap { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; }
+  canvas { width:100%; height:560px; display:block; cursor:crosshair; }
+  h1 { font-size:15px; margin:0 0 6px; }
+  h2 { font-size:13px; margin:12px 0 6px; color:var(--mute); text-transform:uppercase; letter-spacing:.04em; }
+  button { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 9px; cursor:pointer; font:inherit; }
+  button.on { border-color:var(--acc); box-shadow:0 0 0 1px var(--acc) inset; }
+  button:disabled { opacity:.4; cursor:default; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; }
+  .small { color:var(--mute); font-size:12px; }
+  ul { list-style:none; margin:0; padding:0; max-height:220px; overflow:auto; }
+  li { display:flex; justify-content:space-between; gap:6px; padding:3px 0; border-bottom:1px solid var(--line); font-size:12px; }
+  #status { margin-top:6px; min-height:20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h1 id="title">Chart</h1>
+      <div class="row"><button id="prev">&larr; Prev</button><button id="next">Next &rarr;</button></div>
+    </div>
+    <canvas id="cv"></canvas>
+    <div id="status" class="small"></div>
+  </div>
+  <div class="card">
+    <h1>Label tool</h1>
+    <div class="row" id="tools"></div>
+    <h2>Direction</h2>
+    <div class="row" id="dirs"></div>
+    <h2>Scale</h2>
+    <div class="row" id="scales"></div>
+    <p class="small" id="help"></p>
+    <h2>Labels on this chart (<span id="count">0</span>)</h2>
+    <ul id="list"></ul>
+    <h2>Save</h2>
+    <div class="row"><button id="undo">Undo</button><button id="export">Export labels.json</button><button id="import">Import</button></div>
+    <input type="file" id="file" accept="application/json" hidden>
+    <p class="small">Labels autosave in this browser. Engine output is never shown here. Label what you would mark by hand; skip anything you are unsure about.</p>
+  </div>
+</div>
+<script>
+const PACK = /*PACK_JSON*/null;
+const TOOLS = [
+  { id:'SWING_HIGH', name:'Swing high', key:'1', dirs:null, scale:true, help:'Click the candle that is the pivot high (its high is the peak).' },
+  { id:'SWING_LOW', name:'Swing low', key:'2', dirs:null, scale:true, help:'Click the candle that is the pivot low (its low is the trough).' },
+  { id:'BOS', name:'BOS', key:'3', dirs:['UP','DOWN'], scale:true, help:'Break of structure (continuation). Click the candle whose CLOSE breaks the level.' },
+  { id:'CHOCH', name:'CHoCH', key:'4', dirs:['UP','DOWN'], scale:true, help:'Change of character (reversal break). Click the candle whose CLOSE breaks the protected level.' },
+  { id:'FVG', name:'FVG', key:'5', dirs:['BULL','BEAR'], scale:false, help:'Fair value gap. Click the MIDDLE candle of the three-candle gap.' },
+  { id:'OB', name:'Order block', key:'6', dirs:['BULL','BEAR'], scale:false, help:'Click the order-block candle (the last opposite-colour candle before the move that broke structure).' },
+];
+const STORE = 'smc-labels-' + PACK.packId;
+let labels = [];
+try { labels = JSON.parse(localStorage.getItem(STORE) || '[]'); } catch { labels = []; }
+let ci = 0, tool = TOOLS[0], dir = null, scale = 'external', hover = -1;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = (id) => document.getElementById(id);
+const chart = () => PACK.charts[ci];
+const mine = () => labels.filter((l) => l.chartId === chart().id);
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(labels)); } catch {} };
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function pick(t) {
+  tool = t;
+  dir = t.dirs ? (t.dirs.includes(dir) ? dir : t.dirs[0]) : null;
+  ui(); draw();
+}
+function ui() {
+  $('tools').innerHTML = '';
+  for (const t of TOOLS) {
+    const b = document.createElement('button');
+    b.textContent = t.key + ' ' + t.name; b.className = t === tool ? 'on' : '';
+    b.onclick = () => pick(t); $('tools').appendChild(b);
+  }
+  $('dirs').innerHTML = '';
+  for (const d of ['UP','DOWN','BULL','BEAR']) {
+    const b = document.createElement('button'); b.textContent = d;
+    b.disabled = !tool.dirs || !tool.dirs.includes(d); b.className = dir === d ? 'on' : '';
+    b.onclick = () => { dir = d; ui(); }; $('dirs').appendChild(b);
+  }
+  $('scales').innerHTML = '';
+  for (const s of ['internal','external']) {
+    const b = document.createElement('button'); b.textContent = s;
+    b.disabled = !tool.scale; b.className = tool.scale && scale === s ? 'on' : '';
+    b.onclick = () => { scale = s; ui(); }; $('scales').appendChild(b);
+  }
+  $('help').textContent = tool.help + (tool.scale ? ' Internal = small pivots, external = the major swings you would call the structure.' : '');
+  $('title').textContent = chart().id + '  (' + chart().instrumentId + ', ' + chart().tf + ', ' + chart().candles.length + ' bars)  -  chart ' + (ci + 1) + ' of ' + PACK.charts.length;
+  const m = mine(); $('count').textContent = m.length;
+  const ul = $('list'); ul.innerHTML = '';
+  m.slice().sort((a, b) => a.index - b.index).forEach((l) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span>bar ' + l.index + ': ' + l.kind + (l.dir ? ' ' + l.dir : '') + (l.scale ? ' (' + l.scale + ')' : '') + '</span>';
+    const x = document.createElement('button'); x.textContent = 'x'; x.onclick = () => { labels = labels.filter((q) => q !== l); save(); ui(); draw(); };
+    li.appendChild(x); ul.appendChild(li);
+  });
+}
+
+const M = { l: 8, r: 64, t: 16, b: 22 };
+function geom(w, h) {
+  const c = chart().candles, n = c.length;
+  let lo = Infinity, hi = -Infinity;
+  for (const k of c) { lo = Math.min(lo, k.l); hi = Math.max(hi, k.h); }
+  const pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
+  const cw = (w - M.l - M.r) / n;
+  return { c, n, w, h, lo, hi, cw, x: (i) => M.l + (i + 0.5) * cw, y: (p) => M.t + (hi - p) / (hi - lo) * (h - M.t - M.b) };
+}
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = cv.clientWidth, cssH = cv.clientHeight;
+  if (cv.width !== Math.round(cssW * dpr)) { cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.scale(dpr, dpr);
+  const g = geom(cssW, cssH);
+  const up = css('--up'), down = css('--down'), line = css('--line'), mute = css('--mute'), txt = css('--text'), acc = css('--acc');
+  ctx.font = '11px system-ui'; ctx.textBaseline = 'middle';
+  for (let k = 0; k <= 5; k++) {
+    const p = g.lo + (g.hi - g.lo) * k / 5, yy = g.y(p);
+    ctx.strokeStyle = line; ctx.beginPath(); ctx.moveTo(M.l, yy); ctx.lineTo(g.w - M.r, yy); ctx.stroke();
+    ctx.fillStyle = mute; ctx.fillText(p.toFixed(p > 100 ? 0 : 2), g.w - M.r + 4, yy);
+  }
+  for (let i = 0; i < g.n; i += 10) { ctx.fillStyle = mute; ctx.textAlign = 'center'; ctx.fillText(String(i), g.x(i), cssH - 8); }
+  ctx.textAlign = 'left';
+  g.c.forEach((k, i) => {
+    const col = k.c >= k.o ? up : down, x = g.x(i), bw = Math.max(1, g.cw * 0.62);
+    ctx.strokeStyle = col; ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(x, g.y(k.h)); ctx.lineTo(x, g.y(k.l)); ctx.stroke();
+    const top = g.y(Math.max(k.o, k.c)), bot = g.y(Math.min(k.o, k.c));
+    ctx.fillRect(x - bw / 2, top, bw, Math.max(1, bot - top));
+  });
+  if (hover >= 0) { ctx.strokeStyle = acc; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(g.x(hover), M.t); ctx.lineTo(g.x(hover), cssH - M.b); ctx.stroke(); ctx.setLineDash([]); }
+  for (const l of mine()) {
+    const k = g.c[l.index]; if (!k) continue; const x = g.x(l.index);
+    ctx.fillStyle = txt; ctx.strokeStyle = txt; ctx.lineWidth = 1.5;
+    if (l.kind === 'SWING_HIGH' || l.kind === 'SWING_LOW') {
+      const hi = l.kind === 'SWING_HIGH', yy = hi ? g.y(k.h) - 8 : g.y(k.l) + 8, s = l.scale === 'external' ? 6 : 3.5;
+      ctx.beginPath(); ctx.moveTo(x, yy + (hi ? s : -s)); ctx.lineTo(x - s, yy + (hi ? -s : s)); ctx.lineTo(x + s, yy + (hi ? -s : s)); ctx.closePath();
+      l.scale === 'external' ? ctx.fill() : ctx.stroke();
+    } else if (l.kind === 'BOS' || l.kind === 'CHOCH') {
+      const upDir = l.dir === 'UP'; ctx.fillStyle = l.kind === 'CHOCH' ? acc : txt;
+      ctx.textAlign = 'center'; ctx.fillText((l.kind === 'CHOCH' ? 'CHoCH' : 'BOS') + (upDir ? ' ↑' : ' ↓') + (l.scale === 'internal' ? ' i' : ''), x, upDir ? g.y(k.h) - 16 : g.y(k.l) + 16); ctx.textAlign = 'left';
+    } else if (l.kind === 'FVG') {
+      const a = g.c[l.index - 1], b = g.c[l.index + 1]; if (!a || !b) continue;
+      const topP = l.dir === 'BULL' ? b.l : a.l, botP = l.dir === 'BULL' ? a.h : b.h;
+      ctx.fillStyle = (l.dir === 'BULL' ? up : down) + '33'; ctx.fillRect(g.x(l.index - 1), g.y(Math.max(topP, botP)), g.x(l.index + 1) - g.x(l.index - 1), Math.abs(g.y(topP) - g.y(botP)) || 2);
+      ctx.fillStyle = txt; ctx.fillText('FVG', g.x(l.index - 1), g.y(Math.max(topP, botP)) - 6);
+    } else if (l.kind === 'OB') {
+      ctx.strokeStyle = l.dir === 'BULL' ? up : down; ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x - g.cw * 0.5, g.y(k.h), g.cw, g.y(k.l) - g.y(k.h)); ctx.setLineDash([]);
+      ctx.fillStyle = txt; ctx.fillText('OB', x - 8, g.y(k.h) - 8);
+    }
+  }
+}
+function idxAt(ev) {
+  const r = cv.getBoundingClientRect(), n = chart().candles.length;
+  const cw = (r.width - M.l - M.r) / n;
+  return Math.max(0, Math.min(n - 1, Math.floor((ev.clientX - r.left - M.l) / cw)));
+}
+cv.addEventListener('mousemove', (ev) => {
+  hover = idxAt(ev); const k = chart().candles[hover];
+  $('status').textContent = 'bar ' + hover + '  ' + new Date(k.openTime).toISOString().replace('T', ' ').slice(0, 16) + ' UTC   O ' + k.o + '  H ' + k.h + '  L ' + k.l + '  C ' + k.c;
+  draw();
+});
+cv.addEventListener('click', (ev) => {
+  const index = idxAt(ev);
+  const same = labels.find((l) => l.chartId === chart().id && l.kind === tool.id && l.index === index && (l.dir ?? null) === dir && (!tool.scale || l.scale === scale));
+  if (same) labels = labels.filter((l) => l !== same);
+  else labels.push({ chartId: chart().id, kind: tool.id, index, ...(dir ? { dir } : {}), ...(tool.scale ? { scale } : {}) });
+  save(); ui(); draw();
+});
+$('prev').onclick = () => { ci = (ci + PACK.charts.length - 1) % PACK.charts.length; ui(); draw(); };
+$('next').onclick = () => { ci = (ci + 1) % PACK.charts.length; ui(); draw(); };
+$('undo').onclick = () => { const m = mine(); const last = m[m.length - 1]; if (last) { labels = labels.filter((l) => l !== last); save(); ui(); draw(); } };
+$('export').onclick = () => {
+  const blob = new Blob([JSON.stringify({ packId: PACK.packId, labels }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'labels.json'; a.click();
+};
+$('import').onclick = () => $('file').click();
+$('file').onchange = async () => {
+  const f = $('file').files[0]; if (!f) return;
+  const j = JSON.parse(await f.text());
+  if (j.packId !== PACK.packId) { alert('These labels belong to a different pack.'); return; }
+  labels = j.labels; save(); ui(); draw();
+};
+window.addEventListener('keydown', (ev) => {
+  const t = TOOLS.find((x) => x.key === ev.key); if (t) pick(t);
+  if (ev.key === 'ArrowLeft') $('prev').click(); if (ev.key === 'ArrowRight') $('next').click();
+});
+window.addEventListener('resize', draw);
+pick(TOOLS[0]);
+</script>
+</body>
+</html>
