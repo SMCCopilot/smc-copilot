@@ -15,6 +15,7 @@ keys.txt
 
 # Raw exchange data and recordings stay out of git (venue terms: A03 section 2.1, data.binance.vision is local-testing only).
 /data/
+/label-pack/
 **/.recordings/
 *.jsonl.gz
 
@@ -33,6 +34,7 @@ docs/*
 !docs/backtest-criteria.md
 !docs/backtest-report.md
 !docs/backtest-report-run1.md
+!docs/how-to-get-gate-g1.md
 
 # More secret-bearing files
 .envrc
