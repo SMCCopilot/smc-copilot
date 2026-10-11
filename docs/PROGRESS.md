@@ -96,3 +96,14 @@ Totals after Phase 2: config 29, contracts 40, market-data 123, db 35, boundarie
 - [ ] Unverified: live behaviour on the deployed worker over days; `setup_displays` and calibration with real displays (Phase 5); GitHub CI.
 
 Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 29, contracts 40, market-data 123, analytics 30, smc-engine 130, db 35, boundaries 57, spikes 11, tool-engine 27, api 155 = 637 tests.
+
+## Phase 4: identity, APIs, realtime, gate, trades, journal (all on `main`)
+
+**Status: built; independent review pending (see below).**
+
+- [x] **W9 identity and gates**: wallet-first accounts (EVM and Solana, EIP-55 checksum, wallet mirror from `auth.identities`), invite, disclaimer version, 18+ attestation, address blocklist, step-up, wallet link/primary/unlink, optional email, abuse flags (salted hashes, no raw IPs), Turnstile, admin operations (invites, blocklist, entitlements, block, flags, kill switches, strategy versions, DQ incidents), all audited.
+- [x] **W10 read APIs**: venues, instruments, analysis snapshot (ETag/304, `snapshotId` = hash of the content), setups (list, one, history, rejected), cohort stats (only sufficient cohorts), sessions with idempotency keys (replay and conflict), risk profile and sizing.
+- [x] **W11 realtime and trading records**: Socket.IO `/ws` with resume, execution gate, trade log with realised R net of fees, position monitor, in-app notifications, journal (auto entries for setups shown, gates and trades; notes and tags; summary), feedback, HTML dev client.
+- [x] No test data in the owner's database: automated tests run on throwaway embedded Postgres; the real Supabase database holds reference rows only.
+- Tests: api 215 (real Postgres, real sockets).
+- [ ] **Unverified until the owner's live test**: a real wallet sign-in (the `identity_data` shape, unlink behaviour), Web3 providers enabled in Supabase Auth, the dev client in a browser, the realtime flow against live engine output, Railway deployment.

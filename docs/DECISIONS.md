@@ -136,3 +136,42 @@ Re-verify from the VM region in Phase 1 **[verify]**.
 ## D-022: Statistics, risk and backtest maths live in `@smc/analytics`
 
 - Calibration needs a logarithm, which the pure engine package deliberately bans (transcendental `Math` is architecture dependent). A separate package depending only on `@smc/contracts` holds Wilson intervals, cohort summaries, risk sizing and the liquidation warning, calibration, and backtest evaluation (walk-forward split, seeded bootstrap, drawdown, pre-registered criteria, trials haircut). It is allow-listed in the boundary checker and has no Node types. Sums are taken in sorted order so results do not depend on input order.
+
+## D-023: Supabase connection and wallet identity (Phase 4)
+
+- Hosted Supabase PostgreSQL 17. The direct host is IPv6-only and does not resolve from every network, so both URLs use the pooler: session pooler (port 5432) for migrations (`DATABASE_URL_SESSION`), transaction pooler (port 6543) for the app (`DATABASE_URL`, `prepare: false`). Credentials live only in `.env.local`.
+- Token verification uses the project JWKS; the real key is ES256, which resolves D-009 (asymmetric, no shared secret in the API).
+- **Wallets are mirrored, not fetched.** The API reads `auth.identities` through its own database role on the first authenticated request and upserts `wallet_identities`. No service-role key is held by the API. The exact `identity_data` shape of a Web3 sign-in is **unverified until a real wallet signs in**; the parser accepts three shapes (`custom_claims`, flat, subject-only) and ignores anything else.
+- Unlinking a wallet deletes its `auth.identities` row as well as the mirror, otherwise the next request would re-mirror it. Whether Supabase tolerates that direct delete is unverified; the owner's wallet test covers it.
+- Seed migrations insert a dev invite code; the migrate CLI removes it automatically unless `--shims` is used (local throwaway Postgres). The owner mints invites with `POST /v1/admin/invites`.
+
+## D-024: Access classes and the gates
+
+- Classes: `USER*` (valid token and account, before gates: `/v1/me` and gate-completion routes), `USER` (plus invite, disclaimer and 18+), step-up (token issued under 5 minutes ago), `ADMIN` (role claim, IP allow-list, `X-Admin-Confirm: yes`). Every `/v1` route must carry a guard; `routes.e2e.test.ts` scans every controller and fails on an unguarded route (this replaces a generated OpenAPI check for now, see D-027).
+- Kill switches and flags are rows in `feature_flags` (`kill.<SCOPE>`), cached 3 s. Rate limits are in memory (single process until M6) and return `Retry-After`.
+- Turnstile is fail-closed when enforced. `TURNSTILE_DISABLED=true` is the explicit opt-out for closed beta; production without a secret and without the opt-out refuses to boot.
+
+## D-025: Execution gate (invariant 1)
+
+- REST only. There is no socket event that confirms a gate or logs a trade (exact-set test in contracts, plus a socket test that sends `gate.confirm` and `trade.open` and observes nothing happens).
+- Issue: latest plan version of an `ARMED`/`TRIGGERED` setup and a non-stale feed; a new issue voids the previous open gate for that plan. The 256-bit token is returned once; only its SHA-256 is stored. Confirm is one conditional `UPDATE` (right user, token hash, plan hash, `ISSUED`, not expired), so a token wins at most once; afterwards the plan must still be the newest version and the setup still actionable, else the gate is voided (`PLAN_CHANGED`). The database sets `confirmed_via = 'UI_TAP'` and its CHECK constraints reject any other channel; a request marked as voice (`X-Input-Mode`) is refused earlier with `VOICE_FORBIDDEN_ACTION`.
+- A confirmed gate must be spent on a trade within 60 s, for the same plan, once: the trade insert locks the gate row and checks that no trade already references it. A trade that follows a plan cannot be created without it; a free-form trade needs no gate.
+- Nothing places an order anywhere; the trade log records what the user did elsewhere. `PATCH` changes stop, targets and notes only.
+
+## D-026: Realtime channel
+
+- Socket.IO attached to the HTTP server at `/ws`; authenticated by the 5-minute HMAC `wsToken` bound to one session and one user. One controller per session: a second connection gets `SESSION_CONTROLLER_TAKEN` unless it connects with `auth.takeover = true`, which disconnects the old one.
+- Every outbound event is numbered per session and written to `session_events` (7-day retention); a reconnect with `lastSeq` replays what it missed. Large `analysis.update` payloads are logged in compact form, so a resume re-sends a fresh snapshot rather than replaying them. Handlers are registered synchronously and processed one at a time per session (a client may emit the instant it connects).
+- `analysis.update` carries the full snapshot, sent only when its `snapshotId` changed (true diffs are in the backlog). A slow socket (over 100 queued packets) skips pushes and is brought current by the next change or `analysis.request`. Events are driven by the in-process bus (`engine.updated`, `feed.status`); with the worker split (M6) the same events arrive through the bus seam.
+- Chat, explain and voice events return `AI_TEMPORARILY_UNAVAILABLE` until Phase 5; the reserved audio and frame events return `STT_UNAVAILABLE`.
+
+## D-027: Deferrals made in Phase 4
+
+- **OpenAPI document and generated client** are not produced; the Zod contracts are the source of truth and the route-scan test enforces guards. Generating a document from Zod and a typed client is in the backlog.
+- **Notification preferences** are not stored (no column exists in the canonical schema and the MVP channel is in-app only); all in-app types are on.
+- **Position events** are evaluated on 1-minute closes. Each event type fires at most once per trade.
+- **Win rate in the journal summary** is null until 30 closed trades with a measurable R (invariant 5).
+
+## D-028: Developer client
+
+- `GET /dev` (a single HTML page) exists only with `DEV_CLIENT_ENABLED=true`; `GET /dev/config` returns only the public Supabase URL and anon key. The page sets its own narrow Content-Security-Policy (inline script plus jsdelivr, for the Supabase and Socket.IO browser libraries), leaving the global policy untouched elsewhere. It never shows candles or exchange prices.

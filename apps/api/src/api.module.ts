@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AnalysisController } from './analysis/analysis.controller.js';
 import { AnalysisService } from './analysis/analysis.service.js';
 import { IdempotencyInterceptor } from './common/idempotency.js';
+import { DevController } from './dev/dev.controller.js';
 import { GateController } from './gate/gate.controller.js';
 import { GateService } from './gate/gate.service.js';
 import { JournalController } from './journal/journal.controller.js';
@@ -28,6 +29,7 @@ import { TradesService } from './trades/trades.service.js';
     GateController,
     TradesController,
     JournalController,
+    DevController,
   ],
   providers: [
     AnalysisService,

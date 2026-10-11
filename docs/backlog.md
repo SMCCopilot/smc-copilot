@@ -36,3 +36,10 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | BACKTEST cohort rows are in-sample (tune+validate+test pooled) and are written only with `--publish-cohorts` | they feed plan statistics, so publishing is deliberate | decide with the owner |
 | Calibration needs `setup_displays` rows, written when a plan is shown to a user | no production writer until the read API exists (Phase 5); the job returns null until then | Phase 5 |
 | Hard filters looser than A04 wording: POI_MITIGATED fires on FILLED/INVERTED only (a TESTED zone passes and scores lower), HTF_COUNTER_BIAS only when every bias timeframe opposes | matches the shipped table semantics ("not mitigated"); revisit with G1 | with G1 |
+| OpenAPI document generated from the Zod contracts and a typed client | D-027: the route-scan test enforces guards for now | Phase 8 |
+| `analysis.update` sends full snapshots; true diffs | bandwidth is small at MVP scale | if bandwidth matters |
+| Notification preferences per type | no column in the canonical schema; MVP is in-app only | with email/push channels |
+| Rate limiter is in memory | one API process until the worker split | M6 (Valkey) |
+| Realtime session registry is in memory; ended sessions are dropped only on `session.end` or the 4 h reaper | single process | M6 |
+| Position events use 1m closes and fire once per type per trade | simplest monitor that satisfies the spec | refine from live use |
+| Gate token expiry is checked against the database clock; stale-feed check uses the in-process feed monitor | the worker split needs the feed state through the bus | M6 |
