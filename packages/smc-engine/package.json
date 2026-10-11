@@ -18,9 +18,12 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "biome check .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
     "@smc/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.2"
   }
 }

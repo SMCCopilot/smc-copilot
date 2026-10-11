@@ -1,2 +1,3 @@
-// smc-engine: skeleton. Implementation lands in the phase listed in docs/PROGRESS.md.
-export const PACKAGE_NAME = '@smc/smc-engine' as const;
+export { createEngine, step, WINDOW_BARS } from './engine.js';
+export { sha1 } from './sha1.js';
+export type * from './types.js';
