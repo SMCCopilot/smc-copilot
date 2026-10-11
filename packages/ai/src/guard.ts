@@ -101,7 +101,7 @@ export function scanNumbers(text: string): string[] {
   const t = text.replace(PLACEHOLDER_RE, ' ');
   const bad: string[] = [];
   const add = (re: RegExp, keep?: (m: string) => boolean) => {
-    for (const m of t.matchAll(re)) if (!keep || !keep(m[0])) bad.push(m[0].trim().slice(0, 24));
+    for (const m of t.matchAll(re)) if (!keep?.(m[0])) bad.push(m[0].trim().slice(0, 24));
   };
   add(/\$\s?\d[\d,.]*/g);
   add(/\b\d+(?:\.\d+)?\s?[kK]\b/g);

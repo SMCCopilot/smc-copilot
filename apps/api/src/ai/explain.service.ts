@@ -13,13 +13,12 @@ import {
   readImage,
   visualLevels,
 } from '@smc/ai';
-import type { Env } from '@smc/config';
 import type { MarketFacts, OcrContext, Timeframe } from '@smc/contracts';
 import type { Sql } from '@smc/db';
 import sharp, { type Metadata } from 'sharp';
 import { ApiProblemError } from '../common/problem.js';
 import { assertNoSecret } from '../common/secrets.js';
-import { ENV, LLM_ROUTER, SQL } from '../config/tokens.js';
+import { LLM_ROUTER, SQL } from '../config/tokens.js';
 import { ContextService, cleanSymbolText, parseTimeframeText } from '../context/context.service.js';
 import { withAiContext } from './ai.context.js';
 import { AiAllowanceService } from './ai-allowance.service.js';
@@ -140,7 +139,6 @@ export function renderPlain(c: ExplainContent): string {
 export class ExplainService {
   constructor(
     @Inject(SQL) private readonly sql: Sql | null,
-    @Inject(ENV) private readonly env: Env,
     @Inject(LLM_ROUTER) private readonly router: LlmRouter,
     private readonly gate: AiGateService,
     private readonly allowance: AiAllowanceService,
