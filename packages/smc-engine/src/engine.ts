@@ -2,6 +2,7 @@ import { type Candle, type StrategyConfig, TIMEFRAME_MS } from '@smc/contracts';
 import { emptyAtr, updateAtr } from './atr.js';
 import { emptyScale, stepScale } from './scale.js';
 import type { CandleLite, EngineEvent, EngineState, TfState } from './types.js';
+import { type BreakInfo, stepZones } from './zones.js';
 
 export const WINDOW_BARS = 600;
 
@@ -15,6 +16,8 @@ const emptyTf = (): TfState => ({
   atr: emptyAtr(),
   internal: emptyScale(),
   external: emptyScale(),
+  fvgs: [],
+  orderBlocks: [],
 });
 
 /**
@@ -76,12 +79,32 @@ export function step(
     cfg.swings.external.R,
   );
 
+  const breaks: BreakInfo[] = [];
+  for (const [scale, out] of [
+    ['internal', internal],
+    ['external', external],
+  ] as const) {
+    for (const ev of out.events) {
+      if (/^(BOS|CHOCH)_(UP|DOWN)$/.test(ev.type)) {
+        breaks.push({
+          type: ev.type as BreakInfo['type'],
+          scale,
+          eventId: ev.id,
+          legOriginIndex: out.state.protected?.barIndex ?? n,
+        });
+      }
+    }
+  }
+  const zones = stepZones(ctx, prev.fvgs, prev.orderBlocks, breaks);
+
   const tfState: TfState = {
     window: bars,
     base,
     atr,
     internal: internal.state,
     external: external.state,
+    fvgs: zones.fvgs,
+    orderBlocks: zones.orderBlocks,
   };
   return {
     state: {
@@ -89,6 +112,6 @@ export function step(
       perTf: { ...state.perTf, [tf]: tfState },
       lastCandleOpenTime: { ...state.lastCandleOpenTime, [tf]: candle.openTime },
     },
-    events: [...internal.events, ...external.events],
+    events: [...internal.events, ...external.events, ...zones.events],
   };
 }

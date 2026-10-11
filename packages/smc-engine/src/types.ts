@@ -55,6 +55,45 @@ export interface TfState {
   atr: AtrState;
   internal: ScaleState;
   external: ScaleState;
+  fvgs: Fvg[];
+  orderBlocks: OrderBlock[];
+}
+
+export type Dir = 'BULL' | 'BEAR';
+
+export interface Fvg {
+  id: string;
+  dir: Dir;
+  top: number;
+  bottom: number;
+  ce: number;
+  barIndex: number;
+  createdAt: number;
+  status: 'OPEN' | 'TESTED' | 'FILLED' | 'INVERTED';
+  /** Price has closed through the far edge (needed before an inversion retest). */
+  closedThrough: boolean;
+  displacement: boolean;
+  sizeAtr: number;
+}
+
+export interface OrderBlock {
+  id: string;
+  dir: Dir;
+  top: number;
+  bottom: number;
+  barIndex: number;
+  /** Open time of the order-block candle. */
+  barOpen: number;
+  createdAtIndex: number;
+  createdAt: number;
+  status: 'FRESH' | 'TESTED';
+  touches: number;
+  inside: boolean;
+  displacementRatio: number;
+  hasFvgInLeg: boolean;
+  sizeAtr: number;
+  scale: Scale;
+  breakEventId: string;
 }
 
 export interface EngineState {
@@ -74,14 +113,26 @@ export type EngineEventType =
   | 'BOS_DOWN'
   | 'CHOCH_UP'
   | 'CHOCH_DOWN'
-  | 'PROTECTED_UPDATED';
+  | 'PROTECTED_UPDATED'
+  | 'FVG_BULL'
+  | 'FVG_BEAR'
+  | 'FVG_TESTED'
+  | 'FVG_FILLED'
+  | 'FVG_INVERTED'
+  | 'FVG_EXPIRED'
+  | 'OB_BULL'
+  | 'OB_BEAR'
+  | 'OB_TESTED'
+  | 'OB_MITIGATED'
+  | 'OB_EXPIRED';
 
 export interface EngineEvent {
   /** sha1(instrumentId|tf|type:scale|anchorOpenTime|strategyVersionId): stable across re-runs. */
   id: string;
   type: EngineEventType;
   tf: Timeframe;
-  scale: Scale;
+  /** Swing scale for swing/structure events; null for zones. */
+  scale: Scale | null;
   /** Close time of the candle that made the event knowable. Never earlier than anything it depends on. */
   time: number;
   /** Open time of the candle the event is about (the pivot bar, the break bar). */

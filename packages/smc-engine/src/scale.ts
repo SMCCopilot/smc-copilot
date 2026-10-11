@@ -33,11 +33,11 @@ export const emptyScale = (): ScaleState => ({ swings: [], trend: 'UNDEFINED', p
 export function eventId(
   ctx: ScaleCtx,
   type: EngineEventType,
-  scale: Scale,
+  scale: Scale | null,
   anchor: number,
 ): string {
   return sha1(
-    `${ctx.instrumentId}|${ctx.tf}|${type}:${scale}|${anchor}|${ctx.cfg.strategyVersionId}`,
+    `${ctx.instrumentId}|${ctx.tf}|${type}:${scale ?? 'zone'}|${anchor}|${ctx.cfg.strategyVersionId}`,
   );
 }
 
