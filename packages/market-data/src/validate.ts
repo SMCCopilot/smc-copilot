@@ -37,6 +37,8 @@ export const ON_DEMAND_VALIDATION: ValidationConfig = {
 
 export interface ValidationContext {
   readonly nowMs: number;
+  /** Canonical id of the candle's own instrument (needed to refuse a cross-market-type peer). */
+  readonly canonical?: string | undefined;
   /** The stored candle with the same key, if any (V5). */
   readonly existing?: Candle | undefined;
   /** The stored candle for the minute before this one (V9). Ignored unless it is exactly adjacent. */
@@ -101,7 +103,8 @@ export function validate(
   // V7: compare with the peer, same market type only (invariant 7).
   let crosscheck: CrosscheckState = 'NO_PEER';
   if (ctx.peer) {
-    assertSameMarketType(candle.instrumentId, ctx.peer.instrumentId);
+    if (!ctx.canonical) throw new Error('validate: canonical is required when a peer is supplied');
+    assertSameMarketType(ctx.canonical, ctx.peer.instrumentId);
     if (pctDiff(candle.c, ctx.peer.close) > config.crosscheckTolPct) {
       flags |= FLAG.CROSSCHECK_DIVERGENCE;
       crosscheck = 'DIVERGE';

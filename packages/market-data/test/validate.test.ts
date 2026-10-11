@@ -42,6 +42,7 @@ const candle = (over: Partial<Candle> = {}): Candle => ({
 
 const ctx = (over: Partial<ValidationContext> = {}): ValidationContext => ({
   nowMs: T0 + 61_000,
+  canonical: ID,
   ...over,
 });
 
