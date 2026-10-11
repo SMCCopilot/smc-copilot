@@ -51,6 +51,9 @@ async function cohortFor(
      where strategy_version_id = ${strategyId} and asset_class = 'CRYPTO' and segment = 'ALL'
        and template = ${template} and grade = ${grade}
        and (direction = ${direction} or direction is null)`;
+  // A cohort held UNDER_REVIEW (live results drifted from the backtest) shows nothing at all. It must not
+  // quietly fall back to the very backtest number the live rate drifted away from.
+  if (rows.some((r) => r.status === 'UNDER_REVIEW')) return { stat: null, confidence: 'LOW' };
   const usable = rows.filter((r) => r.sufficient && r.status === 'ACTIVE');
   const rank = (r: CohortRow): number =>
     (r.source === 'LIVE_SHADOW' ? 0 : 2) + (r.direction === direction ? 0 : 1);
@@ -65,7 +68,9 @@ async function cohortFor(
       to: best.window_to.toISOString(),
     },
   );
-  const live = rows.find((r) => r.source === 'LIVE_SHADOW' && r.sufficient);
+  const live = rows.find(
+    (r) => r.source === 'LIVE_SHADOW' && r.sufficient && r.status === 'ACTIVE',
+  );
   return {
     stat,
     confidence: stat
@@ -184,10 +189,14 @@ export async function applySetupEvents(
             from setups where strategy_version_id = ${strategyId} and setup_key = ${key}
           on conflict (setup_id) do nothing`;
         if (d.outcome === 'TP1_FIRST' || d.outcome === 'SL_FIRST') {
-          await transition('RESOLVED', []);
+          // Guarded: after a rebuild the same setup can resolve again on another bar; the first resolution stands.
+          await tx`
+            insert into setup_transitions (setup_id, from_state, to_state, at_candle, reason_codes)
+            select id, state, 'RESOLVED', ${at}, '{}'::text[] from setups
+             where strategy_version_id = ${strategyId} and setup_key = ${key} and state <> 'RESOLVED'`;
           await tx`
             update setups set state = 'RESOLVED', closed_at = ${at}
-             where strategy_version_id = ${strategyId} and setup_key = ${key}`;
+             where strategy_version_id = ${strategyId} and setup_key = ${key} and state <> 'RESOLVED'`;
         }
         break;
       }

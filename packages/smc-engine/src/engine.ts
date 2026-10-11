@@ -17,7 +17,7 @@ import { type BreakInfo, stepZones } from './zones.js';
 
 export const WINDOW_BARS = 600;
 /** Bump whenever EngineState changes shape or a rule changes what state means. */
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 
 export function createEngine(instrumentId: string): EngineState {
   return { v: STATE_VERSION, instrumentId, perTf: {}, lastCandleOpenTime: {}, mtf: {}, setups: [] };
@@ -192,7 +192,11 @@ export function step(
   if (!cfg.timeframes.entry.includes(tf)) return { state: interim, events: stepEvents };
   const setups = stepSetups(interim, tf, cfg, opts, stepEvents, closeTimeMs);
   return {
-    state: { ...interim, setups: setups.setups },
+    state: {
+      ...interim,
+      setups: setups.setups,
+      perTf: { ...interim.perTf, [tf]: { ...tfState, breaks: setups.breaks } },
+    },
     events: [...stepEvents, ...setups.events],
   };
 }

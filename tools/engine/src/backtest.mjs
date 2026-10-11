@@ -63,7 +63,13 @@ async function main() {
       dataFrom = Math.min(dataFrom, c.openTime);
     }
     const started = Date.now();
-    const { events } = feed(createEngine(id), candles, cfg, { tickSize: DEFAULT_TICKS[id] ?? 0 });
+    const tickSize = DEFAULT_TICKS[id];
+    if (!(tickSize > 0)) {
+      throw new Error(
+        `no tick size known for ${id}; zero would remove slippage and flatter the result`,
+      );
+    }
+    const { events } = feed(createEngine(id), candles, cfg, { tickSize });
     const got = collectFromEvents(events, range);
     allTrades.push(...got.trades);
     allOutcomes.push(...got.outcomes);
@@ -74,10 +80,26 @@ async function main() {
     );
   }
 
-  const trials = Number(args.trials ?? 2);
+  const trials = args.trials === undefined ? 2 : Number(args.trials);
+  if (!Number.isInteger(trials) || trials < 1) {
+    throw new Error('--trials must be a whole number of at least 1');
+  }
+  if (trials !== 2)
+    console.error(`note: the pre-registered run counts 2 trials; this run counts ${trials}`);
+  const seed = args.seed === undefined ? 1 : Number(args.seed);
+  if (!Number.isFinite(seed)) throw new Error('--seed must be a number');
+  // Split at exact calendar dates (the pre-registered ones), else at 50/25/25 of the span.
+  let boundaries;
+  if (typeof args['split-at'] === 'string') {
+    boundaries = args['split-at'].split(',').map((d) => Date.parse(`${d}T00:00:00Z`));
+    if (boundaries.length !== 2 || boundaries.some((b) => !Number.isFinite(b))) {
+      throw new Error('--split-at needs two dates, e.g. 2026-04-01,2026-07-01');
+    }
+  }
   const results = runBacktest(allTrades, range, CRITERIA, {
     trialsCount: trials,
-    seed: Number(args.seed ?? 1),
+    seed,
+    ...(boundaries ? { boundaries } : {}),
   });
   const funnel = mergeFunnels(funnels);
   const report = renderReport({
@@ -93,6 +115,7 @@ async function main() {
       range,
       dataFrom,
       outcomes: allOutcomes,
+      trades: allTrades,
       limits: LIMITS,
     },
   });
@@ -110,8 +133,13 @@ async function main() {
       range,
       criteria: CRITERIA,
       outcomes: allOutcomes,
+      publishCohorts: args['publish-cohorts'] === true,
     });
-    console.error('stored backtest_runs and BACKTEST cohort rows');
+    console.error(
+      args['publish-cohorts'] === true
+        ? 'stored backtest_runs and BACKTEST cohort rows'
+        : 'stored backtest_runs (cohort rows not published)',
+    );
   }
 }
 

@@ -11,7 +11,7 @@ import {
 import { atrPercentile } from './atr.js';
 import { round2, shortId } from './ids.js';
 import { biasAt } from './mtf.js';
-import { type Limits, resolveStep, type ShadowOutcome } from './outcomes.js';
+import { forceExpire, type Limits, resolveStep, type ShadowOutcome } from './outcomes.js';
 import { buildPlan, collectTargets, pickTargets, planHashOf } from './planner.js';
 import { dealingRange, premiumDiscount } from './ranges.js';
 import { eventId } from './scale.js';
@@ -65,6 +65,8 @@ const isLongBreak = (type: BreakRecord['type']): boolean => type.endsWith('UP');
 export interface SetupStepResult {
   setups: SetupRecord[];
   events: EngineEvent[];
+  /** The break records with `done` set for every break decided (or too old to decide) on this candle. */
+  breaks: BreakRecord[];
 }
 
 export function stepSetups(
@@ -129,16 +131,29 @@ export function stepSetups(
   // ---- 2. New setups from breaks that closed on the previous bar.
   const enabled = cfg.setups.enabled;
   const atrReady = cfg.atr.fixed !== undefined || tfs.atr.count >= cfg.atr.period;
-  if (atrReady && cfg.timeframes.entry.includes(tf)) {
-    for (const brk of tfs.breaks) {
-      if (brk.time !== closeTime - tfMs) continue;
-      const template = brk.type.startsWith('BOS') ? 'T2' : 'T1';
-      if (!enabled.includes(template)) continue;
-      const built = evaluate(state, tf, cfg, opts, tfs, bars, n, closeTime, brk, template, emit);
-      if (built && !next.some((x) => x.key === built.key)) next.push(built);
+  const breaks: BreakRecord[] = [];
+  for (const brk of tfs.breaks) {
+    // Decide every pending break the first time a later candle closes, so a missing candle delays a setup
+    // instead of silently dropping it. A break older than three bars is skipped on purpose.
+    if (brk.done || brk.time >= closeTime || !cfg.timeframes.entry.includes(tf)) {
+      breaks.push(brk);
+      continue;
     }
+    breaks.push({ ...brk, done: true });
+    if (!atrReady || closeTime - brk.time > 3 * tfMs) continue;
+    const template = brk.type.startsWith('BOS') ? 'T2' : 'T1';
+    if (!enabled.includes(template)) continue;
+    const built = evaluate(state, tf, cfg, opts, tfs, bars, n, closeTime, brk, template, emit);
+    if (built && !next.some((x) => x.key === built.key)) next.push(built);
   }
-  return { setups: next.slice(-MAX_SETUPS), events };
+  // Over the cap the oldest setup is expired with an outcome, never dropped without a trace.
+  while (next.length > MAX_SETUPS) {
+    const gone = next.shift() as SetupRecord;
+    const f = forceExpire(gone, n, closeTime);
+    emit('SETUP_EXPIRED', gone.key, { setupKey: gone.key, reasonCodes: f.transition.reasons });
+    emit('SETUP_RESOLVED', gone.key, outcomeData(gone.key, f.outcome));
+  }
+  return { setups: next, events, breaks };
 }
 
 function outcomeData(setupKey: string, o: ShadowOutcome): EventData {
@@ -205,7 +220,7 @@ function evaluate(
     ref: number;
     status: string;
     touches: number;
-    candleOpen: number;
+    candleOpens: number[];
   };
   const poi: Poi | null = ob
     ? {
@@ -216,7 +231,7 @@ function evaluate(
         ref: (ob.top + ob.bottom) / 2,
         status: ob.status,
         touches: ob.touches,
-        candleOpen: ob.barOpen,
+        candleOpens: [ob.barOpen],
       }
     : fvg
       ? {
@@ -227,7 +242,7 @@ function evaluate(
           ref: fvg.ce,
           status: fvg.status,
           touches: 0,
-          candleOpen: fvg.createdAt - 2 * tfMs,
+          candleOpens: [fvg.createdAt - 3 * tfMs, fvg.createdAt - 2 * tfMs, fvg.createdAt - tfMs],
         }
       : null;
 
@@ -289,7 +304,8 @@ function evaluate(
     return null;
   }
   const suspect =
-    (flagAt(bars, brk.breakOpenTime) | flagAt(bars, poi.candleOpen) | (sweep?.flags ?? 0)) &
+    (poi.candleOpens.reduce((acc, t) => acc | flagAt(bars, t), flagAt(bars, brk.breakOpenTime)) |
+      (sweep?.flags ?? 0)) &
     SUSPECT_MASK;
   if (suspect) reasons.push('DATA_SUSPECT');
   if (cfg.filters.requirePoiFresh && (poi.status === 'FILLED' || poi.status === 'INVERTED')) {
@@ -322,8 +338,11 @@ function evaluate(
           long,
         )
       : { targets: [], anyLevel: false };
-  if (!picked.anyLevel) reasons.push('NO_TARGET');
-  else if (picked.targets.length === 0) reasons.push('RR_TOO_LOW');
+  // An unusable stop is already reported as STOP_TOO_TIGHT; it says nothing about targets.
+  if (risk > 0) {
+    if (!picked.anyLevel) reasons.push('NO_TARGET');
+    else if (picked.targets.length === 0) reasons.push('RR_TOO_LOW');
+  }
 
   if (spread > cfg.filters.maxSpreadAtrMult * atr) reasons.push('SPREAD_WIDE');
   if (
@@ -414,6 +433,7 @@ function evaluate(
     invalidation: baseLevel,
     targets: picked.targets,
     slippage: tick,
+    halfSpread: spread / 2,
     feeBps: cfg.risk.takerFeeBps,
     touched: false,
     fill: null,

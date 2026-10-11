@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bootstrapMeanCi,
   calibration,
+  clusterBootstrapMeanCi,
   confidenceLabel,
   driftStatus,
   floorToStep,
@@ -14,6 +15,7 @@ import {
   riskCheck,
   runBacktest,
   shrunkRate,
+  splitAt,
   splitByTime,
   summarizeCohorts,
   type Trade,
@@ -360,5 +362,99 @@ describe('backtest evaluation', () => {
     );
     const r = runBacktest(lucky, range, { ...criteria, minPositiveWindows: 3 }, { trialsCount: 1 });
     expect(r.test.find((g) => g.label === 'ALL')?.failures.join(' ')).toMatch(/windows/);
+  });
+});
+
+describe('review fixes: validation, clustering and the haircut', () => {
+  const DAY = 86_400_000;
+  const mk = (i: number, r: number, day: number): Trade => ({
+    key: `k${i}`,
+    template: 'T1',
+    grade: 'A',
+    direction: 'LONG',
+    createdAt: day * DAY,
+    resolutionTime: day * DAY + 1,
+    realizedR: r,
+    win: r > 0,
+  });
+  const zeroEdge = Array.from({ length: 40 }, (_, i) => mk(i, i % 2 === 0 ? 1 : -1, i));
+  const range = { from: 0, to: 360 * DAY };
+
+  it('refuses a non-numeric or fractional number of trials instead of producing a verdict', () => {
+    for (const bad of [Number.NaN, 0, -1, 1.5, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        runBacktest(
+          zeroEdge,
+          range,
+          { minTrades: 1, lowerBoundAbove: 0, minPositiveWindows: 0, windows: 3 },
+          { trialsCount: bad },
+        ),
+      ).toThrow(/trialsCount/);
+    }
+    expect(() =>
+      runBacktest(
+        zeroEdge,
+        range,
+        { minTrades: 1, lowerBoundAbove: 0, minPositiveWindows: 0, windows: 3 },
+        { trialsCount: 2, seed: Number.NaN },
+      ),
+    ).toThrow(/seed/);
+    expect(() => bootstrapMeanCi([1, 2, 3], { alpha: Number.NaN })).toThrow(/alpha/);
+  });
+
+  it('cannot pass on a zero-edge sample even with the weakest criteria', () => {
+    const r = runBacktest(
+      zeroEdge,
+      { from: 0, to: 40 * DAY },
+      { minTrades: 1, lowerBoundAbove: 0, minPositiveWindows: 0, windows: 3 },
+      { trialsCount: 2, boundaries: [10 * DAY, 20 * DAY] },
+    );
+    expect(r.verdict).not.toBe('EDGE_SUPPORTED');
+  });
+
+  it('resamples whole days: repeating the same day does not narrow the interval', () => {
+    const base = Array.from({ length: 10 }, (_, i) =>
+      mk(i, [1.2, -1.1, 0.4, -0.2, 2, -1, 0.3, -0.6, 1.1, -0.9][i] as number, i),
+    );
+    const once = clusterBootstrapMeanCi(base, (t) => Math.floor(t.createdAt / DAY)) as [
+      number,
+      number,
+    ];
+    // each trade copied three more times on the same day: 40 trades but still 10 independent days
+    const quad = base.flatMap((t, i) =>
+      [0, 1, 2, 3].map((k) => ({ ...t, key: `${t.key}-${k}`, createdAt: i * DAY })),
+    );
+    const clustered = clusterBootstrapMeanCi(quad, (t) => Math.floor(t.createdAt / DAY)) as [
+      number,
+      number,
+    ];
+    const naive = bootstrapMeanCi(quad.map((t) => t.realizedR)) as [number, number];
+    expect(clustered[1] - clustered[0]).toBeGreaterThan(0.9 * (once[1] - once[0]));
+    expect(naive[1] - naive[0]).toBeLessThan(0.7 * (once[1] - once[0])); // the naive interval is falsely tight
+    expect(
+      clusterBootstrapMeanCi(
+        base.map((t) => ({ ...t, createdAt: 0 })),
+        (t) => t.createdAt,
+      ),
+    ).toBeNull();
+  });
+
+  it('the haircut keeps widening with more trials instead of saturating at 100', () => {
+    const xs = Array.from({ length: 200 }, (_, i) => ((i * 7919) % 100) / 50 - 1);
+    const w = (alpha: number) => {
+      const ci = bootstrapMeanCi(xs, { alpha }) as [number, number];
+      return ci[1] - ci[0];
+    };
+    expect(w(0.05 / 5000)).toBeGreaterThan(w(0.05 / 100));
+    expect(w(0.05 / 100)).toBeGreaterThan(w(0.05 / 2));
+  });
+
+  it('splits at the exact calendar dates, not at fractions of the span', () => {
+    const from = Date.UTC(2025, 9, 1);
+    const to = Date.UTC(2026, 9, 1);
+    const s = splitAt({ from, to }, [Date.UTC(2026, 3, 1), Date.UTC(2026, 6, 1)]);
+    expect(new Date(s.tune.to).toISOString()).toBe('2026-04-01T00:00:00.000Z');
+    expect(new Date(s.test.from).toISOString()).toBe('2026-07-01T00:00:00.000Z');
+    expect(() => splitAt({ from, to }, [to, from])).toThrow();
   });
 });

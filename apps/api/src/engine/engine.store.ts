@@ -113,6 +113,8 @@ export class EngineStore {
 
       let retracted = 0;
       const retractedCandidateKeys: string[] = [];
+      /** Setup keys of retracted events that were not candidates (resolutions, arming, plans). */
+      const retractedOtherKeys: string[] = [];
       if (rebuild) {
         const keep = events.map((e) => e.id);
         const coldTfs = Object.keys(rebuild.cold);
@@ -125,8 +127,10 @@ export class EngineStore {
              and event_id <> all(${keep}::text[])
           returning event_id, type, payload #>> '{data,setupKey}' as setup_key`;
         retracted += base.length;
-        for (const r of base)
+        for (const r of base) {
           if (r.type === 'SETUP_CANDIDATE') retractedCandidateKeys.push(r.setup_key as string);
+          else if (r.setup_key) retractedOtherKeys.push(r.setup_key as string);
+        }
         for (const [tf, firstClose] of Object.entries(rebuild.cold)) {
           const res = await tx`
             update engine_events
@@ -136,8 +140,10 @@ export class EngineStore {
                and event_id <> all(${keep}::text[])
             returning event_id, type, payload #>> '{data,setupKey}' as setup_key`;
           retracted += res.length;
-          for (const r of res)
+          for (const r of res) {
             if (r.type === 'SETUP_CANDIDATE') retractedCandidateKeys.push(r.setup_key as string);
+            else if (r.setup_key) retractedOtherKeys.push(r.setup_key as string);
+          }
         }
         await tx`
           delete from engine_snapshots
@@ -161,7 +167,7 @@ export class EngineStore {
         await flagRevisedSetups(
           tx as unknown as Sql,
           strategyId,
-          revisedKeys,
+          [...revisedKeys, ...retractedOtherKeys],
           retractedCandidateKeys,
           at,
         );

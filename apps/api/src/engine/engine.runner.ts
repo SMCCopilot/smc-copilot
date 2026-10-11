@@ -193,6 +193,12 @@ export class EngineRunner {
       { tick_size: string }[]
     >`select tick_size from instruments where id = ${instrumentId}`;
     const tick = row ? Number(row.tick_size) : 0;
+    if (!(tick > 0)) {
+      // Zero tick means zero slippage in the fill model, which flatters results: say so.
+      this.log.warn(
+        `engine: instrument ${instrumentId} has no usable tick size; slippage is assumed zero`,
+      );
+    }
     this.tickSizes.set(instrumentId, tick);
     return tick;
   }

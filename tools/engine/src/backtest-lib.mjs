@@ -24,10 +24,12 @@ export function collectFromEvents(events, range) {
     byReason: {},
     outcomes: {},
     ambiguous: 0,
+    openAtEnd: 0,
     byTemplate: {},
   };
   const trades = [];
   const outcomes = [];
+  const resolvedKeys = new Set();
   const inRange = (t) => t >= range.from && t < range.to;
   for (const e of events) {
     const k = e.data.setupKey;
@@ -52,6 +54,7 @@ export function collectFromEvents(events, range) {
     } else if (e.type === 'SETUP_RESOLVED') {
       const a = armed.get(k);
       if (!a || !inRange(a.createdAt)) continue;
+      resolvedKeys.add(k);
       funnel.outcomes[e.data.outcome] = (funnel.outcomes[e.data.outcome] ?? 0) + 1;
       if (e.data.ambiguousIntrabar) funnel.ambiguous++;
       outcomes.push({
@@ -77,11 +80,16 @@ export function collectFromEvents(events, range) {
           createdAt: a.createdAt,
           resolutionTime: e.data.resolutionTime,
           realizedR: e.data.realizedR,
+          feesR: e.data.feesR ?? 0,
           win: e.data.outcome === 'TP1_FIRST',
         });
       }
     }
   }
+  // Armed in the evaluated period but still live when the data ended: no outcome yet, so excluded (and counted).
+  funnel.openAtEnd = [...armed.entries()].filter(
+    ([k, a]) => inRange(a.createdAt) && !resolvedKeys.has(k),
+  ).length;
   return { trades, outcomes, funnel };
 }
 
@@ -94,10 +102,13 @@ export function mergeFunnels(list) {
     byReason: {},
     outcomes: {},
     ambiguous: 0,
+    openAtEnd: 0,
     byTemplate: {},
   };
   for (const f of list) {
-    for (const k of ['candidates', 'rejected', 'armed', 'triggered', 'ambiguous']) out[k] += f[k];
+    for (const k of ['candidates', 'rejected', 'armed', 'triggered', 'ambiguous', 'openAtEnd']) {
+      out[k] += f[k] ?? 0;
+    }
     for (const m of ['byReason', 'outcomes', 'byTemplate']) {
       for (const [key, v] of Object.entries(f[m])) out[m][key] = (out[m][key] ?? 0) + v;
     }
@@ -168,7 +179,8 @@ export function renderReport({ results, funnel, series, meta }) {
   L.push(
     `- candidates: ${funnel.candidates}`,
     `- rejected by hard filters: ${funnel.rejected}`,
-    `- armed (got a shadow outcome): ${funnel.armed}`,
+    `- armed: ${funnel.armed}`,
+    `- of those, still live when the data ended (no outcome yet, excluded from every statistic): ${funnel.openAtEnd}`,
     `- triggered (touched the POI then a confirming break): ${funnel.triggered}`,
   );
   L.push(
@@ -208,6 +220,28 @@ export function renderReport({ results, funnel, series, meta }) {
       L.push(`- ${g.label}: ${g.failures.join('; ')}`);
     L.push('');
   }
+  // Why the net number is what it is: gross R before costs, and what the round-trip fees took.
+  const costRows = ['ALL', ...new Set(meta.trades.map((t) => t.template))].map((label) => {
+    const mine = meta.trades.filter(
+      (t) =>
+        (label === 'ALL' || t.template === label) &&
+        t.createdAt >= results.split.test.from &&
+        t.createdAt < results.split.test.to,
+    );
+    const avg = (f) =>
+      mine.length === 0 ? null : mine.reduce((a, t) => a + f(t), 0) / mine.length;
+    return `| ${label} | ${mine.length} | ${fmt(avg((t) => t.realizedR + t.feesR))} | ${fmt(avg((t) => t.feesR))} | ${fmt(avg((t) => t.realizedR))} |`;
+  });
+  L.push(
+    '### Cost breakdown (final test)',
+    '',
+    'Gross R is before costs; fees are the round-trip taker fee expressed in R (5 bps per side). Tight stops make a fixed fee a large fraction of R.',
+    '',
+    '| Group | Trades | Mean gross R | Mean fees R | Mean net R |',
+    '|---|---|---|---|---|',
+    ...costRows,
+    '',
+  );
   L.push(...groupRows('Validate (information only)', results.validate), '');
   L.push(...groupRows('Tune (information only)', results.tune), '');
   L.push('## Cohorts over the whole evaluated period', '');

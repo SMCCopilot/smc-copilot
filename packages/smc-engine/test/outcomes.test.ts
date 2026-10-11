@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveStep } from '../src/outcomes.js';
+import { forceExpire, resolveStep } from '../src/outcomes.js';
 import { collectTargets, pickTargets } from '../src/planner.js';
 import { FEATURE_IDS, scoreSetup } from '../src/score.js';
 import type { CandleLite, SetupRecord } from '../src/types.js';
@@ -25,6 +25,7 @@ const longSetup = (patch: Partial<SetupRecord> = {}): SetupRecord => ({
   invalidation: 99,
   targets: [{ id: 'TP1', price: 130, levelId: 'L', rr: 2.5, label: 'TP1' }],
   slippage: 0.1,
+  halfSpread: 0,
   feeBps: 5,
   touched: false,
   fill: null,
@@ -305,5 +306,83 @@ describe('scoring', () => {
   it('is reproducible for identical inputs', () => {
     const v = { ...zero, htfAlignment: 0.4, rrQuality: 0.9615384615384616 };
     expect(scoreSetup(v, cfg)).toEqual(scoreSetup({ ...v }, cfg));
+  });
+});
+
+describe('half-spread: a limit order needs price THROUGH its level (A04 13.2)', () => {
+  const withHalf = (over: Partial<SetupRecord> = {}) => longSetup({ halfSpread: 1, ...over });
+
+  it('does not fill on a mere touch of the entry, only when price trades through by half the spread', () => {
+    expect(go(withHalf(), bar(120, 121, 104.5, 115), 1).setup?.fill).toBeNull(); // ref 105, needs 104 or lower
+    expect(go(withHalf(), bar(120, 121, 104, 115), 1).setup?.fill?.price).toBe(105.1);
+  });
+
+  it('does not credit TP1 on a mere touch, only when price trades through by half the spread', () => {
+    const filled = go(withHalf(), bar(120, 121, 100, 115), 1).setup as SetupRecord;
+    expect(go(filled, bar(115, 130.5, 114, 130), 2).outcome).toBeNull(); // TP1 130 needs 131
+    expect(go(filled, bar(115, 131, 114, 130), 2).outcome?.outcome).toBe('TP1_FIRST');
+  });
+
+  it('triggers the stop half a spread early and pays the half spread on the stop exit', () => {
+    const filled = go(withHalf(), bar(120, 121, 100, 115), 1).setup as SetupRecord;
+    const r = go(filled, bar(100, 101, 95.5, 96), 2); // stop 95, triggers at 96
+    expect(r.outcome?.outcome).toBe('SL_FIRST');
+    const exit = 95 - (0.1 + 1);
+    const risk = 105.1 - 95;
+    const fees = (0.0005 * (105.1 + exit)) / risk;
+    expect(r.outcome?.realizedR).toBeCloseTo((exit - 105.1) / risk - fees, 3);
+  });
+
+  it('is never kinder than zero spread: more pessimistic or equal on every scenario', () => {
+    const bars = [bar(120, 121, 104, 115), bar(115, 131, 114, 130)];
+    const a = play(longSetup(), bars);
+    const b = play(withHalf(), bars);
+    expect(b.outcome?.outcome).toBe(a.outcome?.outcome); // same path here
+    expect((b.outcome?.realizedR ?? 0) <= (a.outcome?.realizedR ?? 0) + 1e-9).toBe(true);
+  });
+});
+
+describe('setups leaving the live set are always resolved', () => {
+  it('force-expiry gives NO_FILL before a fill and EXPIRED_OPEN after one, never nothing', () => {
+    expect(forceExpire(longSetup(), 10, 99).outcome).toMatchObject({
+      outcome: 'NO_FILL',
+      filled: false,
+      realizedR: null,
+    });
+    const filled = go(longSetup(), bar(120, 121, 104, 115), 1).setup as SetupRecord;
+    expect(forceExpire(filled, 10, 99).outcome).toMatchObject({
+      outcome: 'EXPIRED_OPEN',
+      filled: true,
+      realizedR: null,
+    });
+  });
+});
+
+describe('target selection ignores levels already traded through', () => {
+  it('a level inside the current candle range is not a target', () => {
+    const cfg = config();
+    const w = (h: number) => ({ t: 0, o: 1, h, l: 1, c: 1 });
+    const state = {
+      perTf: {
+        '15m': {
+          window: [w(118)],
+          base: 0,
+          pools: [],
+          internal: { swings: [] },
+          external: { swings: [] },
+        },
+        '1h': {
+          window: [w(100)],
+          base: 0,
+          pools: [
+            { id: 'p-traded', level: 115, kind: 'PDH', side: 'BUY' },
+            { id: 'p-open', level: 125, kind: 'PWH', side: 'BUY' },
+          ],
+          internal: { swings: [] },
+          external: { swings: [] },
+        },
+      },
+    } as never;
+    expect(collectTargets(state, cfg, '15m', 105, true).map((c) => c.price)).toEqual([125]);
   });
 });

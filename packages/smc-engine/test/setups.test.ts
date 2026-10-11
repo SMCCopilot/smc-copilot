@@ -326,3 +326,75 @@ describe('setups in ChartFacts', () => {
     expect(zone).toMatchObject({ top: 64110, bottom: 64040 });
   });
 });
+
+describe('review fixes: delayed and skipped candidates', () => {
+  const feedSkipping = (skip: number[]) => {
+    const cfg = workedCfg();
+    let s = createEngine(INSTRUMENT);
+    const out: EngineEvent[] = [];
+    WORKED_ROWS.forEach((row, i) => {
+      if (skip.includes(i)) return;
+      const r = step(s, candle('15m', T0 + i * 900_000, row), cfg, STEP);
+      s = r.state;
+      out.push(...r.events);
+    });
+    return out;
+  };
+
+  it('a missing entry candle delays the candidate instead of silently dropping it', () => {
+    const events = feedSkipping([19]); // the candle right after the CHoCH never arrives
+    const candidate = of(events, 'SETUP_CANDIDATE', 'T1')[0];
+    expect(candidate).toBeDefined();
+    expect(hhmm(candidate?.time as number)).toBe('08:15'); // decided on the next candle that does arrive
+  });
+
+  it('a break more than three bars old is skipped deliberately, with no crash and no phantom setup', () => {
+    const events = feedSkipping([19, 20, 21, 22]);
+    expect(of(events, 'SETUP_CANDIDATE', 'T1')).toHaveLength(0);
+  });
+
+  it('flags on any of the three FVG candles fail DATA_SUSPECT when the FVG is the POI', () => {
+    // The OB is the POI in the worked example; flag the OB candle (idx 17) instead.
+    const reasons = of(worked(workedCfg(), { flags: { 17: 1 } }), 'SETUP_REJECTED', 'T1')[0]?.data
+      .reasonCodes;
+    expect(reasons).toContain('DATA_SUSPECT');
+  });
+
+  it('the live set is capped without losing outcomes: the oldest setup is expired and resolved', () => {
+    const cfg = workedCfg();
+    const dummy = (i: number) => ({
+      key: `old-${i}`,
+      template: 'T2' as const,
+      direction: 'LONG' as const,
+      entryTf: '15m' as const,
+      biasTf: '1d' as const,
+      state: 'ARMED' as const,
+      grade: 'B' as const,
+      score: 60,
+      createdAt: 0,
+      createdIndex: 0,
+      poi: { zoneId: 'z', kind: 'OB' as const, top: 2, bottom: 0.5, ref: 1 },
+      stop: 0.1,
+      invalidation: 0.01,
+      targets: [{ id: 'TP1', price: 3e12, levelId: 'L', rr: 2, label: 'TP1' as const }],
+      slippage: 0,
+      halfSpread: 0,
+      feeBps: 5,
+      touched: false,
+      fill: null,
+      hi: 0,
+      lo: 0,
+      ambiguous: false,
+      planHash: 'h',
+    });
+    const start: EngineState = {
+      ...createEngine(INSTRUMENT),
+      setups: Array.from({ length: 101 }, (_, i) => dummy(i)),
+    };
+    const r = step(start, candle('15m', T0, WORKED_ROWS[0] as never), cfg, STEP);
+    const ev = r.events.filter((e) => e.data.setupKey === 'old-0');
+    expect(ev.map((e) => e.type)).toEqual(['SETUP_EXPIRED', 'SETUP_RESOLVED']);
+    expect(ev[1]?.data.outcome).toBe('NO_FILL');
+    expect(r.state.setups).toHaveLength(100);
+  });
+});

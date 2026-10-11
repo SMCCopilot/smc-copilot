@@ -39,7 +39,11 @@ export function collectTargets(
   long: boolean,
 ): TargetCandidate[] {
   const out = new Map<string, TargetCandidate>();
-  const beyond = (level: number): boolean => (long ? level > ref : level < ref);
+  // A level the current candle has already traded through is not a target: it is gone before the plan exists.
+  const cur = state.perTf[entryTf]?.window.at(-1);
+  const reached = (level: number): boolean =>
+    cur !== undefined && (long ? level <= cur.h : level >= cur.l);
+  const beyond = (level: number): boolean => (long ? level > ref : level < ref) && !reached(level);
   for (const tf of cfg.timeframes.analysis) {
     const s = state.perTf[tf];
     if (!s || TIMEFRAME_MS[tf] < TIMEFRAME_MS[entryTf]) continue;

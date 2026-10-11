@@ -238,11 +238,14 @@ describe('engine:backtest CLI', () => {
         range: { from: 0, to: 3e9 },
         dataFrom: 0,
         outcomes: [],
+        trades: [{ template: 'T1', createdAt: 2.5e9, realizedR: -0.4, feesR: 1.2 }],
         limits: ['a limit'],
       },
     });
     expect(md).toContain('Verdict: **NO_EDGE_DETECTED**');
     expect(md).toContain('| T1 | 40 | 40.0% | -0.100 |');
     expect(md).toContain('a limit');
+    expect(md).toContain('| T1 | 1 | 0.800 | 1.200 | -0.400 |'); // gross = net + fees
+    expect(md).toContain('| T1 | 1 | 0.800 | 1.200 | -0.400 |'); // gross = net + fees
   });
 });

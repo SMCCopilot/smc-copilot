@@ -30,14 +30,65 @@ export function mulberry32(seed: number): () => number {
 export const mean = (xs: readonly number[]): number =>
   xs.length === 0 ? 0 : [...xs].sort((a, b) => a - b).reduce((a, b) => a + b, 0) / xs.length;
 
+/** A haircut alpha needs enough resamples for its percentile to exist (alpha/2 x iterations >= 20), else the interval stops widening. */
+export const iterationsFor = (alpha: number): number =>
+  Math.min(200_000, Math.max(2000, Math.ceil(40 / alpha)));
+
+function assertAlpha(alpha: number): void {
+  if (!Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
+    throw new Error(`alpha must be a number in (0, 1), got ${alpha}`);
+  }
+}
+
+/**
+ * Percentile bootstrap of the mean where trades that share a cluster key (a UTC day: setups on the same
+ * structure, on spot and perp, on 5m and 15m, are not independent) are resampled TOGETHER. Null with fewer than
+ * two clusters.
+ */
+export function clusterBootstrapMeanCi(
+  trades: readonly Trade[],
+  clusterOf: (t: Trade) => string | number,
+  opts: { iterations?: number; seed?: number; alpha?: number } = {},
+): [number, number] | null {
+  const groups = new Map<string | number, { sum: number; n: number }>();
+  for (const t of trades) {
+    const g = groups.get(clusterOf(t)) ?? { sum: 0, n: 0 };
+    g.sum += t.realizedR;
+    g.n += 1;
+    groups.set(clusterOf(t), g);
+  }
+  const clusters = [...groups.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([, g]) => g);
+  if (clusters.length < 2) return null;
+  const alpha = opts.alpha ?? 0.05;
+  assertAlpha(alpha);
+  const iterations = opts.iterations ?? iterationsFor(alpha);
+  const rnd = mulberry32(opts.seed ?? 1);
+  const means: number[] = [];
+  for (let i = 0; i < iterations; i++) {
+    let sum = 0;
+    let n = 0;
+    for (let j = 0; j < clusters.length; j++) {
+      const c = clusters[Math.floor(rnd() * clusters.length)] as { sum: number; n: number };
+      sum += c.sum;
+      n += c.n;
+    }
+    means.push(sum / n);
+  }
+  means.sort((a, b) => a - b);
+  const lo = means[Math.floor((alpha / 2) * iterations)] as number;
+  const hi = means[Math.min(iterations - 1, Math.floor((1 - alpha / 2) * iterations))] as number;
+  return [lo, hi];
+}
+
 /** Percentile bootstrap interval of the mean. Two-sided at `alpha` (0.05 = 95%). Null with fewer than 2 values. */
 export function bootstrapMeanCi(
   values: readonly number[],
   opts: { iterations?: number; seed?: number; alpha?: number } = {},
 ): [number, number] | null {
   if (values.length < 2) return null;
-  const iterations = opts.iterations ?? 2000;
   const alpha = opts.alpha ?? 0.05;
+  assertAlpha(alpha);
+  const iterations = opts.iterations ?? iterationsFor(alpha);
   const rnd = mulberry32(opts.seed ?? 1);
   const means: number[] = [];
   for (let i = 0; i < iterations; i++) {
@@ -94,6 +145,18 @@ export function splitByTime(
   };
 }
 
+/** Split at explicit points, e.g. the calendar dates written in the pre-registration. */
+export function splitAt(range: TimeRange, [a, b]: readonly [number, number]): Split {
+  if (!(range.from < a && a < b && b < range.to)) {
+    throw new Error('split boundaries must satisfy from < a < b < to');
+  }
+  return {
+    tune: { from: range.from, to: a },
+    validate: { from: a, to: b },
+    test: { from: b, to: range.to },
+  };
+}
+
 /** Acceptance criteria, written down BEFORE the final-test period is looked at (docs/backtest-criteria.md). */
 export interface Criteria {
   /** Minimum filled-and-resolved trades in the final-test period. */
@@ -121,6 +184,7 @@ export interface GroupResult {
   failures: string[];
 }
 
+const DAY_MS = 86_400_000;
 const inRange = (t: Trade, r: TimeRange): boolean => t.createdAt >= r.from && t.createdAt < r.to;
 
 export function evaluateGroup(
@@ -141,14 +205,18 @@ export function evaluateGroup(
     const inSlice = mine.filter((t) => t.createdAt >= slice.from && t.createdAt < slice.to);
     if (inSlice.length > 0 && mean(inSlice.map((t) => t.realizedR)) > 0) positiveWindows++;
   }
-  const ci = bootstrapMeanCi(rs, { alpha: opts.alpha, seed: opts.seed });
+  const ci = clusterBootstrapMeanCi(mine, (t) => Math.floor(t.createdAt / DAY_MS), {
+    alpha: opts.alpha,
+    seed: opts.seed,
+  });
   const failures: string[] = [];
   let pass: boolean | null = null;
   if (opts.criteria) {
     const c = opts.criteria;
     if (mine.length < c.minTrades)
       failures.push(`fewer than ${c.minTrades} trades (${mine.length})`);
-    if (ci === null || ci[0] <= c.lowerBoundAbove) {
+    // Written as a negated ">" so a NaN or undefined bound can only FAIL, never pass.
+    if (ci === null || !(ci[0] > c.lowerBoundAbove)) {
       failures.push(`expectancy lower bound is not above ${c.lowerBoundAbove} R`);
     }
     if (positiveWindows < c.minPositiveWindows) {
@@ -184,7 +252,11 @@ export interface BacktestResults {
   validate: GroupResult[];
   /** Evaluated against the criteria. Look at it once. */
   test: GroupResult[];
-  /** True only if every template that has a verdict passed. Zero templates tested = no verdict. */
+  /**
+   * EDGE_SUPPORTED if at least one template passes every criterion (the pre-registered rule). The haircut
+   * divides alpha by the number of templates tested, which is the family-wise correction for that "at least one".
+   * Too few trades for every template = no verdict.
+   */
   verdict: 'EDGE_SUPPORTED' | 'NO_EDGE_DETECTED' | 'INSUFFICIENT_DATA';
 }
 
@@ -197,11 +269,20 @@ export function runBacktest(
     seed?: number;
     alpha?: number;
     fractions?: readonly [number, number, number];
+    /** Exact split points (epoch ms): tune < a <= validate < b <= test. Wins over `fractions`. */
+    boundaries?: readonly [number, number];
   },
 ): BacktestResults {
+  if (!Number.isInteger(opts.trialsCount) || opts.trialsCount < 1) {
+    throw new Error(`trialsCount must be a whole number of at least 1, got ${opts.trialsCount}`);
+  }
   const seed = opts.seed ?? 1;
-  const alpha = (opts.alpha ?? 0.05) / Math.max(1, opts.trialsCount);
-  const split = splitByTime(range, opts.fractions);
+  if (!Number.isFinite(seed)) throw new Error(`seed must be finite, got ${seed}`);
+  const alpha = (opts.alpha ?? 0.05) / opts.trialsCount;
+  assertAlpha(alpha);
+  const split = opts.boundaries
+    ? splitAt(range, opts.boundaries)
+    : splitByTime(range, opts.fractions);
   const templates = [...new Set(trades.map((t) => t.template))].sort();
   const groups = (r: TimeRange, withCriteria: boolean): GroupResult[] =>
     ['ALL', ...templates].map((tpl) =>

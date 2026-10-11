@@ -83,6 +83,8 @@ export interface BreakRecord {
   legOriginIndex: number;
   bodyAtr: number;
   gapBreak: boolean;
+  /** A setup (or an explicit skip) has been decided for this break. */
+  done?: boolean;
 }
 
 export interface SweepRecord {
@@ -225,6 +227,8 @@ export interface SetupRecord {
   targets: PlanTargetRecord[];
   /** Assumptions the shadow outcome is resolved under. */
   slippage: number;
+  /** Half the assumed spread: a limit order needs price to trade THROUGH its level by this much. */
+  halfSpread: number;
   feeBps: number;
   /** The price has traded into the point of interest since arming. */
   touched: boolean;

@@ -577,3 +577,188 @@ describe('cohort statistics and calibration jobs', () => {
     expect(await jobs.calibrate(strategyId)).toBeNull();
   });
 });
+
+describe('review fixes: cohort lookup, stale outcomes, jobs', () => {
+  const tpl = {
+    planId: 'Pr',
+    setupId: 'Sr',
+    strategyVersionId: 'v',
+    direction: 'LONG',
+    entry: { type: 'LIMIT_ZONE', top: 110, bottom: 100, refPrice: 105, refBasis: 'OB_50' },
+    stop: { price: 95, basis: 'SWEEP_EXTREME', bufferAtr: 0.1 },
+    targets: [{ id: 'TP1', price: 130, levelId: 'L1', rr: 2.5, label: 'TP1' }],
+    scenarios: {
+      primary: {
+        kind: 'REVERSAL',
+        condition: { type: 'CLOSE_ABOVE', level: 110, levelId: 'Z1' },
+        next: null,
+      },
+      alternate: {
+        kind: 'SWEEP_NOT_REVERSAL',
+        condition: { type: 'CLOSE_BELOW', level: 100, levelId: 'Z1' },
+        next: null,
+      },
+    },
+    invalidation: { level: 99, rule: 'X' },
+    assumptions: { spread: 1, slippage: 0.1, feeBps: 5, fillModel: 'TOUCH_PLUS_TICK' },
+    stats: null,
+    statsReason: 'INSUFFICIENT_HISTORY',
+    confidence: 'LOW',
+    disclaimers: [],
+  };
+  const e = (
+    type: EngineEvent['type'],
+    data: Record<string, unknown>,
+    time: number,
+  ): EngineEvent => ({
+    id: `${type}-${time}-${String(data.setupKey)}`,
+    type,
+    tf: '15m',
+    scale: null,
+    time,
+    anchorOpenTime: time - 900_000,
+    data: data as never,
+  });
+  const cohortRow = (over: Record<string, unknown>) =>
+    sql`insert into cohort_stats ${sql({
+      strategy_version_id: strategyId,
+      asset_class: 'CRYPTO',
+      template: 'T1',
+      grade: 'A',
+      direction: null,
+      segment: 'ALL',
+      source: 'LIVE_SHADOW',
+      window_from: new Date('2026-01-01'),
+      window_to: new Date('2026-02-01'),
+      n: 40,
+      wins: 16,
+      rate: 0.4,
+      ci_low: 0.26,
+      ci_high: 0.55,
+      sufficient: true,
+      status: 'ACTIVE',
+      ...over,
+    })}`;
+  const plan = async (key: string) => {
+    const t = START + 5000;
+    await sql.begin(async (tx) => {
+      await applySetupEvents(tx as unknown as Sql, instrument.id, strategyId, [
+        e(
+          'SETUP_CANDIDATE',
+          {
+            setupKey: key,
+            template: 'T1',
+            direction: 'LONG',
+            entryTf: '15m',
+            biasTf: '1d',
+            components: [],
+            poi: null,
+            invalidation: null,
+          },
+          t,
+        ),
+        e(
+          'SETUP_ARMED',
+          { setupKey: key, grade: 'A', score: 80, features: {}, reasonCodes: [] },
+          t,
+        ),
+        e('PLAN_READY', { setupKey: key, planHash: 'h', plan: tpl }, t),
+      ]);
+    });
+    const [r] = await sql<{ plan: { stats: unknown } }[]>`
+      select p.plan from trade_plans p join setups s on s.id = p.setup_id where s.setup_key = ${key}`;
+    return r?.plan;
+  };
+
+  it('a live cohort UNDER_REVIEW shows nothing and does NOT fall back to an ACTIVE backtest cohort', async () => {
+    await cohortRow({ source: 'LIVE_SHADOW', status: 'UNDER_REVIEW' });
+    await cohortRow({
+      source: 'BACKTEST',
+      n: 300,
+      wins: 150,
+      rate: 0.5,
+      ci_low: 0.44,
+      ci_high: 0.56,
+    });
+    expect((await plan('rv-1'))?.stats).toBeNull();
+  });
+
+  it('a resolution applied twice (after a rebuild moved the bar) writes one RESOLVED transition', async () => {
+    const key = 'rv-twice';
+    const t = START + 9000;
+    const apply = (events: EngineEvent[]) =>
+      sql.begin(async (tx) => {
+        await applySetupEvents(tx as unknown as Sql, instrument.id, strategyId, events);
+      });
+    await apply([
+      e(
+        'SETUP_CANDIDATE',
+        {
+          setupKey: key,
+          template: 'T1',
+          direction: 'LONG',
+          entryTf: '15m',
+          biasTf: '1d',
+          components: [],
+          poi: null,
+          invalidation: null,
+        },
+        t,
+      ),
+      e('SETUP_ARMED', { setupKey: key, grade: 'A', score: 80, features: {}, reasonCodes: [] }, t),
+    ]);
+    const resolved = (time: number) =>
+      e(
+        'SETUP_RESOLVED',
+        {
+          setupKey: key,
+          outcome: 'SL_FIRST',
+          filled: true,
+          rulesVersion: 'shadow-v1',
+          resolutionTime: time,
+          realizedR: -1.1,
+        },
+        time,
+      );
+    await apply([resolved(t + 900_000)]);
+    await apply([resolved(t + 1_800_000)]); // same setup resolving again on a later bar
+    const [n] = await sql<{ n: number }[]>`
+      select count(*)::int as n from setup_transitions tr join setups s on s.id = tr.setup_id
+       where s.setup_key = ${key} and tr.to_state = 'RESOLVED'`;
+    expect(n?.n).toBe(1);
+  });
+
+  it('calibration counts each setup once (its latest display) and skips revised outcomes', async () => {
+    const mkSetup = async (k: string, outcome: string, revised = false) => {
+      const [s] = await sql<{ id: string }[]>`
+        insert into setups (setup_key, strategy_version_id, instrument_id, template, direction, entry_tf, bias_tf, state, grade, score, components, poi, invalidation, created_at)
+        values (${k}, ${strategyId}, ${instrument.id}, 'T1', 'LONG', '15m', '1d', 'RESOLVED', 'A', 80, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, now()) returning id`;
+      await sql`insert into setup_outcomes (setup_id, outcome_rules_version, outcome, filled, data_revised) values (${s?.id as string}, 'shadow-v1', ${outcome}, true, ${revised})`;
+      return s?.id as string;
+    };
+    await cohortRow({ source: 'LIVE_SHADOW' });
+    await cohortRow({ source: 'BACKTEST', n: 100, wins: 50, rate: 0.5, ci_low: 0.4, ci_high: 0.6 });
+    const cohorts = await sql<{ id: string }[]>`select id from cohort_stats`;
+    const a = await mkSetup('cal-a', 'TP1_FIRST');
+    const b = await mkSetup('cal-b', 'SL_FIRST');
+    const c = await mkSetup('cal-c', 'TP1_FIRST', true);
+    for (const id of [a, b, c]) {
+      for (const co of cohorts) {
+        await sql`insert into setup_displays (setup_id, cohort_id, rate, ci_low, ci_high) values (${id}, ${co.id}, 0.4, 0.2, 0.6)`;
+      }
+    }
+    const jobs = new (await import('../src/engine/analytics.jobs.js')).AnalyticsJobs(sql);
+    const report = await jobs.calibrate(strategyId);
+    expect(report?.n).toBe(2); // a and b once each; c is revised; the second display per setup is not double counted
+  });
+
+  it('a cohort whose every outcome was revised away stops claiming to be sufficient', async () => {
+    await cohortRow({ source: 'LIVE_SHADOW' });
+    const jobs = new (await import('../src/engine/analytics.jobs.js')).AnalyticsJobs(sql);
+    expect(await jobs.refreshCohorts(strategyId)).toBe(0); // no outcome rows exist
+    const [c] = await sql<
+      { n: number; sufficient: boolean }[]
+    >`select n, sufficient from cohort_stats where source = 'LIVE_SHADOW'`;
+    expect(c).toMatchObject({ n: 0, sufficient: false });
+  });
+});

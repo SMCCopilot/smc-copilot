@@ -122,7 +122,8 @@ export function resolveStep(
 
   let fillCandle = false;
   if (!st.fill) {
-    if (long ? bar.l <= st.poi.ref : bar.h >= st.poi.ref) {
+    // A limit order fills only when price trades through it by half the spread (the other side of the book).
+    if (long ? bar.l <= st.poi.ref - st.halfSpread : bar.h >= st.poi.ref + st.halfSpread) {
       // A limit order fills when price trades through it; pay one tick of adverse slippage (no price improvement).
       st = {
         ...st,
@@ -138,7 +139,7 @@ export function resolveStep(
         { to: 'INVALIDATED', reasons: ['INVALIDATION_BREACHED'] },
         false,
       );
-    } else if (long ? bar.h >= tp1 : bar.l <= tp1) {
+    } else if (long ? bar.h >= tp1 + st.halfSpread : bar.l <= tp1 - st.halfSpread) {
       // The target traded without us: the idea has run away without a fill.
       return finish('NO_FILL', null, { to: 'EXPIRED', reasons: ['TARGET_REACHED_FIRST'] }, false);
     } else if (index - st.createdIndex >= limits.expiryBars) {
@@ -150,14 +151,16 @@ export function resolveStep(
 
   const fill = st.fill as NonNullable<SetupRecord['fill']>;
   if (!fillCandle) st = { ...st, hi: Math.max(st.hi, bar.h), lo: Math.min(st.lo, bar.l) };
-  const stopHit = long ? bar.l <= st.stop : bar.h >= st.stop;
-  const tpTouched = long ? bar.h >= tp1 : bar.l <= tp1;
+  // Both exits are tested against the book side that would trade: the stop triggers half a spread early, the
+  // target needs price through it by half a spread.
+  const stopHit = long ? bar.l <= st.stop + st.halfSpread : bar.h >= st.stop - st.halfSpread;
+  const tpTouched = long ? bar.h >= tp1 + st.halfSpread : bar.l <= tp1 - st.halfSpread;
 
   if (stopHit) {
     // Pessimistic: if one candle touched both the stop and the target, the stop came first. A gap through
     // the stop fills at the open (worse than the stop), then one tick of slippage.
     const base = long ? Math.min(st.stop, bar.o) : Math.max(st.stop, bar.o);
-    return finish('SL_FIRST', base - s * st.slippage, null, tpTouched);
+    return finish('SL_FIRST', base - s * (st.slippage + st.halfSpread), null, tpTouched);
   }
   if (fillCandle && tpTouched) {
     // Fill and target on one candle: the order of the two is unknown, so no credit is taken this candle.
@@ -169,4 +172,31 @@ export function resolveStep(
     return finish('EXPIRED_OPEN', null, { to: 'EXPIRED', reasons: ['SETUP_EXPIRED'] }, false);
   }
   return { setup: st, transitions, outcome: null };
+}
+
+/** A setup leaving the live set before its natural end (cap reached): resolved as expired, never silently dropped. */
+export function forceExpire(
+  st: SetupRecord,
+  index: number,
+  closeTime: number,
+): { transition: Transition; outcome: ShadowOutcome } {
+  const filled = st.fill !== null;
+  return {
+    transition: { to: 'EXPIRED', reasons: ['SETUP_EXPIRED'] },
+    outcome: {
+      outcome: filled ? 'EXPIRED_OPEN' : 'NO_FILL',
+      filled,
+      fillTime: st.fill?.time ?? null,
+      fillPrice: st.fill?.price ?? null,
+      resolutionTime: closeTime,
+      rTp1: null,
+      feesR: null,
+      realizedR: null,
+      mfeR: null,
+      maeR: null,
+      barsToResolution: index - st.createdIndex,
+      ambiguousIntrabar: st.ambiguous,
+      rulesVersion: OUTCOME_RULES_VERSION,
+    },
+  };
 }

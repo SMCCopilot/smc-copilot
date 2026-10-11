@@ -51,4 +51,17 @@ Trials counted: **2** (one strategy configuration, evaluated for two templates).
 
 ## Change log
 
-_No changes since registration._
+### 2026-10-11, after Run 1 (before Run 2)
+
+**Run 1** used the criteria above exactly (commit 15f0252) and gave **NO_EDGE_DETECTED**: final test 938 trades, mean net R -1.324 (T1 -0.697, T2 -1.614), mean gross R -0.228, fees 1.096 R per trade, 0 of 3 windows positive for every group. The report is kept in .
+
+An independent review of the code then found defects in the **measurement**, not in the pre-registered thresholds. They were fixed and the backtest was re-run (**Run 2**). The strategy rules ( config) and every threshold (30 trades, lower bound above 0, 2 of 3 windows, alpha 0.05 / trials) are **unchanged**. What changed, and why:
+
+1. **Bootstrap resamples whole UTC days** instead of single trades. Setups on the same structure (spot and perp, 5m and 15m, BTC and ETH) are not independent, so trade-level resampling made the interval too narrow. The number of resamples now scales with alpha (a tiny alpha was being clipped to the extreme resample).
+2. **Split at the exact dates written above** (2026-04-01 and 2026-07-01). Run 1 split at 50/25/25 of the span, which put the boundaries at 12:00 UTC on those days.
+3. **Cost model made less flattering, as A04 13.2 requires:** a limit order now fills only when price trades THROUGH its level by half the assumed spread, TP1 is credited only when price trades through it by half the spread, the stop triggers half a spread early and pays the half spread on exit.
+4. **Targets already traded through by the current candle are no longer offered as TP1** (Run 1 published plans whose TP1 had already traded, which then ended as no-fills).
+5. **A missing entry-timeframe candle delays a setup instead of silently dropping it**, and setups removed at the live-set cap are resolved, not dropped.
+6. Input validation (a non-numeric  could have produced a pass).
+
+**Trials:** Run 2 looks at the same final-test period a second time, so the count is raised from 2 to **4** (adjusted alpha 0.0125) even though these are measurement fixes and not rule changes. The verdict of Run 2 is the one reported; Run 1 stays on record.

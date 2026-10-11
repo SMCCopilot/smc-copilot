@@ -39,7 +39,13 @@ export class AnalyticsJobs {
              o.ambiguous_intrabar, s.created_at, o.resolution_time
         from setup_outcomes o join setups s on s.id = o.setup_id
        where s.strategy_version_id = ${strategyId} and s.grade is not null and not o.data_revised`;
-    if (rows.length === 0) return 0;
+    if (rows.length === 0) {
+      // Nothing usable is left (every outcome was revised away): a stale "sufficient" cohort must not linger.
+      await this.sql`
+        update cohort_stats set n = 0, wins = 0, rate = 0, ci_low = 0, ci_high = 1, sufficient = false, computed_at = now()
+         where strategy_version_id = ${strategyId} and source = 'LIVE_SHADOW'`;
+      return 0;
+    }
     const summaries = summarizeCohorts(
       rows.map((r) => ({
         template: r.template,
@@ -53,10 +59,15 @@ export class AnalyticsJobs {
         ambiguousIntrabar: r.ambiguous_intrabar,
       })),
     );
-    const from = new Date(Math.min(...rows.map((r) => r.created_at.getTime())));
-    const to = new Date(
-      Math.max(...rows.map((r) => (r.resolution_time ?? r.created_at).getTime())),
-    );
+    // Plain loops: spreading 100k+ rows into Math.min/max overflows the call stack.
+    let fromMs = Number.POSITIVE_INFINITY;
+    let toMs = Number.NEGATIVE_INFINITY;
+    for (const r of rows) {
+      fromMs = Math.min(fromMs, r.created_at.getTime());
+      toMs = Math.max(toMs, (r.resolution_time ?? r.created_at).getTime());
+    }
+    const from = new Date(fromMs);
+    const to = new Date(toMs);
     let written = 0;
     for (const c of summaries) {
       // A cohort whose live rate has drifted outside its backtest interval is held back until reviewed.
@@ -95,11 +106,13 @@ export class AnalyticsJobs {
   /** Reliability table, Brier score and log loss of the displayed rates against resolved outcomes. */
   async calibrate(strategyId: string): Promise<CalibrationReport | null> {
     const rows = await this.sql<{ rate: string; outcome: string }[]>`
-      select d.rate, o.outcome
+      select distinct on (d.setup_id) d.rate, o.outcome
         from setup_displays d
         join setups s on s.id = d.setup_id
         join setup_outcomes o on o.setup_id = s.id
-       where s.strategy_version_id = ${strategyId} and o.outcome in ('TP1_FIRST', 'SL_FIRST')`;
+       where s.strategy_version_id = ${strategyId} and o.outcome in ('TP1_FIRST', 'SL_FIRST')
+         and not o.data_revised
+       order by d.setup_id, d.shown_at desc`;
     if (rows.length === 0) return null;
     const report = calibration(
       rows.map((r) => ({ predicted: Number(r.rate), hit: r.outcome === 'TP1_FIRST' })),
