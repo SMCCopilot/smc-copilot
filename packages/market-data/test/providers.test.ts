@@ -319,6 +319,55 @@ describe('REST history', () => {
     expect(got.every((c) => c.closed)).toBe(true);
   });
 
+  it('serves native higher-timeframe history for warm-up seeding (4h on Binance, 240 on Bybit)', async () => {
+    const urls: string[] = [];
+    const clock = new FakeScheduler();
+    const h4 = 4 * 3_600_000;
+    const start = Math.floor(clock.now() / h4) * h4 - 10 * h4;
+    const binance = new BinanceProvider({
+      wsUrl: { SPOT: 'wss://x', PERP: 'wss://y' },
+      restUrl: { SPOT: 'https://s', PERP: 'https://p' },
+      fetchImpl: (u) => {
+        urls.push(u);
+        return okJson([kline(start), kline(start + h4)]);
+      },
+      scheduler: clock,
+    });
+    const got: RawCandle[] = [];
+    for await (const page of binance.fetchCandles({
+      venueSymbol: 'BTCUSDT',
+      marketType: 'SPOT',
+      tf: '4h',
+      fromMs: start,
+      toMs: start + 4 * h4,
+    }))
+      got.push(...page);
+    expect(urls[0]).toContain('interval=4h');
+    expect(got.map((c) => [c.tf, c.closed])).toEqual([
+      ['4h', true],
+      ['4h', true],
+    ]);
+    const bybitUrls: string[] = [];
+    const bybit = new BybitProvider({
+      wsUrl: 'wss://x',
+      restUrl: 'https://b',
+      fetchImpl: (u) => {
+        bybitUrls.push(u);
+        return okJson({ retCode: 0, result: { list: [] } });
+      },
+      scheduler: clock,
+    });
+    for await (const _ of bybit.fetchCandles({
+      venueSymbol: 'BTCUSDT',
+      marketType: 'PERP',
+      tf: '4h',
+      fromMs: start,
+      toMs: start + h4,
+    }))
+      void _;
+    expect(bybitUrls[0]).toContain('interval=240');
+  });
+
   it('Binance marks a candle that has not finished as not closed', async () => {
     const clock = new FakeScheduler();
     const open = Math.floor(clock.now() / 60_000) * 60_000;

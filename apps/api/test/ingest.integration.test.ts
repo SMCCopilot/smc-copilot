@@ -297,7 +297,10 @@ describe('IngestService', () => {
       const [closed] = await store.range(id, '5m', BASE, BASE + 5 * MIN);
       expect(closed).toMatchObject({ status: 'CLOSED', closed: true });
       expect(closed?.flags ?? 0).toBe(FLAG.BACKFILLED);
-      expect(h.events.some((e) => e.name === 'candle.backfilled')).toBe(true);
+      // A backfill is announced once for its range by BackfillService, never candle by candle.
+      expect(
+        h.events.filter((e) => (e.payload as { source?: string }).source === 'backfill'),
+      ).toEqual([]);
       const minute2 = (await store.range(id, '1m', BASE + 2 * MIN, BASE + 3 * MIN))[0];
       expect(minute2?.flags).toBe(FLAG.BACKFILLED);
     });

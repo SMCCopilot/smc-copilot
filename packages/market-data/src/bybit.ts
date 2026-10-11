@@ -1,4 +1,4 @@
-import type { MarketType } from '@smc/contracts';
+import { type MarketType, TIMEFRAME_MS, type Timeframe } from '@smc/contracts';
 import type { RawCandle } from './candle.js';
 import { parseBybitFrame } from './frames.js';
 import { defaultFetch, type FetchLike, getJson, TokenBucket } from './http.js';
@@ -32,7 +32,15 @@ export interface BybitOptions {
 }
 
 const PAGE = 1000;
-const MINUTE = 60_000;
+const INTERVAL: Record<Timeframe, string> = {
+  '1m': '1',
+  '5m': '5',
+  '15m': '15',
+  '30m': '30',
+  '1h': '60',
+  '4h': '240',
+  '1d': 'D',
+};
 
 export class BybitProvider implements MarketDataProvider {
   readonly id = 'bybit' as const;
@@ -103,12 +111,12 @@ export class BybitProvider implements MarketDataProvider {
   }
 
   async *fetchCandles(request: FetchRequest): AsyncIterable<RawCandle[]> {
-    if (request.tf !== '1m') throw new Error('Bybit backfill is 1m only');
+    const tfMs = TIMEFRAME_MS[request.tf];
     let from = request.fromMs;
     while (from < request.toMs) {
       const url =
         `${this.options.restUrl}/v5/market/kline?category=linear&symbol=${encodeURIComponent(request.venueSymbol)}` +
-        `&interval=1&start=${from}&end=${request.toMs - 1}&limit=${PAGE}`;
+        `&interval=${INTERVAL[request.tf]}&start=${from}&end=${request.toMs - 1}&limit=${PAGE}`;
       const body = (await getJson(url, { fetchImpl: this.fetchImpl, limiter: this.limiter })) as {
         retCode?: number;
         result?: { list?: string[][] };
@@ -125,14 +133,14 @@ export class BybitProvider implements MarketDataProvider {
           {
             venueSymbol: request.venueSymbol,
             marketType: 'PERP' as const,
-            tf: '1m' as const,
+            tf: request.tf,
             openTimeMs,
             o: String(row[1]),
             h: String(row[2]),
             l: String(row[3]),
             c: String(row[4]),
             v: String(row[5]),
-            closed: now >= openTimeMs + MINUTE,
+            closed: now >= openTimeMs + tfMs,
             receivedAtMs: now,
           },
         ];
@@ -141,7 +149,7 @@ export class BybitProvider implements MarketDataProvider {
       yield page;
       const last = page[page.length - 1]?.openTimeMs ?? from;
       if (last < from || list.length < PAGE) return;
-      from = last + MINUTE;
+      from = last + tfMs;
     }
   }
 

@@ -1,4 +1,4 @@
-import type { MarketType } from '@smc/contracts';
+import { type MarketType, TIMEFRAME_MS } from '@smc/contracts';
 import type { RawCandle } from './candle.js';
 import { parseBinanceFrame } from './frames.js';
 import { defaultFetch, type FetchLike, getJson, TokenBucket } from './http.js';
@@ -32,7 +32,6 @@ export interface BinanceOptions {
 }
 
 const PAGE = 1000;
-const MINUTE = 60_000;
 /** Binance closes a connection after 24 h; replace it ten minutes early (A03 section 3). */
 const ROTATE_AFTER_MS = 23 * 3_600_000 + 50 * 60_000;
 const KLINES: Record<MarketType, string> = { SPOT: '/api/v3/klines', PERP: '/fapi/v1/klines' };
@@ -117,13 +116,12 @@ export class BinanceProvider implements MarketDataProvider {
   }
 
   async *fetchCandles(request: FetchRequest): AsyncIterable<RawCandle[]> {
-    if (request.tf !== '1m')
-      throw new Error('Binance backfill is 1m only (higher timeframes are aggregated)');
+    const tfMs = TIMEFRAME_MS[request.tf];
     let from = request.fromMs;
     while (from < request.toMs) {
       const url =
         `${this.options.restUrl[request.marketType]}${KLINES[request.marketType]}` +
-        `?symbol=${encodeURIComponent(request.venueSymbol)}&interval=1m&startTime=${from}` +
+        `?symbol=${encodeURIComponent(request.venueSymbol)}&interval=${request.tf}&startTime=${from}` +
         `&endTime=${request.toMs - 1}&limit=${PAGE}`;
       const rows = await getJson(url, {
         fetchImpl: this.fetchImpl,
@@ -139,14 +137,14 @@ export class BinanceProvider implements MarketDataProvider {
         page.push({
           venueSymbol: request.venueSymbol,
           marketType: request.marketType,
-          tf: '1m',
+          tf: request.tf,
           openTimeMs,
           o: String(row[1]),
           h: String(row[2]),
           l: String(row[3]),
           c: String(row[4]),
           v: String(row[5]),
-          closed: now >= openTimeMs + MINUTE,
+          closed: now >= openTimeMs + tfMs,
           receivedAtMs: now,
         });
       }
@@ -154,7 +152,7 @@ export class BinanceProvider implements MarketDataProvider {
       yield page;
       const last = page[page.length - 1]?.openTimeMs ?? from;
       if (last < from || rows.length < PAGE) return;
-      from = last + MINUTE;
+      from = last + tfMs;
     }
   }
 

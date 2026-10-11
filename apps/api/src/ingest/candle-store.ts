@@ -68,6 +68,27 @@ export class CandleStore {
     return rows.map((r) => toStored(instrumentId, tf, r));
   }
 
+  /** Creates the monthly partitions covering [fromMs, toMs] so history older than the pre-created window can be stored. */
+  async ensurePartitions(fromMs: number, toMs: number): Promise<void> {
+    const start = new Date(fromMs);
+    const end = new Date(toMs);
+    let y = start.getUTCFullYear();
+    let m = start.getUTCMonth();
+    while (y < end.getUTCFullYear() || (y === end.getUTCFullYear() && m <= end.getUTCMonth())) {
+      const month = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      await this.sql`select ensure_candle_partition(${month}::date)`;
+      m += 1;
+      if (m > 11) {
+        m = 0;
+        y += 1;
+      }
+    }
+  }
+
+  async maintainPartitions(monthsAhead = 3): Promise<void> {
+    await this.sql`select maintain_partitions(${monthsAhead})`;
+  }
+
   async latestOpenTime(instrumentId: string, tf: Timeframe): Promise<number | null> {
     const [row] = await this.sql<{ t: Date | null }[]>`
       select max(open_time) as t from candles
@@ -76,11 +97,11 @@ export class CandleStore {
     return row?.t ? row.t.getTime() : null;
   }
 
-  /** Inserts a 1m candle. Returns false when the key already exists (a harmless repeat). */
-  async insert1m(c: StoredCandle, db: Tx): Promise<boolean> {
+  /** Inserts a candle of any timeframe. Returns false when the key already exists (a harmless repeat). */
+  async insertCandle(c: StoredCandle, db: Tx = this.sql): Promise<boolean> {
     const rows = await db`
       insert into candles (instrument_id, tf, open_time, o, h, l, c, v, provider_id, status, flags)
-      values (${c.instrumentId}, '1m', ${new Date(c.openTime)}, ${c.o}, ${c.h}, ${c.l}, ${c.c}, ${c.v},
+      values (${c.instrumentId}, ${c.tf}, ${new Date(c.openTime)}, ${c.o}, ${c.h}, ${c.l}, ${c.c}, ${c.v},
               ${c.providerId}, ${c.status}, ${c.flags})
       on conflict (instrument_id, tf, scope_id, open_time) do nothing
       returning 1`;

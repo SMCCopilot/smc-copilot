@@ -231,7 +231,7 @@ export class IngestService {
     const events: PublishedEvent[] = [];
 
     const inserted = await this.store.begin(async (tx) => {
-      if (!(await this.store.insert1m(stored, tx))) return false;
+      if (!(await this.store.insertCandle(stored, tx))) return false;
       const reachedMs = Math.max(lastBefore ?? 0, stored.openTime) + MINUTE;
       for (const tf of DERIVED_TIMEFRAMES) {
         await this.evaluateBucket(
@@ -264,15 +264,18 @@ export class IngestService {
       state.lastOpen = stored.openTime;
       state.flatStreak = flags & FLAG.FLAT ? state.flatStreak + 1 : 0;
     }
-    this.bus.publish('candle.closed', {
-      instrumentId: instrument.id,
-      canonical: instrument.canonical,
-      tf: '1m',
-      openTime: stored.openTime,
-      status: 'CLOSED',
-      source,
-    });
-    for (const e of events) this.bus.publish(e.name, e.payload as never);
+    // A backfill announces itself once for the whole range (BackfillService), not candle by candle.
+    if (source === 'live') {
+      this.bus.publish('candle.closed', {
+        instrumentId: instrument.id,
+        canonical: instrument.canonical,
+        tf: '1m',
+        openTime: stored.openTime,
+        status: 'CLOSED',
+        source,
+      });
+      for (const e of events) this.bus.publish(e.name, e.payload as never);
+    }
 
     if (source === 'live' && lastBefore !== null && stored.openTime > lastBefore + MINUTE) {
       await this.onGap(instrument, lastBefore + MINUTE, stored.openTime);
