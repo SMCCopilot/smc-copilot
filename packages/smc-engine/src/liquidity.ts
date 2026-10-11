@@ -1,5 +1,12 @@
 // Liquidity pools and sweeps (A04 section 6): equal highs/lows, previous day/week levels, sweep vs run.
 import { eventId, type ScaleCtx } from './scale.js';
+import {
+  dayStartOf,
+  inSession,
+  monthStartOf,
+  sessionInstanceStart,
+  weekStartOf,
+} from './sessions.js';
 import type {
   CandleLite,
   EngineEvent,
@@ -13,7 +20,7 @@ import type {
 } from './types.js';
 
 const MAX_POOLS = 40;
-const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
 
 export const emptyPeriod = (): PeriodState => ({
   dayStart: -1,
@@ -22,15 +29,12 @@ export const emptyPeriod = (): PeriodState => ({
   weekStart: -1,
   weekHigh: 0,
   weekLow: 0,
+  monthStart: -1,
+  dayOpen: 0,
+  weekOpen: 0,
+  monthOpen: 0,
+  sessions: {},
 });
-
-/** UTC day starts at 00:00; the week starts Monday 00:00 UTC (epoch day 0 was a Thursday). */
-export const dayStartOf = (t: number): number => Math.floor(t / DAY_MS) * DAY_MS;
-export const weekStartOf = (t: number): number => {
-  const days = Math.floor(t / DAY_MS);
-  return (days - ((days + 3) % 7)) * DAY_MS;
-};
-
 export interface LiquidityOut {
   pools: LiquidityPool[];
   pending: PendingSweep[];
@@ -144,10 +148,13 @@ export function stepLiquidity(
       });
       continue;
     }
+    const pooled = (t: number): boolean =>
+      pools.some((p) => p.kind === kind && p.members.includes(t));
     const mate = retained.find(
       (o) =>
         o.kind === sw.kind &&
         o.barOpenTime !== sw.barOpenTime &&
+        !pooled(o.barOpenTime) &&
         Math.abs(o.level - sw.level) <= tol,
     );
     if (!mate) continue;
@@ -163,35 +170,48 @@ export function stepLiquidity(
     });
   }
 
-  // 3. Previous day / week levels, created when the UTC period rolls over.
+  // 3. Previous day / week levels and open prices, created when the UTC period rolls over.
   let period = periodIn;
   const dayStart = dayStartOf(bar.t);
   const weekStart = weekStartOf(bar.t);
+  const monthStart = monthStartOf(bar.t);
+  const sideFor = (level: number, buy: boolean): 'BUY' | 'SELL' =>
+    level > bar.c ? 'BUY' : level < bar.c ? 'SELL' : buy ? 'BUY' : 'SELL';
+  const replace = (pool: LiquidityPool): void => {
+    pools = pools.filter((p) => !(p.kind === pool.kind && p.label === pool.label));
+    addPool(pool);
+  };
+  const mk = (kind: PoolKind, level: number, anchor: number, label?: string): void => {
+    const buy = kind === 'PDH' || kind === 'PWH' || kind === 'SESH';
+    replace({
+      id: eventId(ctx, 'POOL_NEW', null, anchor, `|${kind}${label ? `:${label}` : ''}`),
+      kind,
+      side: sideFor(level, buy),
+      level,
+      strength: 1,
+      createdAt: closeTime,
+      members: [anchor],
+      ...(label ? { label } : {}),
+    });
+  };
   if (period.dayStart < 0) {
     period = {
+      ...period,
       dayStart,
       dayHigh: bar.h,
       dayLow: bar.l,
       weekStart,
       weekHigh: bar.h,
       weekLow: bar.l,
+      monthStart,
+      dayOpen: bar.o,
+      weekOpen: bar.o,
+      monthOpen: bar.o,
     };
   } else {
     const rollDay = dayStart > period.dayStart;
     const rollWeek = weekStart > period.weekStart;
-    const mk = (kind: PoolKind, level: number, anchor: number): void => {
-      const buy = kind === 'PDH' || kind === 'PWH';
-      pools = pools.filter((p) => p.kind !== kind);
-      addPool({
-        id: eventId(ctx, 'POOL_NEW', null, anchor, `|${kind}`),
-        kind,
-        side: level > bar.c ? 'BUY' : level < bar.c ? 'SELL' : buy ? 'BUY' : 'SELL',
-        level,
-        strength: 1,
-        createdAt: closeTime,
-        members: [anchor],
-      });
-    };
+    const rollMonth = monthStart > period.monthStart;
     if (rollDay) {
       mk('PDH', period.dayHigh, period.dayStart);
       mk('PDL', period.dayLow, period.dayStart);
@@ -201,13 +221,47 @@ export function stepLiquidity(
       mk('PWL', period.weekLow, period.weekStart);
     }
     period = {
+      ...period,
       dayStart: rollDay ? dayStart : period.dayStart,
       dayHigh: rollDay ? bar.h : Math.max(period.dayHigh, bar.h),
       dayLow: rollDay ? bar.l : Math.min(period.dayLow, bar.l),
+      dayOpen: rollDay ? bar.o : period.dayOpen,
       weekStart: rollWeek ? weekStart : period.weekStart,
       weekHigh: rollWeek ? bar.h : Math.max(period.weekHigh, bar.h),
       weekLow: rollWeek ? bar.l : Math.min(period.weekLow, bar.l),
+      weekOpen: rollWeek ? bar.o : period.weekOpen,
+      monthStart: rollMonth ? monthStart : period.monthStart,
+      monthOpen: rollMonth ? bar.o : period.monthOpen,
     };
+  }
+
+  // 4. Session highs/lows become pools when the session ends (intraday timeframes only).
+  if (ctx.tfMs <= HOUR_MS) {
+    const running: PeriodState['sessions'] = { ...period.sessions };
+    const finish = (id: string, cur: { start: number; high: number; low: number }): void => {
+      mk('SESH', cur.high, cur.start, id);
+      mk('SESL', cur.low, cur.start, id);
+    };
+    for (const sd of ctx.cfg.sessions) {
+      const cur = running[sd.id];
+      if (inSession(bar.t, sd)) {
+        const start = sessionInstanceStart(bar.t, sd);
+        if (cur && cur.start === start) {
+          running[sd.id] = {
+            start,
+            high: Math.max(cur.high, bar.h),
+            low: Math.min(cur.low, bar.l),
+          };
+        } else {
+          if (cur) finish(sd.id, cur);
+          running[sd.id] = { start, high: bar.h, low: bar.l };
+        }
+      } else if (cur) {
+        finish(sd.id, cur);
+        delete running[sd.id];
+      }
+    }
+    period = { ...period, sessions: running };
   }
   return { pools, pending, period, events };
 }

@@ -39,6 +39,9 @@ export interface ScaleState {
   trend: Trend;
   /** Bull: the swing low whose close-break is a CHoCH. Bear: the swing high. */
   protected: ProtectedLevel | null;
+  /** Extreme of the current leg since the protected level (high in a bull trend, low in a bear trend). */
+  leg: { level: number; barIndex: number } | null;
+  lastBreak: { id: string; type: string; time: number } | null;
 }
 
 export interface AtrState {
@@ -62,7 +65,7 @@ export interface TfState {
   period: PeriodState;
 }
 
-export type PoolKind = 'EQH' | 'EQL' | 'PDH' | 'PDL' | 'PWH' | 'PWL';
+export type PoolKind = 'EQH' | 'EQL' | 'PDH' | 'PDL' | 'PWH' | 'PWL' | 'SESH' | 'SESL';
 
 export interface LiquidityPool {
   id: string;
@@ -74,6 +77,8 @@ export interface LiquidityPool {
   createdAt: number;
   /** Open times of the swing bars that make up an equal-level pool. */
   members: number[];
+  /** Session id for SESH/SESL pools. */
+  label?: string;
 }
 
 export interface PendingSweep {
@@ -91,6 +96,23 @@ export interface PeriodState {
   weekStart: number;
   weekHigh: number;
   weekLow: number;
+  monthStart: number;
+  /** Opening prices of the current UTC day/week/month (context levels). */
+  dayOpen: number;
+  weekOpen: number;
+  monthOpen: number;
+  /** Running high/low of each session instance in progress. */
+  sessions: Record<string, { start: number; high: number; low: number }>;
+}
+
+export interface HtfSnapshot {
+  closeTime: number;
+  trend: Trend;
+  protectedLevel: number | null;
+  rangeLow: number | null;
+  rangeHigh: number | null;
+  lastBreakId: string | null;
+  lastBreakType: string | null;
 }
 
 export type Dir = 'BULL' | 'BEAR';
@@ -135,6 +157,8 @@ export interface EngineState {
   instrumentId: string;
   perTf: Partial<Record<Timeframe, TfState>>;
   lastCandleOpenTime: Partial<Record<Timeframe, number>>;
+  /** External-structure snapshots of the bias timeframes, one per close (bounded). */
+  mtf: Partial<Record<Timeframe, HtfSnapshot[]>>;
 }
 
 export type EventData = Readonly<Record<string, string | number | boolean | null>>;

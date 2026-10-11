@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayStartOf, weekStartOf } from '../src/liquidity.js';
+import { dayStartOf, weekStartOf } from '../src/sessions.js';
 import { config, run } from './helpers.js';
 import { WORKED_BASE_OPEN_MS, WORKED_ROWS } from './worked-example.js';
 

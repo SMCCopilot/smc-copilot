@@ -1,3 +1,11 @@
-export { createEngine, step, WINDOW_BARS } from './engine.js';
+export { createEngine, feed, step, WINDOW_BARS } from './engine.js';
+export type { FactsOptions } from './facts.js';
+export { buildFacts } from './facts.js';
+export type { Bias } from './mtf.js';
+export { biasAt, htfAt, orderByClose } from './mtf.js';
+export type { DealingRange, PremiumDiscount } from './ranges.js';
+export { dealingRange, premiumDiscount } from './ranges.js';
+export type { SessionContext } from './sessions.js';
+export { isWeekend, sessionContext } from './sessions.js';
 export { sha1 } from './sha1.js';
 export type * from './types.js';

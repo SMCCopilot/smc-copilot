@@ -28,7 +28,13 @@ export interface ScaleCtx {
   atr: number;
 }
 
-export const emptyScale = (): ScaleState => ({ swings: [], trend: 'UNDEFINED', protected: null });
+export const emptyScale = (): ScaleState => ({
+  swings: [],
+  trend: 'UNDEFINED',
+  protected: null,
+  leg: null,
+  lastBreak: null,
+});
 
 export function eventId(
   ctx: ScaleCtx,
@@ -117,9 +123,12 @@ export function stepScale(
   const events: EngineEvent[] = [];
   const bar = barAt(ctx, ctx.n) as CandleLite;
   const closeTime = bar.t + ctx.tfMs;
+  let lastBreak = input.lastBreak;
   const emit = (type: EngineEventType, anchor: number, data: EventData): void => {
+    const id = eventId(ctx, type, scale, anchor);
+    if (/^(BOS|CHOCH)_(UP|DOWN)$/.test(type)) lastBreak = { id, type, time: closeTime };
     events.push({
-      id: eventId(ctx, type, scale, anchor),
+      id,
       type,
       tf: ctx.tf,
       scale,
@@ -330,5 +339,21 @@ export function stepScale(
     }
   }
 
-  return { state: { swings, trend, protected: prot }, events };
+  // 4. Leg extreme, maintained incrementally; rescanned only when the protected level or trend changes.
+  let leg = input.leg;
+  if (trend === 'UNDEFINED' || prot === null) {
+    leg = null;
+  } else {
+    const kind = trend === 'BULL' ? 'HIGH' : 'LOW';
+    const changed =
+      leg === null || input.trend !== trend || input.protected?.barIndex !== prot.barIndex;
+    if (changed) {
+      const ex = spanExtreme(ctx, prot.barIndex, ctx.n, kind);
+      leg = { level: ex.level, barIndex: ex.index };
+    } else if (leg && (kind === 'HIGH' ? bar.h > leg.level : bar.l < leg.level)) {
+      leg = { level: kind === 'HIGH' ? bar.h : bar.l, barIndex: ctx.n };
+    }
+  }
+
+  return { state: { swings, trend, protected: prot, leg, lastBreak }, events };
 }

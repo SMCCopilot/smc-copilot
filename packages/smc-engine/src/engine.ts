@@ -1,6 +1,7 @@
 import { type Candle, type StrategyConfig, TIMEFRAME_MS } from '@smc/contracts';
 import { emptyAtr, updateAtr } from './atr.js';
 import { emptyPeriod, stepLiquidity } from './liquidity.js';
+import { MAX_SNAPSHOTS, orderByClose, snapshotOf } from './mtf.js';
 import { emptyScale, stepScale } from './scale.js';
 import type { CandleLite, EngineEvent, EngineState, Swing, TfState } from './types.js';
 import { type BreakInfo, stepZones } from './zones.js';
@@ -8,7 +9,7 @@ import { type BreakInfo, stepZones } from './zones.js';
 export const WINDOW_BARS = 600;
 
 export function createEngine(instrumentId: string): EngineState {
-  return { v: 1, instrumentId, perTf: {}, lastCandleOpenTime: {} };
+  return { v: 1, instrumentId, perTf: {}, lastCandleOpenTime: {}, mtf: {} };
 }
 
 const emptyTf = (): TfState => ({
@@ -55,6 +56,7 @@ export function step(
   const bars = drop > 0 ? grown.slice(drop) : grown;
   const base = prev.base + drop;
   const n = base + bars.length - 1;
+  const closeTimeMs = candle.openTime + TIMEFRAME_MS[tf];
   const atr = updateAtr(prev.atr, bar, cfg.atr.period, cfg.atr.fixed);
 
   const ctx = {
@@ -124,12 +126,37 @@ export function step(
     pending: liquidity.pending,
     period: liquidity.period,
   };
+  const mtf = cfg.timeframes.bias.includes(tf)
+    ? {
+        ...state.mtf,
+        [tf]: [...(state.mtf[tf] ?? []), snapshotOf(closeTimeMs, external.state, cfg)].slice(
+          -MAX_SNAPSHOTS,
+        ),
+      }
+    : state.mtf;
   return {
     state: {
       ...state,
+      mtf,
       perTf: { ...state.perTf, [tf]: tfState },
       lastCandleOpenTime: { ...state.lastCandleOpenTime, [tf]: candle.openTime },
     },
     events: [...internal.events, ...external.events, ...zones.events, ...liquidity.events],
   };
+}
+
+/** Feed candles in canonical close order (higher timeframe first on equal close time). */
+export function feed(
+  state: EngineState,
+  candles: readonly Candle[],
+  cfg: StrategyConfig,
+): { state: EngineState; events: EngineEvent[] } {
+  let current = state;
+  const events: EngineEvent[] = [];
+  for (const c of orderByClose(candles)) {
+    const r = step(current, c, cfg);
+    current = r.state;
+    events.push(...r.events);
+  }
+  return { state: current, events };
 }

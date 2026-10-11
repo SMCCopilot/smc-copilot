@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden replay > synthetic multi-timeframe dataset hash is pinned (seed 11, 20 days) 1`] = `
+{
+  "counts": {
+    "BOS_DOWN": 347,
+    "BOS_UP": 316,
+    "CHOCH_DOWN": 80,
+    "CHOCH_UP": 77,
+    "FVG_BEAR": 287,
+    "FVG_BULL": 255,
+    "FVG_EXPIRED": 440,
+    "FVG_FILLED": 511,
+    "FVG_INVERTED": 447,
+    "FVG_TESTED": 515,
+    "LIQ_RUN": 152,
+    "LIQ_SWEEP": 733,
+    "OB_BEAR": 130,
+    "OB_BULL": 133,
+    "OB_EXPIRED": 70,
+    "OB_MITIGATED": 180,
+    "OB_TESTED": 636,
+    "POOL_NEW": 1255,
+    "PROTECTED_UPDATED": 136,
+    "SWING_HIGH": 1042,
+    "SWING_LOW": 1011,
+    "TREND_INIT": 8,
+  },
+  "hash": "9c3487f8b5e0b8bb5add82da69517bf36c573014",
+}
+`;
+
+exports[`golden replay > worked example (golden 0) hash is pinned 1`] = `
+{
+  "counts": {
+    "BOS_UP": 2,
+    "CHOCH_UP": 1,
+    "FVG_BEAR": 2,
+    "FVG_BULL": 3,
+    "FVG_FILLED": 3,
+    "FVG_INVERTED": 1,
+    "FVG_TESTED": 3,
+    "LIQ_SWEEP": 1,
+    "OB_BULL": 2,
+    "OB_TESTED": 1,
+    "POOL_NEW": 3,
+    "PROTECTED_UPDATED": 1,
+    "SWING_HIGH": 3,
+    "SWING_LOW": 4,
+    "TREND_INIT": 1,
+  },
+  "hash": "828b55757129900e9a49898626e8ed87f29807be",
+}
+`;

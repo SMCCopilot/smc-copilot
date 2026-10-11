@@ -27,7 +27,7 @@ export type SessionDef = z.infer<typeof SessionDefSchema>;
  * Two fields are additions to the seeded v1 JSON and carry defaults so that JSON still parses:
  * `break.gapAtrMult` (GAP_BREAK threshold) and `atr.fixed` (fixtures only, never set in a shipped version).
  */
-export const StrategyConfigSchema = z.strictObject({
+const StrategyConfigBase = z.strictObject({
   strategyVersionId: z.string().min(1),
   schemaVersion: z.literal(1),
   timeframes: z.strictObject({
@@ -98,6 +98,15 @@ export const StrategyConfigSchema = z.strictObject({
     z.strictObject({ status: z.enum(RULE_STATUSES), backtestId: z.string().optional() }),
   ),
 });
+
+/**
+ * Sessions are fixed UTC windows (A04 section 9). IANA zones with DST need a time-zone table the pure engine
+ * does not have, so they are refused here rather than silently treated as UTC.
+ */
+export const StrategyConfigSchema = StrategyConfigBase.refine(
+  (c) => c.sessions.every((s) => s.tz === 'UTC') && c.context.sessionsTz === 'UTC',
+  { message: 'only UTC sessions are supported (DST-aware zones are not implemented)' },
+);
 export type StrategyConfig = z.infer<typeof StrategyConfigSchema>;
 
 export function parseStrategyConfig(strategyVersionId: string, json: unknown): StrategyConfig {

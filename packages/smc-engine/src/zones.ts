@@ -159,7 +159,11 @@ export function stepZones(
   }
 
   // 3. New order blocks from structure breaks on this candle.
-  for (const brk of breaks) {
+  // External breaks first so a block both scales found keeps the more significant tag.
+  const ordered = [...breaks].sort((a, b) =>
+    a.scale === b.scale ? 0 : a.scale === 'external' ? -1 : 1,
+  );
+  for (const brk of ordered) {
     const dir: Dir = brk.type.endsWith('UP') ? 'BULL' : 'BEAR';
     const origin = Math.max(brk.legOriginIndex, ctx.base);
     let dispIdx = -1;
@@ -191,8 +195,9 @@ export function stepZones(
     const wick = ctx.cfg.ob.zoneBasis === 'WICK';
     const top = wick ? ob.h : Math.max(ob.o, ob.c);
     const bottom = wick ? ob.l : Math.min(ob.o, ob.c);
+    if (obs.some((o) => o.dir === dir && o.barOpen === ob.t)) continue;
     const type: EngineEventType = dir === 'BULL' ? 'OB_BULL' : 'OB_BEAR';
-    const id = eventId(ctx, type, brk.scale, ob.t);
+    const id = eventId(ctx, type, brk.scale, ob.t, `|${bar.t}`);
     const sizeAtr = atr > 0 ? (top - bottom) / atr : 0;
     obs.push({
       id,
