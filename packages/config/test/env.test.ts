@@ -49,7 +49,7 @@ describe('parseEnv', () => {
   it('defaults to the spot and perp venue hosts separately', () => {
     const env = parseEnv(dev);
     expect(env.BINANCE_WS_URL).toContain('data-stream.binance.vision');
-    expect(env.BINANCE_PERP_WS_URL).toContain('fstream.binance.com');
+    expect(env.BINANCE_PERP_WS_URL).toBe('wss://fstream.binance.com/market');
   });
 
   it('treats blank values as unset everywhere, so defaults apply (a blank cost cap is not zero)', () => {

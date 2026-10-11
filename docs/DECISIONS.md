@@ -39,3 +39,25 @@ Short records of choices that deviate from, resolve, or extend the plan in `docs
 ## D-007: Database environments
 
 - **Choice:** hosted Supabase dev project for integration runs (credentials in `.env.local`, no Docker for Supabase); a plain local Postgres with the dev shims (`0000_dev_shims.sql`) for the SQL smoke test; CI runs the smoke test on Postgres 16 and 17 (Supabase may default to 17; the plan only tested 16).
+
+## D-004 update: measured Binance perp WebSocket path (S2, 2026-10-11)
+
+The USD-M perp host now splits WebSocket paths. `wss://fstream.binance.com/stream?streams=...` accepts the connection but
+delivers **zero frames**; `wss://fstream.binance.com/market/stream?streams=btcusdt@kline_1m` delivers kline frames. The
+default `BINANCE_PERP_WS_URL` is therefore `wss://fstream.binance.com/market` (the adapter appends `/stream?streams=`).
+Re-verify from the VM region in Phase 1 **[verify]**.
+
+## D-008: No Caddy in front of the API
+
+- **Context:** B02 lists Caddy, cloudflared and Alloy on the VM. Cloudflare terminates TLS and `cloudflared` reaches the API over the container network.
+- **Choice:** Compose runs `api` and an optional `cloudflared` (profile `tunnel`). Add Caddy if a second upstream (STT sidecar) needs path routing at M6.
+
+## D-009: Only asymmetric JWT algorithms are accepted
+
+- **Context:** Supabase projects can sign with a shared secret (legacy HS256) or asymmetric keys published at a JWKS URL.
+- **Choice:** `ES256`, `RS256`, `EdDSA` only. Anonymous users, non-`authenticated` roles and tokens issued in the future are refused. A JWKS outage is `503 AUTH_UNAVAILABLE`, not `401`.
+- **Consequences:** if the real project signs with HS256, the Phase 4 identity check must revisit this before sign-in can work **[verify]**.
+
+## D-010: Problem types and catalogue additions
+
+- **Choice:** problem `type` is a URN (`urn:smc-copilot:error:<code>`) because no docs domain exists yet. Added codes `PAYLOAD_TOO_LARGE` (413), `NOT_READY` (503) and `AUTH_UNAVAILABLE` (503) to the A07 catalogue. Framework 4xx errors other than 401/403/404/409/413/429 are reported as `VALIDATION_FAILED` (422). Startup does not require the database; `/readyz` reports it (the B02 section 9 self-test lives there).

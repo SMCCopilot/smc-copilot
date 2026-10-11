@@ -1,7 +1,7 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import type { Env } from '@smc/config';
-import { Logger, LoggerModule } from 'nestjs-pino';
+import { LoggerModule, PinoLogger } from 'nestjs-pino';
 import type { DestinationStream } from 'pino';
 import { AuthModule } from './auth/auth.module.js';
 import { buildLoggerParams } from './common/logging.js';
@@ -32,8 +32,8 @@ export class AppModule {
         { provide: ENV, useValue: env },
         {
           provide: APP_FILTER,
-          inject: [Logger],
-          useFactory: (logger: Logger) => new ProblemFilter(logger),
+          inject: [PinoLogger],
+          useFactory: (logger: PinoLogger) => new ProblemFilter(logger),
         },
       ],
       exports: [ENV],

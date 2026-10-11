@@ -54,10 +54,18 @@ export interface MappedProblem {
   readonly headers: Readonly<Record<string, string>>;
 }
 
-const isZodLike = (
-  e: unknown,
-): e is { issues: { path: unknown[]; message: string; code: string }[] } =>
-  typeof e === 'object' && e !== null && Array.isArray((e as { issues?: unknown }).issues);
+/** Request validation failures: rule names and paths only, never the rejected values. */
+export function validationError(
+  issues: readonly { path: readonly PropertyKey[]; code: string; message: string }[],
+): ApiProblemError {
+  return new ApiProblemError('VALIDATION_FAILED', 'Request validation failed.', {
+    issues: issues.map((i) => ({
+      path: i.path.map(String).join('.'),
+      code: i.code,
+      message: i.message,
+    })),
+  });
+}
 
 /** Pure mapping from any thrown value to the problem the client receives. Never includes internals. */
 export function toProblem(error: unknown, correlationId: string): MappedProblem {
@@ -65,33 +73,26 @@ export function toProblem(error: unknown, correlationId: string): MappedProblem 
     return {
       problem: problemFor(error.code, correlationId, error.detail, error.extras),
       unexpected: false,
-      headers: {},
-    };
-  }
-
-  if (isZodLike(error)) {
-    // Paths and rule names only: never echo the rejected values (they may be secrets or personal data).
-    const issues = error.issues.map((i) => ({
-      path: i.path.join('.'),
-      code: i.code,
-      message: i.message,
-    }));
-    return {
-      problem: problemFor('VALIDATION_FAILED', correlationId, 'Request validation failed.', {
-        issues,
-      }),
-      unexpected: false,
-      headers: {},
+      headers:
+        error.code === 'AUTH_REQUIRED' || error.code === 'TOKEN_EXPIRED'
+          ? { 'WWW-Authenticate': 'Bearer' }
+          : {},
     };
   }
 
   // body-parser errors (http-errors) and Nest's built-in HttpExceptions both expose a numeric status.
+  // Only errors that are meant for the client: Nest HttpExceptions and body-parser's http-errors (`expose: true`).
+  // An upstream SDK or library error that merely has a `status` (an AI vendor 401, a DB 429) is an internal fault.
+  const exposed =
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { expose?: unknown }).expose === true &&
+    typeof (error as { type?: unknown }).type === 'string';
   const status =
     error instanceof HttpException
       ? error.getStatus()
-      : typeof error === 'object' && error !== null
-        ? ((error as { status?: unknown; statusCode?: unknown }).status ??
-          (error as { statusCode?: unknown }).statusCode)
+      : exposed
+        ? ((error as { status?: unknown }).status ?? (error as { statusCode?: unknown }).statusCode)
         : undefined;
 
   if (typeof status === 'number' && status >= 400 && status < 500) {
@@ -104,6 +105,7 @@ export function toProblem(error: unknown, correlationId: string): MappedProblem 
           : (STATUS_TO_CODE[status] ?? 'VALIDATION_FAILED');
     const headers: Record<string, string> = {};
     if (code === 'RATE_LIMITED') headers['Retry-After'] = '1';
+    if (code === 'AUTH_REQUIRED') headers['WWW-Authenticate'] = 'Bearer';
     return {
       problem: problemFor(
         code,

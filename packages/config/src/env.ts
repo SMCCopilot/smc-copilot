@@ -59,7 +59,7 @@ const EnvSchema = z
 
     BINANCE_WS_URL: z.url().default('wss://data-stream.binance.vision'),
     BINANCE_REST_URL: z.url().default('https://data-api.binance.vision'),
-    BINANCE_PERP_WS_URL: z.url().default('wss://fstream.binance.com'),
+    BINANCE_PERP_WS_URL: z.url().default('wss://fstream.binance.com/market'),
     BINANCE_PERP_REST_URL: z.url().default('https://fapi.binance.com'),
     BYBIT_WS_URL: z.url().default('wss://stream.bybit.com/v5/public/linear'),
     BYBIT_REST_URL: z.url().default('https://api.bybit.com'),

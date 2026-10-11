@@ -9,40 +9,64 @@ export interface SupabaseJwtOptions {
   readonly issuer?: string;
   /** Seconds of tolerated clock difference. */
   readonly clockToleranceSec?: number;
+  /** Clock source in epoch seconds; tests inject one. */
+  readonly now?: () => number;
 }
 
 /**
  * Only asymmetric algorithms: a token signed with a shared secret (legacy HS256 projects) is refused rather than
- * silently accepted. Whether the real project signs with asymmetric keys is verified in Phase 4 [verify].
+ * silently accepted (decision D-009). Whether the real project signs with asymmetric keys is verified in Phase 4.
  */
-const ALGORITHMS = ['ES256', 'RS256', 'EdDSA'];
+export const ALGORITHMS = ['ES256', 'RS256', 'EdDSA'];
 
 export class SupabaseJwtAuthProvider implements AuthProvider {
   constructor(private readonly options: SupabaseJwtOptions) {}
 
   async verifyToken(token: string): Promise<Principal> {
+    const tolerance = this.options.clockToleranceSec ?? 5;
     let payload: JWTPayload;
     try {
       ({ payload } = await jwtVerify(token, this.options.getKey, {
         algorithms: ALGORITHMS,
         audience: this.options.audience,
         ...(this.options.issuer ? { issuer: this.options.issuer } : {}),
-        clockTolerance: this.options.clockToleranceSec ?? 5,
+        clockTolerance: tolerance,
         requiredClaims: ['sub', 'exp', 'iat'],
       }));
     } catch (error) {
-      // Callers learn "expired" so a client can refresh; every other reason is one opaque failure.
-      throw new AuthError(error instanceof errors.JWTExpired ? 'EXPIRED' : 'INVALID');
+      // "expired" lets a client sign in again; a key-set outage is the server's problem, not a bad token
+      // (otherwise an identity-provider blip would sign every user out); everything else is one opaque failure.
+      if (error instanceof errors.JWTExpired) throw new AuthError('EXPIRED');
+      if (error instanceof errors.JWKSTimeout || !(error instanceof errors.JOSEError)) {
+        throw new AuthError('UNAVAILABLE');
+      }
+      throw new AuthError('INVALID');
     }
 
-    const appMetadata = (payload.app_metadata ?? {}) as { role?: unknown };
+    const now = this.options.now?.() ?? Math.floor(Date.now() / 1000);
+    const claims = payload as JWTPayload & {
+      role?: unknown;
+      is_anonymous?: unknown;
+      app_metadata?: { role?: unknown };
+    };
+    if (
+      typeof claims.sub !== 'string' ||
+      claims.sub === '' ||
+      typeof claims.iat !== 'number' ||
+      claims.iat > now + tolerance || // issued in the future: the step-up check relies on iat
+      claims.is_anonymous === true || // anonymous sessions are never full users (A08 section 2.2)
+      (claims.role !== undefined && claims.role !== 'authenticated')
+    ) {
+      throw new AuthError('INVALID');
+    }
+
     const email =
-      typeof payload.email === 'string' && payload.email !== '' ? payload.email : undefined;
+      typeof claims.email === 'string' && claims.email !== '' ? claims.email : undefined;
     return {
-      userId: payload.sub as string,
+      userId: claims.sub,
       ...(email === undefined ? {} : { email }),
-      roles: appMetadata.role === 'admin' ? ['user', 'admin'] : ['user'],
-      issuedAt: payload.iat as number,
+      roles: claims.app_metadata?.role === 'admin' ? ['user', 'admin'] : ['user'],
+      issuedAt: claims.iat,
     };
   }
 }

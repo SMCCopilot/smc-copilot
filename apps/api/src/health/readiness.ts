@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Sql } from '@smc/db';
 import { READINESS_CHECKS, SQL } from '../config/tokens.js';
 
@@ -14,6 +14,8 @@ export interface ReadinessReport {
 }
 
 const CHECK_TIMEOUT_MS = 2000;
+/** One evaluation serves every caller within this window, so /readyz cannot be used to load the database. */
+const CACHE_MS = 1000;
 
 const withTimeout = (work: Promise<void>, ms: number): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -49,15 +51,39 @@ export class DbReadinessCheck implements ReadinessCheck {
 
 @Injectable()
 export class ReadinessService {
+  private readonly log = new Logger(ReadinessService.name);
+  private inFlight: Promise<ReadinessReport> | null = null;
+  private last: { at: number; report: ReadinessReport } | null = null;
+
   constructor(@Inject(READINESS_CHECKS) private readonly checks: ReadinessCheck[]) {}
 
-  async report(): Promise<ReadinessReport> {
+  /** Single-flight with a short cache: concurrent and repeated probes share one evaluation. */
+  report(): Promise<ReadinessReport> {
+    if (this.last && Date.now() - this.last.at < CACHE_MS) return Promise.resolve(this.last.report);
+    if (!this.inFlight) {
+      this.inFlight = this.evaluate()
+        .then((report) => {
+          this.last = { at: Date.now(), report };
+          return report;
+        })
+        .finally(() => {
+          this.inFlight = null;
+        });
+    }
+    return this.inFlight;
+  }
+
+  private async evaluate(): Promise<ReadinessReport> {
     const results = await Promise.all(
       this.checks.map(async (check) => {
         try {
           await withTimeout(check.run(), CHECK_TIMEOUT_MS);
           return [check.name, 'ok'] as const;
-        } catch {
+        } catch (error) {
+          // Operators need to know why; callers only ever see "fail". Name and error class, never the message.
+          this.log.warn(
+            `readiness check "${check.name}" failed: ${(error as Error)?.constructor?.name}`,
+          );
           return [check.name, 'fail'] as const;
         }
       }),

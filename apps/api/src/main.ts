@@ -5,6 +5,15 @@ import { EnvError, loadDotEnv, parseEnv } from '@smc/config';
 import { AppModule } from './app.module.js';
 import { configureApp } from './bootstrap.js';
 
+/** Last-resort handlers print the error class only: Node's default prints enumerable properties, bypassing redaction. */
+function fatal(kind: string, error: unknown): never {
+  const name = error instanceof Error ? error.constructor.name : typeof error;
+  process.stderr.write(`fatal ${kind}: ${name}\n`);
+  process.exit(1);
+}
+process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason));
+process.on('uncaughtException', (error) => fatal('uncaughtException', error));
+
 async function main(): Promise<void> {
   loadDotEnv();
   let env: ReturnType<typeof parseEnv>;
@@ -20,7 +29,8 @@ async function main(): Promise<void> {
     bufferLogs: true,
   });
   configureApp(app, env);
-  await app.listen(env.PORT, '0.0.0.0');
+  // Development listens on loopback only; production sits behind the tunnel on the container network.
+  await app.listen(env.PORT, env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 }
 
 await main();

@@ -19,6 +19,10 @@ pnpm typecheck
 pnpm test             # vitest per package
 pnpm lint             # biome + tools/boundaries + dependency-cruiser
 pnpm format           # biome --write
+node tools/hooks/install-gitleaks.mjs        # pinned, checksum-verified local gitleaks (pre-commit hook uses it)
+pnpm --filter @smc/db db:migrate -- --shims  # local plain Postgres only; never --shims on Supabase
+node tools/spikes/src/s2-venue-probe.mjs --minutes 4 --dns 1.1.1.1   # venue reachability + lag
+node apps/api/dist/main.js                    # after build; NODE_ENV=development for local
 ```
 
 ## Layout and dependency rules (A01 section 6)

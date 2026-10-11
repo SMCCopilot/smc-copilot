@@ -44,6 +44,31 @@ export const REDACT_PATHS = [
 /** Health probes are noisy; everything else is logged once per request. */
 const QUIET_PATHS = new Set(['/healthz', '/readyz']);
 
+/**
+ * Errors are reduced to type, string code and stack frames. The message and every other property are dropped:
+ * they routinely embed connection strings, database row detail or request headers (H1 in the step 3 review).
+ */
+export function safeErr(err: unknown): { type: string; code?: string; stack?: string } {
+  const e = (typeof err === 'object' && err !== null ? err : {}) as {
+    constructor?: { name?: string };
+    code?: unknown;
+    stack?: unknown;
+  };
+  const frames =
+    typeof e.stack === 'string'
+      ? e.stack
+          .split(/\r?\n/)
+          .filter((l) => /^\s+at /.test(l))
+          .slice(0, 12)
+          .join('\n')
+      : undefined;
+  return {
+    type: e.constructor?.name ?? typeof err,
+    ...(typeof e.code === 'string' ? { code: e.code } : {}),
+    ...(frames ? { stack: frames } : {}),
+  };
+}
+
 const pathOnly = (url: string | undefined) => (url ?? '').split('?')[0] ?? '';
 
 export function buildLoggerParams(env: Pick<Env, 'LOG_LEVEL'>, stream?: DestinationStream): Params {
@@ -60,6 +85,7 @@ export function buildLoggerParams(env: Pick<Env, 'LOG_LEVEL'>, stream?: Destinat
         path: pathOnly(req.url),
       }),
       res: (res: { statusCode?: number }) => ({ statusCode: res.statusCode }),
+      err: safeErr,
     },
     customProps: (req: { id?: unknown }) => ({ correlationId: req.id }),
   };

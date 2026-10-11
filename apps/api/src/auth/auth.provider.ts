@@ -7,7 +7,7 @@ export interface Principal {
   readonly issuedAt: number;
 }
 
-export type AuthFailure = 'MISSING' | 'INVALID' | 'EXPIRED';
+export type AuthFailure = 'MISSING' | 'INVALID' | 'EXPIRED' | 'UNAVAILABLE';
 
 export class AuthError extends Error {
   constructor(readonly failure: AuthFailure) {

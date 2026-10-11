@@ -1,6 +1,6 @@
 import { ApiProblemSchema, ERROR_STATUS } from '@smc/contracts';
 import { describe, expect, it } from 'vitest';
-import { ApiProblemError, toProblem } from '../src/common/problem.js';
+import { ApiProblemError, toProblem, validationError } from '../src/common/problem.js';
 
 const cid = 'corr-12345678';
 
@@ -29,9 +29,9 @@ describe('toProblem', () => {
     }
   });
 
-  it('maps zod-like errors to VALIDATION_FAILED listing paths and rules but never values', () => {
+  it('builds a validation problem from issues with paths and rules but never values', () => {
     const { problem } = toProblem(
-      { issues: [{ path: ['body', 'text'], code: 'too_big', message: 'Too big' }] },
+      validationError([{ path: ['body', 'text'], code: 'too_big', message: 'Too big' }]),
       cid,
     );
     expect(problem).toMatchObject({
@@ -41,11 +41,18 @@ describe('toProblem', () => {
     });
   });
 
+  it('treats a library error that merely has a 4xx status as an internal fault (M3)', () => {
+    for (const e of [{ status: 401 }, { statusCode: 429 }, { status: 404 }, { issues: [{}] }]) {
+      const { problem, unexpected } = toProblem(e, cid);
+      expect(problem.code).toBe('INTERNAL');
+      expect(unexpected).toBe(true);
+    }
+  });
+
   it.each([
-    [{ status: 413, type: 'entity.too.large' }, 'PAYLOAD_TOO_LARGE', 413],
-    [{ status: 400, type: 'entity.parse.failed' }, 'VALIDATION_FAILED', 422],
-    [{ statusCode: 429 }, 'RATE_LIMITED', 429],
-    [{ status: 404 }, 'NOT_FOUND', 404],
+    [{ status: 413, expose: true, type: 'entity.too.large' }, 'PAYLOAD_TOO_LARGE', 413],
+    [{ status: 400, expose: true, type: 'entity.parse.failed' }, 'VALIDATION_FAILED', 422],
+    [{ status: 429, expose: true, type: 'x' }, 'RATE_LIMITED', 429],
   ])('maps the framework error %j', (error, code, status) => {
     const { problem, unexpected } = toProblem(error, cid);
     expect(problem).toMatchObject({ code, status });
@@ -53,7 +60,9 @@ describe('toProblem', () => {
   });
 
   it('sends Retry-After with RATE_LIMITED', () => {
-    expect(toProblem({ status: 429 }, cid).headers['Retry-After']).toBeDefined();
+    expect(
+      toProblem({ status: 429, expose: true, type: 'x' }, cid).headers['Retry-After'],
+    ).toBeDefined();
   });
 
   it.each([
