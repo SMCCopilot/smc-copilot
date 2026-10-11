@@ -16,6 +16,8 @@ export const CandleSchema = z
     v: z.number().finite().nonnegative(),
     closed: z.boolean(),
     providerId: z.string().min(1),
+    /** Quality flags (CANDLE_FLAGS). Optional: absent means clean. */
+    flags: z.number().int().nonnegative().optional(),
   })
   .refine((k) => k.l <= Math.min(k.o, k.c) && k.h >= Math.max(k.o, k.c), {
     message: 'OHLC is inconsistent (low <= open,close <= high is required)',

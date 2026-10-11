@@ -3,15 +3,24 @@ import { emptyAtr, updateAtr } from './atr.js';
 import { emptyPeriod, stepLiquidity } from './liquidity.js';
 import { MAX_SNAPSHOTS, orderByClose, snapshotOf } from './mtf.js';
 import { emptyScale, stepScale } from './scale.js';
-import type { CandleLite, EngineEvent, EngineState, Swing, TfState } from './types.js';
+import { flagAt, type StepOptions, stepSetups } from './setups.js';
+import type {
+  BreakRecord,
+  CandleLite,
+  EngineEvent,
+  EngineState,
+  SweepRecord,
+  Swing,
+  TfState,
+} from './types.js';
 import { type BreakInfo, stepZones } from './zones.js';
 
 export const WINDOW_BARS = 600;
 /** Bump whenever EngineState changes shape or a rule changes what state means. */
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export function createEngine(instrumentId: string): EngineState {
-  return { v: STATE_VERSION, instrumentId, perTf: {}, lastCandleOpenTime: {}, mtf: {} };
+  return { v: STATE_VERSION, instrumentId, perTf: {}, lastCandleOpenTime: {}, mtf: {}, setups: [] };
 }
 
 const emptyTf = (): TfState => ({
@@ -25,6 +34,8 @@ const emptyTf = (): TfState => ({
   pools: [],
   pending: [],
   period: emptyPeriod(),
+  sweeps: [],
+  breaks: [],
 });
 
 /**
@@ -36,6 +47,7 @@ export function step(
   state: EngineState,
   candle: Candle,
   cfg: StrategyConfig,
+  opts: StepOptions = {},
 ): { state: EngineState; events: EngineEvent[] } {
   if (candle.instrumentId !== state.instrumentId) {
     throw new Error(`candle for ${candle.instrumentId} fed to engine for ${state.instrumentId}`);
@@ -52,6 +64,7 @@ export function step(
     h: candle.h,
     l: candle.l,
     c: candle.c,
+    ...(candle.flags ? { f: candle.flags } : {}),
   };
   const grown = [...prev.window, bar];
   const drop = Math.max(0, grown.length - WINDOW_BARS);
@@ -116,6 +129,37 @@ export function step(
     ...external.state.swings,
   ]);
 
+  const sweeps: SweepRecord[] = [...prev.sweeps];
+  for (const ev of liquidity.events) {
+    if (ev.type !== 'LIQ_SWEEP') continue;
+    const wick = ev.data.wickOpenTime as number;
+    sweeps.push({
+      poolId: ev.data.poolId as string,
+      poolKind: ev.data.poolKind as SweepRecord['poolKind'],
+      side: ev.data.side as 'BUY' | 'SELL',
+      level: ev.data.level as number,
+      extreme: ev.data.sweepExtreme as number,
+      wickOpenTime: wick,
+      confirmedAt: closeTimeMs,
+      eventId: ev.id,
+      flags: flagAt(bars, wick),
+    });
+  }
+  const recentBreaks: BreakRecord[] = [...prev.breaks];
+  for (const ev of internal.events) {
+    if (/^(BOS|CHOCH)_(UP|DOWN)$/.test(ev.type)) {
+      recentBreaks.push({
+        eventId: ev.id,
+        type: ev.type as BreakRecord['type'],
+        time: closeTimeMs,
+        breakOpenTime: candle.openTime,
+        legOriginIndex: internal.state.protected?.barIndex ?? n,
+        bodyAtr: ev.data.bodyAtr as number,
+        gapBreak: ev.data.gapBreak === true,
+      });
+    }
+  }
+
   const tfState: TfState = {
     window: bars,
     base,
@@ -127,6 +171,8 @@ export function step(
     pools: liquidity.pools,
     pending: liquidity.pending,
     period: liquidity.period,
+    sweeps: sweeps.slice(-20),
+    breaks: recentBreaks.slice(-6),
   };
   const mtf = cfg.timeframes.bias.includes(tf)
     ? {
@@ -136,14 +182,18 @@ export function step(
         ),
       }
     : state.mtf;
+  const stepEvents = [...internal.events, ...external.events, ...zones.events, ...liquidity.events];
+  const interim: EngineState = {
+    ...state,
+    mtf,
+    perTf: { ...state.perTf, [tf]: tfState },
+    lastCandleOpenTime: { ...state.lastCandleOpenTime, [tf]: candle.openTime },
+  };
+  if (!cfg.timeframes.entry.includes(tf)) return { state: interim, events: stepEvents };
+  const setups = stepSetups(interim, tf, cfg, opts, stepEvents, closeTimeMs);
   return {
-    state: {
-      ...state,
-      mtf,
-      perTf: { ...state.perTf, [tf]: tfState },
-      lastCandleOpenTime: { ...state.lastCandleOpenTime, [tf]: candle.openTime },
-    },
-    events: [...internal.events, ...external.events, ...zones.events, ...liquidity.events],
+    state: { ...interim, setups: setups.setups },
+    events: [...stepEvents, ...setups.events],
   };
 }
 
@@ -152,11 +202,12 @@ export function feed(
   state: EngineState,
   candles: readonly Candle[],
   cfg: StrategyConfig,
+  opts: StepOptions = {},
 ): { state: EngineState; events: EngineEvent[] } {
   let current = state;
   const events: EngineEvent[] = [];
   for (const c of orderByClose(candles)) {
-    const r = step(current, c, cfg);
+    const r = step(current, c, cfg, opts);
     current = r.state;
     events.push(...r.events);
   }

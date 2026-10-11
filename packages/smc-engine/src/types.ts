@@ -10,6 +10,8 @@ export interface CandleLite {
   h: number;
   l: number;
   c: number;
+  /** Quality flags (CANDLE_FLAGS); omitted when clean so snapshots stay small. */
+  f?: number;
 }
 
 export interface Swing {
@@ -45,6 +47,8 @@ export interface ScaleState {
 }
 
 export interface AtrState {
+  /** Last ATR values (bounded), for the volatility-regime percentile. */
+  hist: number[];
   value: number;
   sum: number;
   count: number;
@@ -63,6 +67,36 @@ export interface TfState {
   pools: LiquidityPool[];
   pending: PendingSweep[];
   period: PeriodState;
+  /** Recently confirmed sweeps (bounded), used by the sweep-CHoCH-retest template. */
+  sweeps: SweepRecord[];
+  /** Recent internal-scale structure breaks (bounded); a setup is created the bar after its break. */
+  breaks: BreakRecord[];
+}
+
+export interface BreakRecord {
+  eventId: string;
+  type: 'BOS_UP' | 'BOS_DOWN' | 'CHOCH_UP' | 'CHOCH_DOWN';
+  /** Close time of the break candle. */
+  time: number;
+  breakOpenTime: number;
+  /** Absolute bar index where the leg began (the new protected level). */
+  legOriginIndex: number;
+  bodyAtr: number;
+  gapBreak: boolean;
+}
+
+export interface SweepRecord {
+  poolId: string;
+  poolKind: PoolKind;
+  side: 'BUY' | 'SELL';
+  level: number;
+  extreme: number;
+  wickOpenTime: number;
+  /** Close time at which the sweep was confirmed. */
+  confirmedAt: number;
+  eventId: string;
+  /** Quality flags of the wick candle. */
+  flags: number;
 }
 
 export type PoolKind = 'EQH' | 'EQL' | 'PDH' | 'PDL' | 'PWH' | 'PWL' | 'SESH' | 'SESL';
@@ -160,9 +194,56 @@ export interface EngineState {
   lastCandleOpenTime: Partial<Record<Timeframe, number>>;
   /** External-structure snapshots of the bias timeframes, one per close (bounded). */
   mtf: Partial<Record<Timeframe, HtfSnapshot[]>>;
+  /** Live setups (ARMED or TRIGGERED), bounded; closed setups leave state and live in the event stream. */
+  setups: SetupRecord[];
 }
 
-export type EventData = Readonly<Record<string, string | number | boolean | null>>;
+export interface PlanTargetRecord {
+  id: string;
+  price: number;
+  levelId: string;
+  rr: number;
+  label: 'TP1' | 'TP2';
+}
+
+export interface SetupRecord {
+  key: string;
+  template: 'T1' | 'T2';
+  direction: 'LONG' | 'SHORT';
+  entryTf: Timeframe;
+  biasTf: Timeframe;
+  state: 'ARMED' | 'TRIGGERED';
+  grade: 'A' | 'B' | 'C';
+  score: number;
+  /** Close time of the candle that created the setup. */
+  createdAt: number;
+  /** Entry-timeframe bar index at creation. */
+  createdIndex: number;
+  poi: { zoneId: string; kind: 'OB' | 'FVG'; top: number; bottom: number; ref: number };
+  stop: number;
+  invalidation: number;
+  targets: PlanTargetRecord[];
+  /** Assumptions the shadow outcome is resolved under. */
+  slippage: number;
+  feeBps: number;
+  /** The price has traded into the point of interest since arming. */
+  touched: boolean;
+  fill: { time: number; price: number; index: number } | null;
+  /** Price extremes since the fill (high and low), for MFE/MAE. */
+  hi: number;
+  lo: number;
+  ambiguous: boolean;
+  planHash: string;
+}
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly Json[]
+  | { readonly [key: string]: Json };
+export type EventData = Readonly<Record<string, Json>>;
 
 export type EngineEventType =
   | 'SWING_HIGH'
@@ -186,7 +267,15 @@ export type EngineEventType =
   | 'OB_EXPIRED'
   | 'POOL_NEW'
   | 'LIQ_SWEEP'
-  | 'LIQ_RUN';
+  | 'LIQ_RUN'
+  | 'SETUP_CANDIDATE'
+  | 'SETUP_REJECTED'
+  | 'SETUP_ARMED'
+  | 'PLAN_READY'
+  | 'SETUP_TRIGGERED'
+  | 'SETUP_EXPIRED'
+  | 'SETUP_INVALIDATED'
+  | 'SETUP_RESOLVED';
 
 export interface EngineEvent {
   /** sha1(instrumentId|tf|type:scale|anchorOpenTime|strategyVersionId): stable across re-runs. */

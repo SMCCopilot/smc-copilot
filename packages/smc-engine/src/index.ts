@@ -2,11 +2,16 @@ export { createEngine, feed, STATE_VERSION, step, WINDOW_BARS } from './engine.j
 export type { FactsOptions } from './facts.js';
 export { buildFacts } from './facts.js';
 export { countEventsByType, eventStreamHash } from './hash.js';
+export { shortId } from './ids.js';
 export type { Bias } from './mtf.js';
 export { biasAt, htfAt, orderByClose } from './mtf.js';
+export type { OutcomeKind, ShadowOutcome } from './outcomes.js';
+export { OUTCOME_RULES_VERSION, resolveStep } from './outcomes.js';
 export type { DealingRange, PremiumDiscount } from './ranges.js';
 export { dealingRange, premiumDiscount } from './ranges.js';
+export { FEATURE_IDS, scoreSetup } from './score.js';
 export type { SessionContext } from './sessions.js';
 export { isWeekend, sessionContext } from './sessions.js';
+export type { StepOptions } from './setups.js';
 export { sha1 } from './sha1.js';
 export type * from './types.js';

@@ -71,6 +71,10 @@ const StrategyConfigBase = z.strictObject({
   }),
   setups: z.strictObject({
     enabled: z.array(z.enum(['T1', 'T2', 'T3'])),
+    /** T1: how many entry-timeframe bars before the break a sweep may have happened. */
+    sweepLookbackBars: z.number().int().min(1).max(200).default(20),
+    /** After a fill, a trade may stay unresolved for expiryBars x this before it is marked EXPIRED_OPEN. */
+    resolveBarsMult: pos.default(1),
     expiryBars: z.partialRecord(TimeframeSchema, z.number().int().positive()),
   }),
   filters: z.strictObject({
@@ -92,6 +96,8 @@ const StrategyConfigBase = z.strictObject({
     stopBufferAtrMult: nonneg,
     maxStopAtrMult: pos,
     minStopAtrMult: nonneg,
+    /** Assumed bid-ask spread in basis points of price, for stops and the spread filter (no order book yet). */
+    assumedSpreadBps: nonneg.default(1),
   }),
   rules: z.record(
     z.string(),

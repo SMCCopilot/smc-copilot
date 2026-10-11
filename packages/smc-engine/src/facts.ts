@@ -6,9 +6,9 @@ import {
   TIMEFRAME_MS,
   type Timeframe,
 } from '@smc/contracts';
+import { shortId } from './ids.js';
 import { biasAt } from './mtf.js';
 import { dealingRange } from './ranges.js';
-import { sha1 } from './sha1.js';
 import type { EngineState, TfState } from './types.js';
 
 export interface FactsOptions {
@@ -19,10 +19,10 @@ export interface FactsOptions {
 
 type Level = MarketFacts['levels'][number];
 type Zone = MarketFacts['zones'][number];
+type SetupFact = MarketFacts['setups'][number];
 
 /** Locale-independent string order (localeCompare depends on the host ICU data). */
 const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-const shortId = (prefix: string, source: string): string => `${prefix}${sha1(source).slice(0, 10)}`;
 const POOL_NAME: Record<string, string> = {
   EQH: 'Equal highs',
   EQL: 'Equal lows',
@@ -139,6 +139,58 @@ export function buildFacts(
   levels.sort((a, b) => cmp(a.kind, b.kind) || a.price - b.price || cmp(a.id, b.id));
   zones.sort((a, b) => cmp(a.label, b.label) || a.top - b.top || cmp(a.id, b.id));
 
+  // Live setups (ARMED / TRIGGERED). Every id a setup mentions must resolve to a level or zone in the same facts.
+  const levelIds = new Set(levels.map((l) => l.id));
+  const zoneIds = new Set(zones.map((z) => z.id));
+  const setupFacts: SetupFact[] = [];
+  const live = [...state.setups].sort((a, b) => b.createdAt - a.createdAt || cmp(a.key, b.key));
+  for (const s of live.slice(0, 50)) {
+    const invId = shortId('L', `${s.key}|inv`);
+    if (!levelIds.has(invId)) {
+      levels.push({
+        id: invId,
+        label: `Invalidation ${s.entryTf}`,
+        kind: 'INVALIDATION',
+        price: s.invalidation,
+      });
+      levelIds.add(invId);
+    }
+    for (const t of s.targets) {
+      if (!levelIds.has(t.levelId)) {
+        levels.push({
+          id: t.levelId,
+          label: `Target ${t.label} ${s.entryTf}`,
+          kind: 'TARGET',
+          price: t.price,
+        });
+        levelIds.add(t.levelId);
+      }
+    }
+    const poiId = shortId('Z', s.poi.zoneId);
+    if (!zoneIds.has(poiId)) {
+      zones.push({
+        id: poiId,
+        label: `${s.poi.kind === 'OB' ? 'Order block' : 'FVG'} point of interest ${s.entryTf}`,
+        top: s.poi.top,
+        bottom: s.poi.bottom,
+        state: 'POI',
+      });
+      zoneIds.add(poiId);
+    }
+    setupFacts.push({
+      id: shortId('S', s.key),
+      template: s.template,
+      direction: s.direction,
+      grade: s.grade,
+      state: s.state,
+      reasonCodes: [],
+      poi: poiId,
+      invalidation: invId,
+      targets: s.targets.map((t) => t.levelId),
+      stats: null,
+    });
+  }
+
   const bias = biasAt(state, cfg, opts.asOf);
   const biasTf =
     [...cfg.timeframes.bias].sort((a, b) => TIMEFRAME_MS[b] - TIMEFRAME_MS[a])[0] ??
@@ -161,7 +213,7 @@ export function buildFacts(
     },
     levels: levels.slice(0, 400),
     zones: zones.slice(0, 400),
-    setups: [],
+    setups: setupFacts,
     warnings,
   };
 }

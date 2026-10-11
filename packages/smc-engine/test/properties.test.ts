@@ -26,6 +26,8 @@ const walk = (min: number, max: number) =>
 const cfg = config((c) => {
   (c.swings as { internal: { L: number; R: number } }).internal = { L: 2, R: 2 };
   (c.swings as { external: { L: number; R: number } }).external = { L: 5, R: 5 };
+  // Spread is in bps of price; mirrored data has a different price level, so make the spread level-free here.
+  (c.risk as { assumedSpreadBps: number }).assumedSpreadBps = 0;
 });
 const closeOf = (i: number) => (i + 1) * TF_MS;
 const key = (e: { id: string; type: string; time: number; data: unknown }) =>

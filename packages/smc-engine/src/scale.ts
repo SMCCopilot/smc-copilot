@@ -37,7 +37,7 @@ export const emptyScale = (): ScaleState => ({
 });
 
 export function eventId(
-  ctx: ScaleCtx,
+  ctx: Pick<ScaleCtx, 'instrumentId' | 'tf' | 'cfg'>,
   type: EngineEventType,
   scale: Scale | null,
   anchor: number,

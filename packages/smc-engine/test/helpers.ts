@@ -1,5 +1,5 @@
 import { type Candle, parseStrategyConfig, type StrategyConfig } from '@smc/contracts';
-import { createEngine, type EngineEvent, step } from '../src/index.js';
+import { createEngine, type EngineEvent, type StepOptions, step } from '../src/index.js';
 
 export const INSTRUMENT = 'BINANCE:SPOT:BTCUSDT';
 
@@ -107,14 +107,22 @@ export const candle = (
 export function run(
   rows: readonly (readonly [number, number, number, number])[],
   cfg: StrategyConfig,
-  opts: { tf?: Candle['tf']; tfMs?: number; start?: number } = {},
+  opts: {
+    tf?: Candle['tf'];
+    tfMs?: number;
+    start?: number;
+    stepOpts?: StepOptions;
+    flags?: Record<number, number>;
+  } = {},
 ): EngineEvent[] {
   const tf = opts.tf ?? '15m';
   const tfMs = opts.tfMs ?? 900_000;
   let state = createEngine(INSTRUMENT);
   const events: EngineEvent[] = [];
   rows.forEach((row, i) => {
-    const r = step(state, candle(tf, (opts.start ?? 0) + i * tfMs, row), cfg);
+    const c = candle(tf, (opts.start ?? 0) + i * tfMs, row);
+    const flag = opts.flags?.[i];
+    const r = step(state, flag ? { ...c, flags: flag } : c, cfg, opts.stepOpts);
     state = r.state;
     events.push(...r.events);
   });
