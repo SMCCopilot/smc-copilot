@@ -211,15 +211,24 @@ importers:
 
   tools/engine:
     dependencies:
+      '@smc/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
       '@smc/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@smc/market-data':
+        specifier: workspace:*
+        version: link:../../packages/market-data
       '@smc/smc-engine':
         specifier: workspace:*
         version: link:../../packages/smc-engine
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
+      undici:
+        specifier: ^8.11.2
+        version: 8.11.2
     devDependencies:
       vitest:
         specifier: ^4.1.11

@@ -23,3 +23,11 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | `displacement.requireFvg`, FVG per-timeframe expiry multiplier | config fields without behaviour yet | with the G1 labeled comparison |
 | Oldest FVGs/OBs/pools are dropped silently at the caps (40/24/40) | bounded state; no event for the drop | if G1 shows missing old zones matter |
 | `buildFacts` describes the latest engine state only (throws if asOf is older) | historical facts need state at a past time (snapshot + replay) | Phase 3 backtest harness |
+| Fee semantics ("5 bps taker" per side vs round trip) | resolved in D-021: per side in config, round trip in R | done |
+| T3 (HTF POI reaction) and per-template rule status beyond HYPOTHESIS | MVP ships T1 and T2 only (B01) | post-MVP |
+| Probabilities by segment (SPOT/PERP) and asset class | needs n; `segment` is always `ALL` at launch | when n allows |
+| TP2 outcome tracking after TP1 (`r_tp2`) | outcomes resolve at TP1; extra tracking adds a second state machine | if G2 shows it matters |
+| Lower-timeframe resolution of intrabar ambiguity | a 5m series exists in the DB; the resolver currently assumes stop first and flags the ambiguity | after G2, if the ambiguity rate is high |
+| Position monitor events (`position.*`) and the trade journal rows | need user trades (Phase 4/5) | Phase 5 |
+| `setup_displays` rows are written when a plan is shown to a user | the read API does not exist yet; the calibration job already consumes them | Phase 5 |
+| Calibration and cohort jobs run on in-process timers (hourly, daily) | idempotent, so a missed run is harmless; move to pg-boss with the worker split | M6 |

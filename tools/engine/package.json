@@ -6,12 +6,17 @@
   "scripts": {
     "lint": "biome check .",
     "test": "vitest run",
-    "replay": "node src/replay.mjs"
+    "replay": "node src/replay.mjs",
+    "backtest": "node src/backtest.mjs",
+    "fetch-history": "node src/fetch-history.mjs"
   },
   "dependencies": {
+    "@smc/analytics": "workspace:*",
     "@smc/contracts": "workspace:*",
+    "@smc/market-data": "workspace:*",
     "@smc/smc-engine": "workspace:*",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "undici": "^8.11.2"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

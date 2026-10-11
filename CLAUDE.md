@@ -29,6 +29,8 @@ node tools/spikes/src/verify-frames-vs-rest.mjs --dns 1.1.1.1   # recorded frame
 pnpm engine:replay --candles c.json [--config cfg.json] [--facts]      # run the pure engine, print counts + stream hash (or --db ...)
 pnpm engine:label-pack --db --instrument X --from D --to D --out label-pack   # blind labeling page for gate G1
 pnpm engine:fidelity --pack label-pack/charts.json --labels labels.json --report docs/engine-fidelity.md
+pnpm engine:fetch-history --symbol BTCUSDT --market SPOT --from 2025-09-01 --to 2026-10-01 --out data/history/X.ndjson [--dns 1.1.1.1]   # public klines, raw data stays out of git
+pnpm engine:backtest --candles data/history/X.ndjson [--candles ...] --from 2025-10-01 --to 2026-10-01 --report docs/backtest-report.md [--db]
 ```
 
 ## Layout and dependency rules (A01 section 6)

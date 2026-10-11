@@ -16,7 +16,9 @@
     "prepare": "lefthook install",
     "engine:replay": "node tools/engine/src/replay.mjs",
     "engine:label-pack": "node tools/engine/src/label-pack.mjs",
-    "engine:fidelity": "node tools/engine/src/fidelity-cli.mjs"
+    "engine:fidelity": "node tools/engine/src/fidelity-cli.mjs",
+    "engine:fetch-history": "node tools/engine/src/fetch-history.mjs",
+    "engine:backtest": "node tools/engine/src/backtest.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

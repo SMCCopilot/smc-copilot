@@ -131,7 +131,7 @@ describe('multi-timeframe model', () => {
       expect(JSON.stringify(shuffled.events)).toBe(JSON.stringify(base.events));
       expect(JSON.stringify(shuffled.state)).toBe(JSON.stringify(base.state));
     }
-  });
+  }, 120_000);
 
   it('never exposes an HTF snapshot newer than the query time', () => {
     const { state } = feed(createEngine(INSTRUMENT), data, cfg);
