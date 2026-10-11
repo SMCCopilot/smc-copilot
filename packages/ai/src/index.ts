@@ -5,6 +5,7 @@ export * from './adapters/openai.js';
 export * from './breaker.js';
 export * from './chat.js';
 export * from './errors.js';
+export * from './explain.js';
 export * from './guard.js';
 export * from './lexicon.js';
 export * from './narrative.js';

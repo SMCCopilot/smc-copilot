@@ -10,13 +10,12 @@ import {
 import type { Env } from '@smc/config';
 import type { BudgetState } from '@smc/contracts';
 import type { Sql } from '@smc/db';
-import { AbuseService } from '../account/abuse.service.js';
-import { RateLimiter } from '../account/rate-limit.js';
 import { ApiProblemError } from '../common/problem.js';
 import { assertNoSecret } from '../common/secrets.js';
 import { ENV, LLM_ROUTER, SQL } from '../config/tokens.js';
 import { JournalService } from '../journal/journal.service.js';
 import { withAiContext } from './ai.context.js';
+import { AiAllowanceService } from './ai-allowance.service.js';
 import { AiGateService } from './ai-gate.service.js';
 import { NarrativeService } from './narrative.service.js';
 
@@ -63,14 +62,13 @@ export interface ChatBody {
 @Injectable()
 export class ChatService {
   private readonly log = new Logger('Chat');
-  private readonly limiter = new RateLimiter();
 
   constructor(
     @Inject(SQL) private readonly sql: Sql | null,
     @Inject(ENV) private readonly env: Env,
     @Inject(LLM_ROUTER) private readonly router: LlmRouter,
     private readonly gate: AiGateService,
-    private readonly abuse: AbuseService,
+    private readonly allowance: AiAllowanceService,
     private readonly narratives: NarrativeService,
     private readonly journal: JournalService,
   ) {}
@@ -78,30 +76,6 @@ export class ChatService {
   private get db(): Sql {
     if (!this.sql) throw new ApiProblemError('NOT_READY', 'The database is not configured.');
     return this.sql;
-  }
-
-  private limits(c: ChatCaller): void {
-    const rl = (key: string, limit: number, windowMs: number) => {
-      const wait = this.limiter.hit(key, limit, windowMs);
-      if (wait !== null) {
-        throw new ApiProblemError('RATE_LIMITED', 'Too many messages. Try again shortly.', {
-          retryAfterSec: wait,
-        });
-      }
-    };
-    rl(`min:${c.userId}`, this.env.AI_USER_MESSAGES_PER_MINUTE, 60_000);
-    const day = (key: string, limit: number) => {
-      const wait = this.limiter.hit(key, limit, 86_400_000);
-      if (wait !== null) {
-        throw new ApiProblemError('DAILY_LIMIT_REACHED', 'The daily AI limit has been reached.', {
-          retryAfterSec: wait,
-        });
-      }
-    };
-    day(`day:${c.userId}`, this.env.AI_USER_MESSAGES_PER_DAY);
-    // Shared across accounts: a farm of free accounts on one address or one browser shares this allowance.
-    day(`ip:${this.abuse.hash(c.ip)}`, this.env.AI_IP_REQUESTS_PER_DAY);
-    if (c.deviceId) day(`dev:${this.abuse.hash(c.deviceId)}`, this.env.AI_DEVICE_REQUESTS_PER_DAY);
   }
 
   private async thread(c: ChatCaller): Promise<{ id: string; summary: string | null }> {
@@ -137,7 +111,12 @@ export class ChatService {
     // 1. Secrets first: nothing is stored, logged or sent anywhere.
     assertNoSecret(b.text);
     // 2. Rate limits, then kill switches / global cap / the user's daily budget.
-    this.limits(c);
+    this.allowance.check(
+      c,
+      'chat',
+      this.env.AI_USER_MESSAGES_PER_MINUTE,
+      this.env.AI_USER_MESSAGES_PER_DAY,
+    );
     const verdict = await this.gate.check(['AI', 'CHAT'], c.workspaceId);
     if (!verdict.allowed) {
       if (verdict.reason === 'USER_BUDGET') {

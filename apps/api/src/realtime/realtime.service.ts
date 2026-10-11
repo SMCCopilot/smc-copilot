@@ -15,6 +15,7 @@ import {
   ClientEventSchemas,
   type ClientEventType,
   type ErrorCode,
+  type OcrContext,
   RESERVED_CLIENT_EVENTS,
   type Timeframe,
   TimeframeSchema,
@@ -22,11 +23,18 @@ import {
 import type { Sql } from '@smc/db';
 import { Server, type Socket } from 'socket.io';
 import { type ChatCaller, ChatService, type ChatSink } from '../ai/chat.service.js';
+import { ExplainService } from '../ai/explain.service.js';
 import { NarrativeService } from '../ai/narrative.service.js';
 import { AnalysisService } from '../analysis/analysis.service.js';
 import { ApiProblemError } from '../common/problem.js';
 import { assertNoSecret } from '../common/secrets.js';
 import { ENV, EVENT_BUS, SQL } from '../config/tokens.js';
+import {
+  applyHint,
+  ContextService,
+  type HintState,
+  newHintState,
+} from '../context/context.service.js';
 import { GateService, type GateStateDto } from '../gate/gate.service.js';
 import type { EventBus } from '../ingest/event-bus.js';
 import { JournalService } from '../journal/journal.service.js';
@@ -58,6 +66,7 @@ interface Ctx {
   dirty: boolean;
   /** Chat messages the client asked to stop; their remaining pieces are not sent. */
   cancelled: Set<string>;
+  hint: HintState;
   /** False until the stored sequence is loaded; nothing is pushed before then, so numbers never collide. */
   ready: boolean;
 }
@@ -95,6 +104,8 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     private readonly positions: PositionMonitor,
     private readonly narratives: NarrativeService,
     private readonly chat: ChatService,
+    private readonly explain: ExplainService,
+    private readonly contextSvc: ContextService,
     private readonly journal: JournalService,
     @Optional() @Inject(EVENT_BUS) private readonly bus: EventBus | null,
   ) {}
@@ -229,6 +240,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       seen: new Map(),
       dirty: false,
       cancelled: new Set<string>(),
+      hint: newHintState(),
       ready: false,
     };
     ctx.socketId = socket.id;
@@ -327,8 +339,31 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
         await this.pushAnalysis(ctx.instrumentId, ctx);
         return;
       case 'setup.watch':
-      case 'context.hint':
+      case 'explain.cancel':
         return;
+      case 'context.hint':
+        await this.onHint(socket, ctx, p as unknown as OcrContext);
+        return;
+      case 'explain.request': {
+        // The socket carries OCR text but no pixels; an image goes through POST /v1/explain.
+        await this.explain.run(
+          { ...this.caller(socket, ctx), sessionInstrumentId: ctx.instrumentId },
+          {
+            source: p.mode as 'SHARE' | 'UPLOAD',
+            image: null,
+            ocr: p.ocr as OcrContext | undefined,
+            instrumentHint: p.instrumentHint as string | undefined,
+            tfHint: p.tfHint as Timeframe | undefined,
+            question: p.question as string | undefined,
+          },
+          {
+            stage: (stage) => this.emit(ctx, 'explain.stage', { stage }),
+            chunk: (delta) => this.emit(ctx, 'explain.chunk', { delta }),
+            done: (e) => this.emit(ctx, 'explain.done', e),
+          },
+        );
+        return;
+      }
       case 'chat.send':
         await this.chat.send(
           this.caller(socket, ctx),
@@ -461,11 +496,33 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     });
   }
 
+  /** An OCR hint: re-derived on the server, applied only after two consecutive agreeing hints. */
+  private async onHint(socket: Socket, ctx: Ctx, ocr: OcrContext): Promise<void> {
+    const ev = await this.contextSvc.evaluate(ocr, ctx.userId);
+    for (const w of ev.warnings) this.emit(ctx, 'warning', w);
+    const usable = ev.instrumentId !== null && !ev.ambiguous && ev.feedMatch !== 'MISMATCH';
+    const { state, lock } = applyHint(ctx.hint, usable ? ev.instrumentId : null);
+    ctx.hint = state;
+    if (lock && ev.canonical) {
+      await this.setContext(socket, ctx, ev.canonical, ev.tf ?? ctx.tf, 'ocr');
+      await this.pushAnalysis(ctx.instrumentId, ctx);
+      await this.pushNarrative(ctx);
+    } else if (usable && ev.instrumentId === ctx.instrumentId && ev.tf && ev.tf !== ctx.tf) {
+      ctx.tf = ev.tf;
+      ctx.lastSnapshotId = null;
+      await (this
+        .sql as Sql)`update copilot_sessions set tf = ${ev.tf} where id = ${ctx.sessionId}`;
+      this.emit(ctx, 'context.updated', { instrumentId: ctx.canonical, tf: ev.tf, source: 'ocr' });
+      await this.pushAnalysis(ctx.instrumentId, ctx);
+    }
+  }
+
   private async setContext(
     socket: Socket,
     ctx: Ctx,
     canonical: string,
     tf: Timeframe | null,
+    source: 'manual' | 'ocr' = 'manual',
   ): Promise<void> {
     const [row] = await (this.sql as Sql)<
       { id: string }[]
@@ -487,7 +544,9 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     await socket.join(`inst:${inst.id}`);
     await (this
       .sql as Sql)`update copilot_sessions set instrument_id = ${inst.id}, tf = ${tf} where id = ${ctx.sessionId}`;
-    this.emit(ctx, 'context.updated', { instrumentId: inst.canonical, tf, source: 'manual' });
+    // The instrument the user is looking at now is the baseline later hints are compared with.
+    ctx.hint = { candidate: null, count: 0, locked: inst.id };
+    this.emit(ctx, 'context.updated', { instrumentId: inst.canonical, tf, source });
   }
 
   private async replay(ctx: Ctx, lastSeq: number): Promise<void> {

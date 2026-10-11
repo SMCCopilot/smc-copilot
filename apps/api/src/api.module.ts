@@ -9,10 +9,13 @@ import {
 } from '@smc/ai';
 import type { Env } from '@smc/config';
 import { AiAdminController } from './ai/ai-admin.controller.js';
+import { AiAllowanceService } from './ai/ai-allowance.service.js';
 import { AiGateService } from './ai/ai-gate.service.js';
 import { AiMeterService } from './ai/ai-meter.service.js';
 import { ChatController } from './ai/chat.controller.js';
 import { ChatService } from './ai/chat.service.js';
+import { ExplainController } from './ai/explain.controller.js';
+import { ExplainService } from './ai/explain.service.js';
 import { NarrativeController } from './ai/narrative.controller.js';
 import { NarrativeService } from './ai/narrative.service.js';
 import { ProviderConfigService } from './ai/provider-config.service.js';
@@ -20,6 +23,7 @@ import { AnalysisController } from './analysis/analysis.controller.js';
 import { AnalysisService } from './analysis/analysis.service.js';
 import { IdempotencyInterceptor } from './common/idempotency.js';
 import { ENV, LLM_ROUTER } from './config/tokens.js';
+import { ContextService } from './context/context.service.js';
 import { DevController } from './dev/dev.controller.js';
 import { GateController } from './gate/gate.controller.js';
 import { GateService } from './gate/gate.service.js';
@@ -51,6 +55,7 @@ import { TradesService } from './trades/trades.service.js';
     NarrativeController,
     AiAdminController,
     ChatController,
+    ExplainController,
   ],
   providers: [
     AnalysisService,
@@ -67,8 +72,11 @@ import { TradesService } from './trades/trades.service.js';
     ProviderConfigService,
     AiMeterService,
     AiGateService,
+    AiAllowanceService,
     NarrativeService,
     ChatService,
+    ContextService,
+    ExplainService,
     {
       provide: LLM_ROUTER,
       inject: [ENV, ProviderConfigService, AiMeterService],
