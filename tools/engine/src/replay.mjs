@@ -10,6 +10,7 @@
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TIMEFRAME_MS } from '@smc/contracts';
 import { buildFacts } from '@smc/smc-engine';
 import { loadCandleFile, loadCandlesFromDb, loadConfig, replay } from './lib.mjs';
 
@@ -71,8 +72,11 @@ async function main() {
     stateHash: r.stateHash,
   };
   if (args.facts) {
-    const last = Math.max(...Object.values(r.state.lastCandleOpenTime));
-    summary.facts = buildFacts(r.state, cfg, { asOf: last, dataQuality: 'OK' });
+    // asOf is a CLOSE time: the close of the newest candle processed on any timeframe.
+    const asOf = Math.max(
+      ...Object.entries(r.state.lastCandleOpenTime).map(([tf, open]) => open + TIMEFRAME_MS[tf]),
+    );
+    summary.facts = buildFacts(r.state, cfg, { asOf, dataQuality: 'OK' });
   }
   console.log(JSON.stringify(summary, null, 2));
   if (typeof args['expect-hash'] === 'string' && args['expect-hash'] !== r.hash) {

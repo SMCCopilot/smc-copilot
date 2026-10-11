@@ -1,15 +1,22 @@
-import { type Candle, type StrategyConfig, TIMEFRAME_MS } from '@smc/contracts';
+import { type Candle, type StrategyConfig, TIMEFRAME_MS, type Timeframe } from '@smc/contracts';
 import type { Sql } from '@smc/db';
 import {
   createEngine,
   type EngineEvent,
   type EngineState,
   orderByClose,
+  STATE_VERSION,
   step,
 } from '@smc/smc-engine';
 import type { CandleStore } from '../ingest/candle-store.js';
 import type { EventBus } from '../ingest/event-bus.js';
 import { EngineStore, type Snapshot } from './engine.store.js';
+
+const latestClose = (s: EngineState): number =>
+  Object.entries(s.lastCandleOpenTime).reduce(
+    (m, [tf, open]) => Math.max(m, (open as number) + TIMEFRAME_MS[tf as Timeframe]),
+    0,
+  );
 
 const HOUR_MS = 3_600_000;
 
@@ -32,6 +39,8 @@ interface Advance {
   events: EngineEvent[];
   snapshot: Snapshot | null;
   candles: number;
+  /** Timeframes that started from nothing in this run, with the close time of their first replayed candle. */
+  cold: Partial<Record<Timeframe, number>>;
 }
 
 /**
@@ -56,7 +65,12 @@ export class EngineRunner {
   private readonly batch: number;
   private readonly coldStart: number;
   private readonly maxPasses: number;
+  /** Total failed jobs since start (diagnostics). */
   failures = 0;
+  /** Instruments whose most recent job failed; empty means healthy. Cleared by the next success. */
+  readonly failing = new Set<string>();
+  /** Rebuilds requested but not yet completed: a failed rebuild is retried, never forgotten. */
+  private readonly pendingRebuild = new Map<string, { canonical: string; fromMs: number }>();
 
   constructor(
     private readonly sql: Sql,
@@ -86,7 +100,12 @@ export class EngineRunner {
         this.enqueueDrain(e.instrumentId, e.canonical);
       }),
       this.bus.subscribe('candle.backfilled', (e) => {
-        this.schedule(e.instrumentId, () => this.rebuild(e.instrumentId, e.canonical, e.fromMs));
+        const earlier = this.pendingRebuild.get(e.instrumentId);
+        this.pendingRebuild.set(e.instrumentId, {
+          canonical: e.canonical,
+          fromMs: Math.min(e.fromMs, earlier?.fromMs ?? Number.POSITIVE_INFINITY),
+        });
+        this.schedule(e.instrumentId, () => this.runPendingRebuild(e.instrumentId));
       }),
     );
     this.log.info(`engine: running strategy version ${this.strategyId}`);
@@ -125,9 +144,13 @@ export class EngineRunner {
   private schedule(instrumentId: string, job: () => Promise<void>): void {
     const previous = this.chains.get(instrumentId) ?? Promise.resolve();
     const next = previous
-      .then(job)
+      .then(async () => {
+        await job();
+        this.failing.delete(instrumentId);
+      })
       .catch((e: unknown) => {
         this.failures++;
+        this.failing.add(instrumentId);
         this.log.warn(
           `engine: work for ${instrumentId} failed: ${(e as Error)?.constructor?.name}`,
         );
@@ -148,7 +171,7 @@ export class EngineRunner {
   }
 
   private validState(state: EngineState | undefined, canonical: string): EngineState | null {
-    return state && state.v === 1 && state.instrumentId === canonical ? state : null;
+    return state && state.v === STATE_VERSION && state.instrumentId === canonical ? state : null;
   }
 
   /** Reads what is new for each analysis timeframe and runs the engine over it in canonical order. */
@@ -157,6 +180,7 @@ export class EngineRunner {
     const events: EngineEvent[] = [];
     let snapshot: Snapshot | null = null;
     let total = 0;
+    const cold: Partial<Record<Timeframe, number>> = {};
     for (let pass = 0; pass < this.maxPasses; pass++) {
       const fresh: Candle[] = [];
       let safeUntil = Number.POSITIVE_INFINITY;
@@ -190,6 +214,9 @@ export class EngineRunner {
       if (ordered.length === 0) break;
       for (let i = 0; i < ordered.length; i++) {
         const c = ordered[i] as Candle;
+        if (from.lastCandleOpenTime[c.tf] === undefined && cold[c.tf] === undefined) {
+          cold[c.tf] = c.openTime + TIMEFRAME_MS[c.tf];
+        }
         const r = step(state, c, this.cfg);
         state = r.state;
         events.push(...r.events);
@@ -201,10 +228,14 @@ export class EngineRunner {
         if (close % HOUR_MS === 0 && closeAfter !== close) snapshot = { asOf: close, state };
       }
     }
-    return { state, events, snapshot, candles: total };
+    return { state, events, snapshot, candles: total, cold };
   }
 
   private async drain(instrumentId: string, canonical: string): Promise<void> {
+    if (this.pendingRebuild.has(instrumentId)) {
+      await this.runPendingRebuild(instrumentId); // also catches up, so nothing else is needed
+      return;
+    }
     const from = await this.hydrate(instrumentId, canonical);
     const r = await this.advance(instrumentId, from);
     if (r.candles === 0) return;
@@ -215,7 +246,7 @@ export class EngineRunner {
       r.snapshot,
     );
     this.states.set(instrumentId, r.state);
-    const asOf = Math.max(...Object.values(r.state.lastCandleOpenTime));
+    const asOf = latestClose(r.state);
     this.bus.publish('engine.updated', {
       instrumentId,
       canonical,
@@ -223,6 +254,15 @@ export class EngineRunner {
       events: written,
       rebuilt: false,
     });
+  }
+
+  private async runPendingRebuild(instrumentId: string): Promise<void> {
+    const request = this.pendingRebuild.get(instrumentId);
+    if (!request) return;
+    await this.rebuild(instrumentId, request.canonical, request.fromMs);
+    // Only forget the request if nothing asked for an earlier point while it ran.
+    const now = this.pendingRebuild.get(instrumentId);
+    if (now && now.fromMs >= request.fromMs) this.pendingRebuild.delete(instrumentId);
   }
 
   private async rebuild(instrumentId: string, canonical: string, fromMs: number): Promise<void> {
@@ -235,7 +275,7 @@ export class EngineRunner {
       this.strategyId,
       r.events,
       r.snapshot,
-      { afterMs },
+      { afterMs, cold: r.cold, staleAfterMs: snap?.asOf ?? fromMs },
     );
     this.states.set(instrumentId, r.state);
     this.log.info(
@@ -244,7 +284,7 @@ export class EngineRunner {
     this.bus.publish('engine.updated', {
       instrumentId,
       canonical,
-      asOf: Math.max(0, ...Object.values(r.state.lastCandleOpenTime)),
+      asOf: latestClose(r.state),
       events: written,
       rebuilt: true,
     });

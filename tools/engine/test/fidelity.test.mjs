@@ -205,3 +205,61 @@ describe('label packs', () => {
     }
   });
 });
+
+describe('review fixes', () => {
+  it('derives the pack id from the content (reproducible) and skips windows with holes', () => {
+    const series = candles(1200, 1, '15m');
+    const a = buildPack(series, { tfs: ['15m'], perTf: 3, bars: 200, seed: 1 });
+    const b = buildPack(series, { tfs: ['15m'], perTf: 3, bars: 200, seed: 1 });
+    expect(a.packId).toBe(b.packId);
+    expect(a.packId).toMatch(/^pack-[0-9a-f]{10}$/);
+    const holed = series.filter((_, i) => i !== 100); // one missing 15m candle
+    const pack = buildPack(holed, { tfs: ['15m'], perTf: 6, bars: 200, seed: 1, packId: 'x' });
+    for (const c of pack.charts) {
+      for (let i = 1; i < c.candles.length; i++) {
+        expect(c.candles[i].openTime - c.candles[i - 1].openTime).toBe(900_000);
+      }
+    }
+  });
+
+  it('ignores the last R bars of a chart on both sides', () => {
+    const events = feed(createEngine(INSTRUMENT), chart.candles, cfg).events;
+    const items = itemsFromEvents(events, chart);
+    const tail = chart.candles.length - 1 - cfg.swings.external.R;
+    const extra = { chartId: chart.id, kind: 'OB', dir: 'BULL', index: tail + 3 };
+    const r = evaluate([...items.map((i) => ({ chartId: chart.id, ...i })), extra], [chart], cfg);
+    expect(r.misses.some((m) => m.index === extra.index)).toBe(false);
+  });
+
+  it('survives a provider id containing replacement patterns in the page', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'label-dollar-'));
+    try {
+      const file = join(dir, 'c.json');
+      writeFileSync(
+        file,
+        JSON.stringify(candles(400, 2).map((c) => ({ ...c, providerId: "a$&b$'c" }))),
+      );
+      const r = spawnSync(
+        process.execPath,
+        [
+          join(here, '../src/label-pack.mjs'),
+          '--candles',
+          file,
+          '--out',
+          dir,
+          '--tfs',
+          '15m',
+          '--per-tf',
+          '1',
+          '--bars',
+          '300',
+        ],
+        { encoding: 'utf8' },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(readFileSync(join(dir, 'label.html'), 'utf8')).toContain(`"providerId":"a$&b$'c"`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

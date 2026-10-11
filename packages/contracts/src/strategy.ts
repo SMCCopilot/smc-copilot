@@ -106,7 +106,13 @@ const StrategyConfigBase = z.strictObject({
 export const StrategyConfigSchema = StrategyConfigBase.refine(
   (c) => c.sessions.every((s) => s.tz === 'UTC') && c.context.sessionsTz === 'UTC',
   { message: 'only UTC sessions are supported (DST-aware zones are not implemented)' },
-);
+)
+  .refine((c) => c.timeframes.bias.every((tf) => c.timeframes.analysis.includes(tf)), {
+    message: 'every bias timeframe must also be an analysis timeframe',
+  })
+  .refine((c) => c.range.oteLow <= c.range.oteHigh, {
+    message: 'range.oteLow must not exceed oteHigh',
+  });
 export type StrategyConfig = z.infer<typeof StrategyConfigSchema>;
 
 export function parseStrategyConfig(strategyVersionId: string, json: unknown): StrategyConfig {

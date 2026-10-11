@@ -153,7 +153,8 @@ export interface OrderBlock {
 }
 
 export interface EngineState {
-  v: 1;
+  /** Shape version; a snapshot with a different version is discarded, never trusted. */
+  v: number;
   instrumentId: string;
   perTf: Partial<Record<Timeframe, TfState>>;
   lastCandleOpenTime: Partial<Record<Timeframe, number>>;

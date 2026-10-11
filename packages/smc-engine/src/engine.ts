@@ -7,9 +7,11 @@ import type { CandleLite, EngineEvent, EngineState, Swing, TfState } from './typ
 import { type BreakInfo, stepZones } from './zones.js';
 
 export const WINDOW_BARS = 600;
+/** Bump whenever EngineState changes shape or a rule changes what state means. */
+export const STATE_VERSION = 2;
 
 export function createEngine(instrumentId: string): EngineState {
-  return { v: 1, instrumentId, perTf: {}, lastCandleOpenTime: {}, mtf: {} };
+  return { v: STATE_VERSION, instrumentId, perTf: {}, lastCandleOpenTime: {}, mtf: {} };
 }
 
 const emptyTf = (): TfState => ({

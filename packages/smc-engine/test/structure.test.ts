@@ -177,3 +177,17 @@ describe('engine guards', () => {
     expect(dup).toEqual(once);
   });
 });
+
+describe('break buffer', () => {
+  it('requires the close to clear the level by bufferAtrMult x ATR', () => {
+    const buffered = config((c) => {
+      (c.swings as { internal: { L: number; R: number } }).internal = { L: 2, R: 2 };
+      (c.atr as { fixed?: number }).fixed = 100;
+      (c.break as { bufferAtrMult: number }).bufferAtrMult = 1; // needs a close above 64300 + 100
+    });
+    const ev = run(WORKED_ROWS.slice(0, 20), buffered, { start: T0 }).filter(
+      (e) => e.scale === 'internal',
+    );
+    expect(ev.some((e) => e.type === 'CHOCH_UP')).toBe(false);
+  });
+});

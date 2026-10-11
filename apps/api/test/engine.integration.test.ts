@@ -301,3 +301,129 @@ describe('EngineRunner', () => {
     }
   });
 });
+
+describe('EngineRunner hardening (review fixes)', () => {
+  const pureFromDb = async () => {
+    const strategy = await new EngineStore(sql).activeStrategy();
+    const all: Candle[] = [];
+    for (const tf of TFS) {
+      for (const r of await candles.closedAfter(instrument.id, tf, undefined, 100_000)) {
+        all.push({ ...r, instrumentId: instrument.canonical, closed: true });
+      }
+    }
+    return feed(createEngine(instrument.canonical), all, strategy?.config as never);
+  };
+
+  it('holds exactly the state a pure replay produces, and publishes a close time as asOf', async () => {
+    await insert(generate(instrument.canonical, 288 * 3));
+    const r = await rig();
+    r.notify();
+    await r.runner.idle();
+    const pure = await pureFromDb();
+    expect(JSON.stringify(r.runner.stateOf(instrument.id))).toBe(JSON.stringify(pure.state));
+    expect(r.updates.at(-1)?.asOf).toBe(START + 288 * 3 * 300_000); // the last 5m candle's CLOSE
+    await r.runner.stop();
+  });
+
+  it('is healthy again after a failure once a later job succeeds', async () => {
+    await insert(generate(instrument.canonical, 288));
+    const spy = vi.spyOn(EngineStore.prototype, 'persist').mockRejectedValueOnce(new Error('x'));
+    const r = await rig();
+    r.notify();
+    await r.runner.idle();
+    expect(r.runner.failing.size).toBe(1);
+    spy.mockRestore();
+    r.notify();
+    await r.runner.idle();
+    expect(r.runner.failing.size).toBe(0);
+    await r.runner.stop();
+  });
+
+  it('retries a failed rebuild on the next event instead of losing the repair', async () => {
+    await insert(generate(instrument.canonical, 288 * 3));
+    const r = await rig();
+    r.notify();
+    await r.runner.idle();
+
+    const target = START + 36 * 3_600_000;
+    await sql`
+      update candles set h = h + 900, l = greatest(l - 900, 1)
+       where instrument_id = ${instrument.id} and tf = '15m' and open_time = ${new Date(target)}`;
+    const spy = vi.spyOn(EngineStore.prototype, 'persist').mockRejectedValueOnce(new Error('x'));
+    r.bus.publish('candle.backfilled', {
+      instrumentId: instrument.id,
+      canonical: instrument.canonical,
+      fromMs: target,
+      toMs: target + 900_000,
+    });
+    await r.runner.idle();
+    expect(r.runner.failing.size).toBe(1);
+    spy.mockRestore();
+
+    r.notify(); // any later candle event runs the pending rebuild first
+    await r.runner.idle();
+    expect(r.runner.failing.size).toBe(0);
+    expect(await dbEventIds()).toEqual((await replayFromDb()).map((e) => e.id).sort());
+    await r.runner.stop();
+  });
+
+  it('a rebuild with no snapshot never retracts events older than the window it replayed', async () => {
+    await insert(generate(instrument.canonical, 288 * 3));
+    const first = await rig();
+    first.notify();
+    await first.runner.idle();
+    await first.runner.stop();
+    const total5m = async () =>
+      (
+        await sql<{ n: number }[]>`
+          select count(*)::int as n from engine_events
+           where instrument_id = ${instrument.id} and tf = '5m' and not retracted
+             and event_time <= ${new Date(START + 288 * 2 * 300_000)}`
+      )[0]?.n ?? 0;
+    const before = await total5m();
+    expect(before).toBeGreaterThan(10);
+
+    await sql`delete from engine_snapshots`; // nothing at or before the repaired point
+    const small = await rig(undefined, 100); // cold start replays only the newest 100 bars per timeframe
+    small.bus.publish('candle.backfilled', {
+      instrumentId: instrument.id,
+      canonical: instrument.canonical,
+      fromMs: START,
+      toMs: START + 900_000,
+    });
+    await small.runner.idle();
+    expect(small.runner.failing.size).toBe(0);
+    expect(await total5m()).toBe(before); // older history untouched
+    await small.runner.stop();
+  });
+
+  it('keeps a bounded set of snapshots: the last 12 hourly plus one per day', async () => {
+    const all = generate(instrument.canonical, 288 * 4);
+    const cutoff = (h: number) => START + h * 3_600_000;
+    await insert(all.filter((c) => c.openTime + TIMEFRAME_MS[c.tf] <= cutoff(48)));
+    const r = await rig();
+    r.notify();
+    await r.runner.idle();
+    for (let h = 49; h <= 72; h++) {
+      await insert(
+        all.filter(
+          (c) =>
+            c.openTime + TIMEFRAME_MS[c.tf] > cutoff(h - 1) &&
+            c.openTime + TIMEFRAME_MS[c.tf] <= cutoff(h),
+        ),
+      );
+      r.notify();
+      await r.runner.idle();
+    }
+    const snaps = await sql<{ as_of: Date }[]>`
+      select as_of from engine_snapshots where instrument_id = ${instrument.id} order by as_of`;
+    const latest = START + 72 * 3_600_000;
+    for (const s of snaps) {
+      const t = s.as_of.getTime();
+      if (t < latest - 12 * 3_600_000) expect(t % 86_400_000).toBe(0); // older ones are daily only
+    }
+    expect(snaps.length).toBeLessThanOrEqual(12 + 1 + 3);
+    expect(snaps.length).toBeGreaterThanOrEqual(12);
+    await r.runner.stop();
+  }, 180_000);
+});

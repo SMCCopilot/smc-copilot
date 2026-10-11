@@ -26,6 +26,9 @@ node apps/api/dist/main.js                    # after build; NODE_ENV=developmen
 node tools/dev/src/dev-db.mjs                 # persistent local Postgres (no Docker), prints DATABASE_URL
 # live ingest locally: INGEST_ENABLED=true DNS_SERVERS=1.1.1.1 DATABASE_URL=... node apps/api/dist/main.js
 node tools/spikes/src/verify-frames-vs-rest.mjs --dns 1.1.1.1   # recorded frames vs venue REST
+pnpm engine:replay --candles c.json [--config cfg.json] [--facts]      # run the pure engine, print counts + stream hash (or --db ...)
+pnpm engine:label-pack --db --instrument X --from D --to D --out label-pack   # blind labeling page for gate G1
+pnpm engine:fidelity --pack label-pack/charts.json --labels labels.json --report docs/engine-fidelity.md
 ```
 
 ## Layout and dependency rules (A01 section 6)

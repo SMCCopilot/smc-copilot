@@ -81,8 +81,11 @@ export function evaluate(labels, charts, cfg, { margin = DEFAULT_MARGIN } = {}) 
 
   for (const chart of charts) {
     const events = feed(createEngine(chart.candles[0].instrumentId), chart.candles, cfg).events;
-    const detections = itemsFromEvents(events, chart).filter((d) => d.index >= margin);
-    const mine = labels.filter((l) => l.chartId === chart.id && l.index >= margin);
+    // The last R bars of a chart cannot confirm a pivot, so both sides ignore them as well.
+    const last = chart.candles.length - 1 - cfg.swings.external.R;
+    const inScope = (x) => x.index >= margin && x.index <= last;
+    const detections = itemsFromEvents(events, chart).filter(inScope);
+    const mine = labels.filter((l) => l.chartId === chart.id && inScope(l));
 
     const keys = new Set([...mine.map(groupKey), ...detections.map(groupKey)]);
     for (const key of keys) {

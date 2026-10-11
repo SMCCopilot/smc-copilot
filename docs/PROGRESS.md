@@ -62,3 +62,21 @@ Running state. A fresh session should be able to resume from this file and `CLAU
 
 ## Owner decisions after Phase 1
 - Host the backend on **Railway** (D-016). Browser tests (S1/S3/S4) happen after all phases, using Claude Desktop. The owner will fill the credentials after all phases; `.env.example` lists every variable with where to get it.
+
+## Phase 2: SMC engine (all on `main`)
+
+**Status: built and reviewed; gate G1 (labeled agreement) is waiting for the owner's labels.**
+
+- [x] `StrategyConfig` Zod schema in contracts; parses the seeded `smc-core v1` JSON; refuses non-UTC sessions, bias timeframes that are not analysed, inverted OTE.
+- [x] Pure engine `packages/smc-engine`: `step()` / `feed()` reducer, pure SHA-1 event ids, Wilder ATR14, swings (internal 3/3, external 10/10, tie rule, confirmation time), close-based BOS/CHoCH with protected levels, multi/gap-break flags, FVG and order-block lifecycles, EQH/EQL pools, previous day/week and session levels, open prices, sweep vs run, dealing range with premium/discount and OTE, UTC sessions and killzones, multi-timeframe snapshots with `htfAt`/`biasAt`, canonical close-order feeding, `ChartFacts` builder (MarketFacts v0), stream hash.
+- [x] A04 section 15.5 worked example reproduced exactly (swings at the right confirmation times, EQL pool 64020, sweep 07:15 extreme 63960, CHoCH 07:45 at 2.6 ATR, OB [64040, 64110], FVG [64110, 64270], range 63960-64400 with OTE [64052.4, 64127.2], entry in discount at 0.26).
+- [x] Properties: no look-ahead (1,000 random datasets, plus altered futures), determinism, scale/shift invariance, unique event ids, **mirror symmetry** (a price-flipped dataset yields the mirrored events, which exercises the whole bear side), arrival-order invariance for multi-timeframe, JSON snapshot round trip, bounded state.
+- [x] Golden hashes pinned (worked example and a seeded 20-day multi-timeframe dataset). They should be identical on any machine because only IEEE +,-,*,/ and comparisons are used (verified on this x64 machine only; arm64 unverified). Real-venue goldens stay out of git (raw exchange data); regenerate with `pnpm engine:replay --db ... --export-candles`.
+- [x] Performance: step p50 0.025 ms, p95 0.08 ms, max 2.3 ms over 12,420 steps (budget 20 ms for 4 instruments x 4 timeframes; the test asserts it).
+- [x] Worker runner (`apps/api/src/engine`): consumes `candle.closed`, writes `engine_events` and hourly `engine_snapshots` in one transaction, restarts without duplicates, rebuilds on `candle.backfilled`. 12 integration tests on real Postgres.
+- [x] `pnpm engine:replay` (file or DB, `--facts`, `--expect-hash`), `pnpm engine:label-pack` (blind labeling page; rendering verified in headless Edge), `pnpm engine:fidelity` (scoring and report). Workflow in `docs/engine-fidelity.md`.
+- [x] Independent review (fresh-context subagent, 21 findings, none critical or high). Fixed: OB displacement ignoring candle direction; previous day/week levels appearing a period late on 4h/1d; failure flag never clearing; failed rebuild never retried; cold-start rebuild retracting older events; snapshot retention and versioning; `asOf` published as an open time; pool-cap eviction, unbounded pool members, close-beyond-pool never counting as a run; locale-dependent sorting; config validation; label-tool bugs (`$` patterns, unvalidated import, index mapping across gaps, end-of-chart margin). Documented as accepted limits: D-020. Found earlier by our own tests: duplicate order-block identity, repeated-touch and pool ids reused (D-017).
+- [ ] **Gate G1 (owner input, blocking):** about 20 labeled charts; targets swings 90%, structure 90%, FVG 95%, order blocks 70%. May end as "adjust".
+- Unverified: engine behaviour on live venue data over days (needs the deployed worker), GitHub CI, the label page's click/export flow in a real browser (rendering only was verified), golden hash on arm64.
+
+Totals after Phase 2: config 29, contracts 40, market-data 123, db 35, boundaries 57, spikes 11, smc-engine 72, tool-engine 19, api 137.

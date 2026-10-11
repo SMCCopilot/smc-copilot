@@ -107,3 +107,46 @@ describe('previous day and week levels', () => {
     expect(s?.data).toMatchObject({ poolKind: 'PDH', level: 115, sweepExtreme: 120 });
   });
 });
+
+describe('previous-period levels are known at the period close', () => {
+  const DAY = 86_400_000;
+  const mon = Date.UTC(2026, 9, 12);
+  const daily = (rows: [number, number, number, number][]) =>
+    run(rows, cfg(), { tf: '1d', tfMs: DAY, start: mon });
+
+  it('creates PDH/PDL on the 1d timeframe when the day closes, not a day later', () => {
+    const ev = daily([[100, 110, 95, 105]]);
+    const pools = ev
+      .filter((e) => e.type === 'POOL_NEW')
+      .map((e) => [e.data.kind, e.data.level, e.time]);
+    expect(pools).toEqual([
+      ['PDH', 110, mon + DAY],
+      ['PDL', 95, mon + DAY],
+    ]);
+  });
+
+  it('creates PWH/PWL on the Sunday close (Monday 00:00 UTC)', () => {
+    const rows: [number, number, number, number][] = Array.from({ length: 7 }, (_, i) => [
+      100 + i,
+      110 + i,
+      90 + i,
+      105 + i,
+    ]);
+    const ev = daily(rows);
+    const pw = ev.filter((e) => e.type === 'POOL_NEW' && String(e.data.kind).startsWith('PW'));
+    expect(pw.map((e) => [e.data.kind, e.data.level, e.time])).toEqual([
+      ['PWH', 116, mon + 7 * DAY],
+      ['PWL', 90, mon + 7 * DAY],
+    ]);
+  });
+
+  it('treats a close beyond a pool without a deep wick as a run, not as nothing', () => {
+    const base = WORKED_ROWS.slice(0, 19).map((r) => [...r] as [number, number, number, number]);
+    // pool EQL at 64020; closes below it with lows only 2 under it (below the 5 minimum).
+    base[16] = [64080, 64120, 64018, 64019];
+    base[17] = [64019, 64030, 64017, 64018];
+    base[18] = [64018, 64030, 64016, 64017];
+    const ev = run(base, cfg(), { start: T0 });
+    expect(ev.some((e) => e.type === 'LIQ_RUN')).toBe(true);
+  });
+});

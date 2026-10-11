@@ -16,3 +16,10 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | A live candle lost to a handler error heals only through next-minute gap detection | at most one minute of delay | Phase 9 hardening |
 | ManagedConnection can briefly hold three sockets if the active one drops during a rotation | self-corrects within the rotation window | Phase 9 |
 | Venue flag changes need a restart to reach the running feed (the API says so) | rare operator action | M6 |
+| Engine: detect holes in a timeframe's candle sequence (permanent gaps) | pivots/FVG/ATR treat neighbours across a hole as adjacent; repairable holes are fixed by rebuild (D-020) | Phase 9 |
+| Engine: candle flags (SPIKE_SUSPECT, divergence) into sweep decisions | needs flags through the runner; matters once setups use sweeps (A04 6.2) | Phase 3 |
+| DST-aware sessions (IANA zones) | needs a time-zone table as data because the engine has no `Intl` (D-018) | when a strategy version wants New York-clock killzones |
+| Engine state is about 250 KB per instrument (spec estimated tens of KB) | bounded; retention keeps about 19 snapshots per instrument. Could shrink windows or compress | Phase 9 if Supabase storage is tight |
+| `displacement.requireFvg`, FVG per-timeframe expiry multiplier | config fields without behaviour yet | with the G1 labeled comparison |
+| Oldest FVGs/OBs/pools are dropped silently at the caps (40/24/40) | bounded state; no event for the drop | if G1 shows missing old zones matter |
+| `buildFacts` describes the latest engine state only (throws if asOf is older) | historical facts need state at a past time (snapshot + replay) | Phase 3 backtest harness |

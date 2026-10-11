@@ -20,6 +20,8 @@ export interface FactsOptions {
 type Level = MarketFacts['levels'][number];
 type Zone = MarketFacts['zones'][number];
 
+/** Locale-independent string order (localeCompare depends on the host ICU data). */
+const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const shortId = (prefix: string, source: string): string => `${prefix}${sha1(source).slice(0, 10)}`;
 const POOL_NAME: Record<string, string> = {
   EQH: 'Equal highs',
@@ -113,6 +115,13 @@ export function buildFacts(
   cfg: StrategyConfig,
   opts: FactsOptions,
 ): MarketFacts {
+  const newest = Object.entries(state.lastCandleOpenTime).reduce(
+    (m, [tf, open]) => Math.max(m, (open as number) + TIMEFRAME_MS[tf as Timeframe]),
+    0,
+  );
+  if (opts.asOf < newest) {
+    throw new Error('asOf is before the newest candle the engine has processed');
+  }
   const levels: Level[] = [];
   const zones: Zone[] = [];
   const warnings: string[] = [];
@@ -127,10 +136,8 @@ export function buildFacts(
       warnings.push('ATR_NOT_READY');
     }
   }
-  levels.sort(
-    (a, b) => a.kind.localeCompare(b.kind) || a.price - b.price || a.id.localeCompare(b.id),
-  );
-  zones.sort((a, b) => a.label.localeCompare(b.label) || a.top - b.top || a.id.localeCompare(b.id));
+  levels.sort((a, b) => cmp(a.kind, b.kind) || a.price - b.price || cmp(a.id, b.id));
+  zones.sort((a, b) => cmp(a.label, b.label) || a.top - b.top || cmp(a.id, b.id));
 
   const bias = biasAt(state, cfg, opts.asOf);
   const biasTf =

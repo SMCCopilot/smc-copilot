@@ -114,3 +114,37 @@ describe('event identity', () => {
     );
   }, 120_000);
 });
+
+describe('mirror symmetry (exercises the whole bear side)', () => {
+  const K = 400_000;
+  const flip = (r: Row): Row => [K - r[0], K - r[2], K - r[1], K - r[3]];
+  const MIRROR: Record<string, string> = {
+    SWING_HIGH: 'SWING_LOW',
+    SWING_LOW: 'SWING_HIGH',
+    BOS_UP: 'BOS_DOWN',
+    BOS_DOWN: 'BOS_UP',
+    CHOCH_UP: 'CHOCH_DOWN',
+    CHOCH_DOWN: 'CHOCH_UP',
+    FVG_BULL: 'FVG_BEAR',
+    FVG_BEAR: 'FVG_BULL',
+    OB_BULL: 'OB_BEAR',
+    OB_BEAR: 'OB_BULL',
+  };
+  const shape = (rows: readonly Row[]) =>
+    run(rows, cfg)
+      .map((e) => `${e.time}|${e.anchorOpenTime}|${e.scale}|${e.type}`)
+      .sort();
+  const mirrored = (rows: readonly Row[]) =>
+    run(rows, cfg)
+      .map((e) => `${e.time}|${e.anchorOpenTime}|${e.scale}|${MIRROR[e.type] ?? e.type}`)
+      .sort();
+
+  it('a price-mirrored dataset yields the mirrored events (up<->down, bull<->bear, high<->low)', () => {
+    fc.assert(
+      fc.property(walk(30, 300), (rows) => {
+        expect(shape(rows.map(flip))).toEqual(mirrored(rows));
+      }),
+      { numRuns: 300 },
+    );
+  }, 120_000);
+});

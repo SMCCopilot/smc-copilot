@@ -307,7 +307,9 @@ export function stepScale(
       if (best) {
         const previous = prot.level;
         prot = { ...prot, level: best.level, barIndex: best.barIndex, provisional: false };
-        emit('PROTECTED_UPDATED', pb.t, { from: previous, to: best.level, swingId: best.id });
+        if (previous !== best.level) {
+          emit('PROTECTED_UPDATED', pb.t, { from: previous, to: best.level, swingId: best.id });
+        }
       }
     }
   }

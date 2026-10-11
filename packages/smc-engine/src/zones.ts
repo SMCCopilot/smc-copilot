@@ -175,7 +175,8 @@ export function stepZones(
       const b = at(i);
       if (!b || atr <= 0) continue;
       const ratio = Math.abs(b.c - b.o) / atr;
-      if (ratio >= ctx.cfg.displacement.bodyAtrMult) {
+      const inDirection = dir === 'BULL' ? b.c > b.o : b.c < b.o;
+      if (inDirection && ratio >= ctx.cfg.displacement.bodyAtrMult) {
         dispIdx = i;
         dispRatio = ratio;
         break;

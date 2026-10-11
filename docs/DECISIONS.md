@@ -95,3 +95,28 @@ Re-verify from the VM region in Phase 1 **[verify]**.
   - Railway terminates TLS and gives a public URL, so no tunnel. Railway forwards the client address in `X-Forwarded-For`; the admin allow-list currently reads the Cloudflare header only when `TRUST_PROXY_HEADERS=true`. Admin calls are refused in production until Phase 9 adds proper `X-Forwarded-For` handling (fail closed).
   - Secrets are Railway service variables (the names in `.env.example`), not SOPS files.
   - No idle-reclaim risk, so the A08 "keep-alive load" mitigation is dropped.
+
+## D-017: Engine events have per-occurrence ids; state is versioned
+
+- **Context:** event ids key idempotent storage (`engine_events.event_id` is the primary key). Our own database integration test found that repeated order-block touches, strength-growing equal-level pools and re-formed pools reused one id, so the database kept one row where the pure replay produced several.
+- **Choice:** an id is `sha1(instrument | tf | type:scale | anchor + discriminator | strategyVersion)`. The discriminator is the zone id (plus the touching candle for repeatable tests), or the pool id plus its strength, or the formation close time. A property test (300 random datasets) asserts that ids are unique within a run, and the integration test asserts the database holds exactly the ids a pure replay produces.
+- `EngineState.v` is now `STATE_VERSION` (currently 2). A snapshot with a different version is discarded and the instrument cold-starts, so a deploy that changes engine rules can never resume from an incompatible state.
+
+## D-018: Sessions are fixed UTC windows; non-UTC configs are refused
+
+- The pure engine has no `Date` or `Intl`, so DST-aware zones are impossible inside it. `StrategyConfigSchema` rejects any session or `sessionsTz` other than `UTC` instead of silently treating it as UTC. A DST-aware option needs a time-zone table passed in as data; deferred (backlog).
+
+## D-019: How the engine runner works
+
+- Triggered by `candle.closed`, but it always reads the database: per-timeframe cursor, closed candles only, merged in canonical close order (higher timeframe first on equal close). A missed or reordered notification cannot lose data or change the result; the integration test proves the stored events equal a pure replay.
+- Events and the snapshot are written in one transaction; in-memory state advances only after the commit; ids make a retry idempotent. One chain of work per instrument.
+- Snapshots are written on whole-hour closes only, after every candle of that close is applied. Retention: the last 12 hourly plus one per UTC day for 7 days (a snapshot is about 250 KB, so unbounded hourly snapshots would be about 2 GB per instrument per year).
+- Cold start (no valid snapshot) replays the newest 3,000 candles per timeframe. A rebuild after `candle.backfilled` starts from the last snapshot at or before the repaired range, bumps `revision` on changed events and sets `retracted` on events that no longer exist. It never retracts events older than what it replayed (per-timeframe bound). A failed rebuild stays pending and runs before the next drain.
+- Readiness reports the engine unhealthy only while an instrument's latest job is failing; the next success clears it.
+
+## D-020: Known engine limitations, accepted for now (found by the independent review)
+
+- **Holes in a timeframe are not detected inside the engine.** If a candle is permanently missing (venue hole, `UNRESOLVABLE` gap), pivots, gaps and ATR treat its neighbours as adjacent. A repairable hole is fixed by the backfill rebuild. Whether a permanent hole should reset that timeframe's analysis (costly on 1d) is a Phase 9 decision.
+- **Candle quality flags do not reach the engine yet**, so "a SPIKE_SUSPECT candle cannot be the sole basis of a sweep" (A04 section 6.2) is not implemented. The runner reads the flags; wiring them in belongs with setups (Phase 3), where the rule matters.
+- **Protected level after a CHoCH** is the extreme of the whole leg since the previous protected level, which is what the A04 worked example computes (63960). Some traders use only the last swing before the break; the labeled comparison (G1) decides whether to change it.
+- **Config fields present but not yet used by the engine:** `displacement.requireFvg`, `context.openLevels`, `context.openLevelsAsTargets` (used by setups), and a per-timeframe FVG expiry multiplier (expiry uses `ob.maxAgeBars`).

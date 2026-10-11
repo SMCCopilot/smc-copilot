@@ -9,6 +9,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TIMEFRAME_MS } from '@smc/contracts';
+import { sha1 } from '@smc/smc-engine';
 import { loadCandleFile, loadCandlesFromDb } from './lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -43,10 +45,15 @@ export function buildPack(candles, { tfs, perTf, bars, seed, packId }) {
   const charts = [];
   for (const tf of tfs) {
     const series = candles.filter((c) => c.tf === tf).sort((a, b) => a.openTime - b.openTime);
-    pickWindows(perTf, bars, series.length, seed + tf.length).forEach((start, k) => {
+    pickWindows(perTf, bars, series.length, seed + tf.length).forEach((start) => {
       const slice = series.slice(start, start + bars);
+      // A window with a hole would break the label-index to time mapping: skip it.
+      const contiguous = slice.every(
+        (c, i) => i === 0 || c.openTime - slice[i - 1].openTime === TIMEFRAME_MS[tf],
+      );
+      if (!contiguous) return;
       charts.push({
-        id: `${tf}-${String(k + 1).padStart(2, '0')}`,
+        id: `${tf}-${String(charts.filter((c) => c.tf === tf).length + 1).padStart(2, '0')}`,
         instrumentId: slice[0].instrumentId,
         tf,
         candles: slice.map((c) => ({
@@ -64,7 +71,11 @@ export function buildPack(candles, { tfs, perTf, bars, seed, packId }) {
       });
     });
   }
-  return { packId, charts };
+  // Same candles and options always give the same pack id, so labels stay tied to the right charts.
+  const id =
+    packId ??
+    `pack-${sha1(charts.map((c) => `${c.id}:${c.candles[0].openTime}:${c.candles.length}`).join('|')).slice(0, 10)}`;
+  return { packId: id, charts };
 }
 
 function parseArgs(argv) {
@@ -106,7 +117,6 @@ async function main() {
     perTf: Number(args['per-tf'] ?? 7),
     bars: Number(args.bars ?? 200),
     seed: Number(args.seed ?? 1),
-    packId: `pack-${Date.now().toString(36)}`,
   });
   if (pack.charts.length === 0) throw new Error('not enough candles to cut any chart');
   const out = resolve(String(args.out ?? 'label-pack'));
@@ -114,7 +124,7 @@ async function main() {
   writeFileSync(join(out, 'charts.json'), JSON.stringify(pack));
   const html = readFileSync(join(here, 'label-template.html'), 'utf8').replace(
     '/*PACK_JSON*/null',
-    JSON.stringify(pack).replaceAll('<', '\\u003c'),
+    () => JSON.stringify(pack).replaceAll('<', '\\u003c'), // a function: a string would expand     JSON.stringify(pack).replaceAll('<', '\\u003c'), and friends
   );
   writeFileSync(join(out, 'label.html'), html);
   console.log(`${pack.charts.length} charts written to ${out}`);

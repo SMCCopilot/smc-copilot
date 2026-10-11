@@ -78,3 +78,35 @@ describe('worked example: zones', () => {
     expect(gaps.map((e) => e.type)).toEqual(['FVG_BULL']);
   });
 });
+
+describe('zone rules from review', () => {
+  it('ignores a large OPPOSITE-colour candle when looking for the displacement candle', () => {
+    const rows = WORKED_ROWS.slice(0, 20).map((r) => [...r] as [number, number, number, number]);
+    // idx 17 becomes a 1.6 ATR bearish candle (the order block candidate); the leg's displacement is idx 18.
+    rows[17] = [64220, 64230, 64050, 64060];
+    const ev = run(rows, cfg(), { start: T0 });
+    const ob = ev.find((e) => e.type === 'OB_BULL' && e.data.breakScale === 'internal');
+    expect(ob).toBeDefined();
+    expect(idx(ob?.anchorOpenTime as number)).toBe(17);
+  });
+
+  it('gives every repeated order-block touch its own event id', () => {
+    const ids = events()
+      .filter((e) => e.type === 'OB_TESTED')
+      .map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('CLOSE_THROUGH mitigation does not fill a gap that was only touched', () => {
+    const strict = config((c) => {
+      (c.swings as { internal: { L: number; R: number } }).internal = { L: 2, R: 2 };
+      (c.atr as { fixed?: number }).fixed = 100;
+      (c.fvg as { minSizeAtrMult: number; mitigation: string }).minSizeAtrMult = 0.25;
+      (c.fvg as { mitigation: string }).mitigation = 'CLOSE_THROUGH';
+    });
+    const ev = run(WORKED_ROWS, strict, { start: T0 });
+    const id = ev.find((e) => e.type === 'FVG_BULL')?.data.zoneId;
+    expect(ev.some((e) => e.type === 'FVG_FILLED' && e.data.zoneId === id)).toBe(false);
+    expect(ev.some((e) => e.type === 'FVG_TESTED' && e.data.zoneId === id)).toBe(true);
+  });
+});

@@ -56,4 +56,26 @@ describe('parseStrategyConfig', () => {
     ).toThrow();
     expect(() => parseStrategyConfig('v1', [])).toThrow();
   });
+  it('rejects a bias timeframe that is not analysed, and an inverted OTE band', () => {
+    expect(() =>
+      parseStrategyConfig('v1', {
+        ...minimal,
+        timeframes: { ...minimal.timeframes, bias: ['1d'] },
+      }),
+    ).toThrow(/bias timeframe/);
+    expect(() =>
+      parseStrategyConfig('v1', {
+        ...minimal,
+        range: { ...minimal.range, oteLow: 0.8, oteHigh: 0.6 },
+      }),
+    ).toThrow(/oteLow/);
+  });
+  it('refuses non-UTC sessions', () => {
+    expect(() =>
+      parseStrategyConfig('v1', {
+        ...minimal,
+        context: { ...minimal.context, sessionsTz: 'America/New_York' },
+      }),
+    ).toThrow(/UTC/);
+  });
 });

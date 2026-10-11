@@ -32,7 +32,8 @@ class EngineLifecycle implements OnApplicationBootstrap, OnApplicationShutdown {
         this.readiness.register({
           name: 'engine',
           run: async () => {
-            if (this.runner && this.runner.failures > 0) throw new Error('engine work has failed');
+            if (this.runner && this.runner.failing.size > 0)
+              throw new Error('engine work has failed');
           },
         });
       }

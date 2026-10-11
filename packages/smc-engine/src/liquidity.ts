@@ -20,6 +20,7 @@ import type {
 } from './types.js';
 
 const MAX_POOLS = 40;
+const MAX_MEMBERS = 20;
 const HOUR_MS = 3_600_000;
 
 export const emptyPeriod = (): PeriodState => ({
@@ -78,9 +79,10 @@ export function stepLiquidity(
     const min = liq.sweepMinAtrMult * atr;
     let pend = tracked.get(pool.id);
     if (!pend) {
+      // A wick past the level by the minimum, or any close beyond it (a possible run).
       const pierced = buy
-        ? bar.h >= pool.level + min && bar.h > pool.level
-        : bar.l <= pool.level - min && bar.l < pool.level;
+        ? (bar.h >= pool.level + min && bar.h > pool.level) || bar.c > pool.level
+        : (bar.l <= pool.level - min && bar.l < pool.level) || bar.c < pool.level;
       if (!pierced) continue;
       pend = {
         poolId: pool.id,
@@ -117,7 +119,13 @@ export function stepLiquidity(
   pools = pools.filter((p) => !dropped.has(p.id));
 
   const addPool = (pool: LiquidityPool): void => {
-    pools = [...pools.filter((p) => p.id !== pool.id), pool].slice(-MAX_POOLS);
+    const next = [...pools.filter((p) => p.id !== pool.id), pool];
+    // Over the cap, drop the oldest equal-level pool first so churn cannot evict day/week/session levels.
+    while (next.length > MAX_POOLS) {
+      const i = next.findIndex((p) => p.kind === 'EQH' || p.kind === 'EQL');
+      next.splice(i >= 0 && i < next.length - 1 ? i : 0, 1);
+    }
+    pools = next;
     emit('POOL_NEW', pool.members[0] ?? bar.t, `|${pool.id}|s${pool.strength}`, {
       poolId: pool.id,
       kind: pool.kind,
@@ -144,7 +152,7 @@ export function stepLiquidity(
         ...existing,
         level,
         strength: existing.strength + 1,
-        members: [...existing.members, sw.barOpenTime],
+        members: [...existing.members, sw.barOpenTime].slice(-MAX_MEMBERS),
       });
       continue;
     }
@@ -212,14 +220,6 @@ export function stepLiquidity(
     const rollDay = dayStart > period.dayStart;
     const rollWeek = weekStart > period.weekStart;
     const rollMonth = monthStart > period.monthStart;
-    if (rollDay) {
-      mk('PDH', period.dayHigh, period.dayStart);
-      mk('PDL', period.dayLow, period.dayStart);
-    }
-    if (rollWeek) {
-      mk('PWH', period.weekHigh, period.weekStart);
-      mk('PWL', period.weekLow, period.weekStart);
-    }
     period = {
       ...period,
       dayStart: rollDay ? dayStart : period.dayStart,
@@ -233,6 +233,15 @@ export function stepLiquidity(
       monthStart: rollMonth ? monthStart : period.monthStart,
       monthOpen: rollMonth ? bar.o : period.monthOpen,
     };
+  }
+  // The previous day/week level is known the moment the last candle of the period closes (not a period later).
+  if (closeTime === dayStartOf(closeTime)) {
+    mk('PDH', period.dayHigh, period.dayStart);
+    mk('PDL', period.dayLow, period.dayStart);
+  }
+  if (closeTime === weekStartOf(closeTime)) {
+    mk('PWH', period.weekHigh, period.weekStart);
+    mk('PWL', period.weekLow, period.weekStart);
   }
 
   // 4. Session highs/lows become pools when the session ends (intraday timeframes only).

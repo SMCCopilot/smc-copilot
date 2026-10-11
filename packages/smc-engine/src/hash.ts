@@ -11,5 +11,5 @@ export const eventStreamHash = (events: readonly EngineEvent[]): string =>
 export function countEventsByType(events: readonly EngineEvent[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const e of events) out[e.type] = (out[e.type] ?? 0) + 1;
-  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }

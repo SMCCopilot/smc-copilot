@@ -13,20 +13,20 @@ exports[`golden replay > synthetic multi-timeframe dataset hash is pinned (seed 
     "FVG_FILLED": 511,
     "FVG_INVERTED": 447,
     "FVG_TESTED": 515,
-    "LIQ_RUN": 152,
-    "LIQ_SWEEP": 733,
+    "LIQ_RUN": 147,
+    "LIQ_SWEEP": 742,
     "OB_BEAR": 130,
     "OB_BULL": 133,
     "OB_EXPIRED": 70,
     "OB_MITIGATED": 180,
     "OB_TESTED": 636,
-    "POOL_NEW": 1255,
-    "PROTECTED_UPDATED": 136,
+    "POOL_NEW": 1265,
+    "PROTECTED_UPDATED": 17,
     "SWING_HIGH": 1042,
     "SWING_LOW": 1011,
     "TREND_INIT": 8,
   },
-  "hash": "1f78d35fc56ebe6670cd14ec4b010e8cbc11bcd9",
+  "hash": "a250644835ed208abbb5078ba1ebaa9b23c568c0",
 }
 `;
 
@@ -44,11 +44,10 @@ exports[`golden replay > worked example (golden 0) hash is pinned 1`] = `
     "OB_BULL": 2,
     "OB_TESTED": 1,
     "POOL_NEW": 3,
-    "PROTECTED_UPDATED": 1,
     "SWING_HIGH": 3,
     "SWING_LOW": 4,
     "TREND_INIT": 1,
   },
-  "hash": "107ebcda34d6b934ecc23c0e29ced8ed310c177b",
+  "hash": "c256cd2c25ab453175b54624bc729fbcdf1012b0",
 }
 `;

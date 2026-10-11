@@ -191,8 +191,12 @@ $('export').onclick = () => {
 $('import').onclick = () => $('file').click();
 $('file').onchange = async () => {
   const f = $('file').files[0]; if (!f) return;
-  const j = JSON.parse(await f.text());
+  let j; try { j = JSON.parse(await f.text()); } catch { alert('That file is not valid JSON.'); return; }
   if (j.packId !== PACK.packId) { alert('These labels belong to a different pack.'); return; }
+  const len = new Map(PACK.charts.map((c) => [c.id, c.candles.length]));
+  const ok = Array.isArray(j.labels) && j.labels.every((l) => len.has(l.chartId) && Number.isInteger(l.index) && l.index >= 0 && l.index < len.get(l.chartId) && TOOLS.some((t) => t.id === l.kind));
+  if (!ok) { alert('That file has labels that do not fit this pack. Nothing was imported.'); return; }
+  if (labels.length && !confirm('Replace the ' + labels.length + ' labels in this browser with the ' + j.labels.length + ' in the file?')) return;
   labels = j.labels; save(); ui(); draw();
 };
 window.addEventListener('keydown', (ev) => {

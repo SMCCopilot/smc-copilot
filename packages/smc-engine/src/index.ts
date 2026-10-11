@@ -1,4 +1,4 @@
-export { createEngine, feed, step, WINDOW_BARS } from './engine.js';
+export { createEngine, feed, STATE_VERSION, step, WINDOW_BARS } from './engine.js';
 export type { FactsOptions } from './facts.js';
 export { buildFacts } from './facts.js';
 export { countEventsByType, eventStreamHash } from './hash.js';
