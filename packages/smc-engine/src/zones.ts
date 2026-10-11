@@ -39,9 +39,12 @@ export function stepZones(
   const at = (i: number): CandleLite | undefined => ctx.window[i - ctx.base];
   const closeTime = bar.t + ctx.tfMs;
   const atr = ctx.atr;
+  // Identity is per occurrence: the zone it concerns, plus the touching candle for repeatable tests.
   const emit = (type: EngineEventType, anchor: number, data: EventData): void => {
+    const zone = typeof data.zoneId === 'string' ? `|${data.zoneId}` : '';
+    const touch = type === 'OB_TESTED' ? `|${bar.t}` : '';
     events.push({
-      id: eventId(ctx, type, null, anchor),
+      id: eventId(ctx, type, null, anchor, zone + touch),
       type,
       tf: ctx.tf,
       scale: null,

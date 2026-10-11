@@ -1,0 +1,252 @@
+import { type Candle, type StrategyConfig, TIMEFRAME_MS } from '@smc/contracts';
+import type { Sql } from '@smc/db';
+import {
+  createEngine,
+  type EngineEvent,
+  type EngineState,
+  orderByClose,
+  step,
+} from '@smc/smc-engine';
+import type { CandleStore } from '../ingest/candle-store.js';
+import type { EventBus } from '../ingest/event-bus.js';
+import { EngineStore, type Snapshot } from './engine.store.js';
+
+const HOUR_MS = 3_600_000;
+
+export interface EngineLogger {
+  warn(message: string): void;
+  info(message: string): void;
+}
+
+export interface EngineRunnerOptions {
+  /** Candles per timeframe read at once while catching up from a cursor. */
+  batch?: number;
+  /** Most recent candles per timeframe replayed when there is no snapshot (cold start). */
+  coldStartBars?: number;
+  /** Safety bound on catch-up passes per drain. */
+  maxPasses?: number;
+}
+
+interface Advance {
+  state: EngineState;
+  events: EngineEvent[];
+  snapshot: Snapshot | null;
+  candles: number;
+}
+
+/**
+ * Feeds closed candles to the pure engine in canonical close order and persists what it emits (A04 section 12).
+ *
+ * - Triggered by `candle.closed`, but always works from the database: it reads every analysis-timeframe candle
+ *   after its per-timeframe cursor, so a missed or reordered notification cannot lose or reorder data.
+ * - Events and the hourly snapshot are written in one transaction; in-memory state advances only after the
+ *   commit, so a failure is retried from the same point and event ids make the retry idempotent.
+ * - One chain of work per instrument; different instruments run independently.
+ * - `candle.backfilled` rebuilds from the last snapshot at or before the repaired range and retracts events
+ *   that no longer exist (revision bumps, nothing is deleted).
+ */
+export class EngineRunner {
+  private store!: EngineStore;
+  private cfg!: StrategyConfig;
+  private strategyId = '';
+  private readonly states = new Map<string, EngineState>();
+  private readonly chains = new Map<string, Promise<void>>();
+  private readonly queued = new Set<string>();
+  private unsubscribe: (() => void)[] = [];
+  private readonly batch: number;
+  private readonly coldStart: number;
+  private readonly maxPasses: number;
+  failures = 0;
+
+  constructor(
+    private readonly sql: Sql,
+    private readonly bus: EventBus,
+    private readonly candles: CandleStore,
+    private readonly log: EngineLogger,
+    options: EngineRunnerOptions = {},
+  ) {
+    this.batch = options.batch ?? 3000;
+    this.coldStart = options.coldStartBars ?? 3000;
+    this.maxPasses = options.maxPasses ?? 50;
+  }
+
+  /** Returns false (and stays idle) when there is no ACTIVE strategy version. */
+  async start(): Promise<boolean> {
+    this.store = new EngineStore(this.sql);
+    const strategy = await this.store.activeStrategy();
+    if (!strategy) {
+      this.log.warn('engine: no ACTIVE smc-core strategy version; the engine stays idle');
+      return false;
+    }
+    this.cfg = strategy.config;
+    this.strategyId = strategy.id;
+    this.unsubscribe.push(
+      this.bus.subscribe('candle.closed', (e) => {
+        if (!this.cfg.timeframes.analysis.includes(e.tf)) return;
+        this.enqueueDrain(e.instrumentId, e.canonical);
+      }),
+      this.bus.subscribe('candle.backfilled', (e) => {
+        this.schedule(e.instrumentId, () => this.rebuild(e.instrumentId, e.canonical, e.fromMs));
+      }),
+    );
+    this.log.info(`engine: running strategy version ${this.strategyId}`);
+    return true;
+  }
+
+  async stop(): Promise<void> {
+    for (const u of this.unsubscribe) u();
+    this.unsubscribe = [];
+    await this.idle();
+  }
+
+  async idle(): Promise<void> {
+    while (this.chains.size > 0) await Promise.all([...this.chains.values()]);
+  }
+
+  /** State held in memory for an instrument (tests and facts endpoints). */
+  stateOf(instrumentId: string): EngineState | undefined {
+    return this.states.get(instrumentId);
+  }
+
+  get config(): StrategyConfig {
+    return this.cfg;
+  }
+
+  private enqueueDrain(instrumentId: string, canonical: string): void {
+    // Five timeframes close together; one queued drain already covers them all.
+    if (this.queued.has(instrumentId)) return;
+    this.queued.add(instrumentId);
+    this.schedule(instrumentId, async () => {
+      this.queued.delete(instrumentId);
+      await this.drain(instrumentId, canonical);
+    });
+  }
+
+  private schedule(instrumentId: string, job: () => Promise<void>): void {
+    const previous = this.chains.get(instrumentId) ?? Promise.resolve();
+    const next = previous
+      .then(job)
+      .catch((e: unknown) => {
+        this.failures++;
+        this.log.warn(
+          `engine: work for ${instrumentId} failed: ${(e as Error)?.constructor?.name}`,
+        );
+      })
+      .finally(() => {
+        if (this.chains.get(instrumentId) === next) this.chains.delete(instrumentId);
+      });
+    this.chains.set(instrumentId, next);
+  }
+
+  private async hydrate(instrumentId: string, canonical: string): Promise<EngineState> {
+    const cached = this.states.get(instrumentId);
+    if (cached) return cached;
+    const snap = await this.store.latestSnapshot(instrumentId, this.strategyId);
+    const state = this.validState(snap?.state, canonical) ?? createEngine(canonical);
+    this.states.set(instrumentId, state);
+    return state;
+  }
+
+  private validState(state: EngineState | undefined, canonical: string): EngineState | null {
+    return state && state.v === 1 && state.instrumentId === canonical ? state : null;
+  }
+
+  /** Reads what is new for each analysis timeframe and runs the engine over it in canonical order. */
+  private async advance(instrumentId: string, from: EngineState): Promise<Advance> {
+    let state = from;
+    const events: EngineEvent[] = [];
+    let snapshot: Snapshot | null = null;
+    let total = 0;
+    for (let pass = 0; pass < this.maxPasses; pass++) {
+      const fresh: Candle[] = [];
+      let safeUntil = Number.POSITIVE_INFINITY;
+      for (const tf of this.cfg.timeframes.analysis) {
+        const cursor = state.lastCandleOpenTime[tf];
+        const limit = cursor === undefined ? this.coldStart : this.batch;
+        const rows = await this.candles.closedAfter(instrumentId, tf, cursor, limit);
+        for (const r of rows) {
+          fresh.push({
+            instrumentId: state.instrumentId,
+            tf,
+            openTime: r.openTime,
+            o: r.o,
+            h: r.h,
+            l: r.l,
+            c: r.c,
+            v: r.v,
+            closed: true,
+            providerId: r.providerId,
+          });
+        }
+        const last = rows[rows.length - 1];
+        // A full batch means more rows exist beyond it: do not run past what this timeframe has shown.
+        if (cursor !== undefined && rows.length === limit && last) {
+          safeUntil = Math.min(safeUntil, last.openTime + TIMEFRAME_MS[tf]);
+        }
+      }
+      const ordered = orderByClose(fresh).filter(
+        (c) => c.openTime + TIMEFRAME_MS[c.tf] <= safeUntil,
+      );
+      if (ordered.length === 0) break;
+      for (let i = 0; i < ordered.length; i++) {
+        const c = ordered[i] as Candle;
+        const r = step(state, c, this.cfg);
+        state = r.state;
+        events.push(...r.events);
+        total++;
+        const close = c.openTime + TIMEFRAME_MS[c.tf];
+        const next = ordered[i + 1];
+        const closeAfter = next ? next.openTime + TIMEFRAME_MS[next.tf] : Number.POSITIVE_INFINITY;
+        // Snapshot only on a whole-hour close, after every candle of that close has been applied.
+        if (close % HOUR_MS === 0 && closeAfter !== close) snapshot = { asOf: close, state };
+      }
+    }
+    return { state, events, snapshot, candles: total };
+  }
+
+  private async drain(instrumentId: string, canonical: string): Promise<void> {
+    const from = await this.hydrate(instrumentId, canonical);
+    const r = await this.advance(instrumentId, from);
+    if (r.candles === 0) return;
+    const { written } = await this.store.persist(
+      instrumentId,
+      this.strategyId,
+      r.events,
+      r.snapshot,
+    );
+    this.states.set(instrumentId, r.state);
+    const asOf = Math.max(...Object.values(r.state.lastCandleOpenTime));
+    this.bus.publish('engine.updated', {
+      instrumentId,
+      canonical,
+      asOf,
+      events: written,
+      rebuilt: false,
+    });
+  }
+
+  private async rebuild(instrumentId: string, canonical: string, fromMs: number): Promise<void> {
+    const snap = await this.store.latestSnapshot(instrumentId, this.strategyId, fromMs);
+    const base = this.validState(snap?.state, canonical) ?? createEngine(canonical);
+    const afterMs = snap?.asOf ?? 0;
+    const r = await this.advance(instrumentId, base);
+    const { written, retracted } = await this.store.persist(
+      instrumentId,
+      this.strategyId,
+      r.events,
+      r.snapshot,
+      { afterMs },
+    );
+    this.states.set(instrumentId, r.state);
+    this.log.info(
+      `engine: rebuilt ${canonical} from ${new Date(afterMs).toISOString()} (${written} written, ${retracted} retracted)`,
+    );
+    this.bus.publish('engine.updated', {
+      instrumentId,
+      canonical,
+      asOf: Math.max(0, ...Object.values(r.state.lastCandleOpenTime)),
+      events: written,
+      rebuilt: true,
+    });
+  }
+}

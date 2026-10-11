@@ -21,6 +21,16 @@ export type BusEvents = {
     reasons: readonly string[];
   };
   'dq.incident': { instrumentId: string; rule: string; opened: boolean };
+  /** The engine processed candles for an instrument and its events are committed (write-then-publish). */
+  'engine.updated': {
+    instrumentId: string;
+    canonical: string;
+    /** Open time of the latest candle applied. */
+    asOf: number;
+    /** New or revised events written. */
+    events: number;
+    rebuilt: boolean;
+  };
 };
 
 export type BusEventName = keyof BusEvents;

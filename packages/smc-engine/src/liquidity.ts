@@ -118,7 +118,7 @@ export function stepLiquidity(
 
   const addPool = (pool: LiquidityPool): void => {
     pools = [...pools.filter((p) => p.id !== pool.id), pool].slice(-MAX_POOLS);
-    emit('POOL_NEW', pool.members[0] ?? bar.t, `|${pool.id}`, {
+    emit('POOL_NEW', pool.members[0] ?? bar.t, `|${pool.id}|s${pool.strength}`, {
       poolId: pool.id,
       kind: pool.kind,
       side: pool.side,
@@ -160,7 +160,7 @@ export function stepLiquidity(
     if (!mate) continue;
     const first = mate.barOpenTime < sw.barOpenTime ? mate : sw;
     addPool({
-      id: eventId(ctx, 'POOL_NEW', null, first.barOpenTime, `|${kind}`),
+      id: eventId(ctx, 'POOL_NEW', null, first.barOpenTime, `|${kind}|${closeTime}`),
       kind,
       side: sw.kind === 'HIGH' ? 'BUY' : 'SELL',
       level: kind === 'EQH' ? Math.max(mate.level, sw.level) : Math.min(mate.level, sw.level),

@@ -26,7 +26,7 @@ exports[`golden replay > synthetic multi-timeframe dataset hash is pinned (seed 
     "SWING_LOW": 1011,
     "TREND_INIT": 8,
   },
-  "hash": "9c3487f8b5e0b8bb5add82da69517bf36c573014",
+  "hash": "1f78d35fc56ebe6670cd14ec4b010e8cbc11bcd9",
 }
 `;
 
@@ -49,6 +49,6 @@ exports[`golden replay > worked example (golden 0) hash is pinned 1`] = `
     "SWING_LOW": 4,
     "TREND_INIT": 1,
   },
-  "hash": "828b55757129900e9a49898626e8ed87f29807be",
+  "hash": "107ebcda34d6b934ecc23c0e29ced8ed310c177b",
 }
 `;

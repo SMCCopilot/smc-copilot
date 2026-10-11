@@ -8,6 +8,7 @@ import { buildLoggerParams } from './common/logging.js';
 import { ProblemFilter } from './common/problem.filter.js';
 import { ENV } from './config/tokens.js';
 import { DbModule } from './db/db.module.js';
+import { EngineModule } from './engine/engine.module.js';
 import { HealthModule } from './health/health.module.js';
 import { IngestModule } from './ingest/ingest.module.js';
 
@@ -29,6 +30,7 @@ export class AppModule {
         AuthModule,
         HealthModule,
         IngestModule,
+        EngineModule,
       ],
       providers: [
         { provide: ENV, useValue: env },

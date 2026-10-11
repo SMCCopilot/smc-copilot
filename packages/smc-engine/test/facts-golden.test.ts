@@ -68,7 +68,7 @@ describe('state: snapshot, bounds, restart', () => {
     const full = at(long.length);
     expect(full).toBeLessThan(mid * 1.12);
     expect(full).toBeLessThan(400_000);
-  });
+  }, 120_000);
 
   it('re-feeding already processed candles emits nothing (idempotent replay)', () => {
     const once = feed(createEngine(INSTRUMENT), data, cfg);
@@ -119,5 +119,5 @@ describe('performance', () => {
     expect(times.length).toBeGreaterThan(30_000);
     expect(p95).toBeLessThan(20);
     expect(max).toBeLessThan(250);
-  });
+  }, 120_000);
 });

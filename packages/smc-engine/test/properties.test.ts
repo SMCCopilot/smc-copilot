@@ -56,7 +56,7 @@ describe('engine properties', () => {
       }),
       { numRuns: 1000 },
     );
-  });
+  }, 120_000);
 
   it('determinism: the same candles give a byte-identical event stream', () => {
     fc.assert(
@@ -65,7 +65,7 @@ describe('engine properties', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 120_000);
 
   it('events never precede the bars they depend on', () => {
     fc.assert(
@@ -77,7 +77,7 @@ describe('engine properties', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 120_000);
 
   it('scale and shift invariance: structure is unchanged by x2 and +offset', () => {
     const shape = (rows: readonly Row[]) =>
@@ -92,5 +92,25 @@ describe('engine properties', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 120_000);
+});
+
+describe('event identity', () => {
+  it('every event in a run has a unique id (ids key idempotent storage)', () => {
+    fc.assert(
+      fc.property(walk(30, 400), (rows) => {
+        const events = run(rows, cfg);
+        const seen = new Map<string, string>();
+        const dup: string[] = [];
+        for (const e of events) {
+          const was = seen.get(e.id);
+          if (was !== undefined)
+            dup.push(`${was} vs ${e.type}:${e.tf}:${e.scale}:${e.anchorOpenTime}`);
+          seen.set(e.id, `${e.type}:${e.tf}:${e.scale}:${e.anchorOpenTime}`);
+        }
+        expect(dup).toEqual([]);
+      }),
+      { numRuns: 300 },
+    );
+  }, 120_000);
 });

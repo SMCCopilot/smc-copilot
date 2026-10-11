@@ -68,6 +68,34 @@ export class CandleStore {
     return rows.map((r) => toStored(instrumentId, tf, r));
   }
 
+  /**
+   * CLOSED candles of a timeframe in open-time order. With a cursor: the first `limit` candles after it.
+   * Without one (cold start): the most recent `limit`. INCOMPLETE candles are never returned.
+   */
+  async closedAfter(
+    instrumentId: string,
+    tf: Timeframe,
+    afterMs: number | undefined,
+    limit: number,
+    db: Tx = this.sql,
+  ): Promise<StoredCandle[]> {
+    const rows =
+      afterMs === undefined
+        ? await db<CandleRow[]>`
+            select open_time, o, h, l, c, v, flags, status, provider_id from candles
+             where instrument_id = ${instrumentId} and tf = ${tf} and status = 'CLOSED'
+               and scope_id = '00000000-0000-0000-0000-000000000000'
+             order by open_time desc limit ${limit}`
+        : await db<CandleRow[]>`
+            select open_time, o, h, l, c, v, flags, status, provider_id from candles
+             where instrument_id = ${instrumentId} and tf = ${tf} and status = 'CLOSED'
+               and scope_id = '00000000-0000-0000-0000-000000000000'
+               and open_time > ${new Date(afterMs)}
+             order by open_time limit ${limit}`;
+    const stored = rows.map((r) => toStored(instrumentId, tf, r));
+    return afterMs === undefined ? stored.reverse() : stored;
+  }
+
   /** Creates the monthly partitions covering [fromMs, toMs] so history older than the pre-created window can be stored. */
   async ensurePartitions(fromMs: number, toMs: number): Promise<void> {
     // A malformed job (fromMs = 0) would otherwise create hundreds of partitions.
