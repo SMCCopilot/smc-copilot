@@ -43,7 +43,7 @@ export function selectMigrations(options: ApplyOptions = {}): MigrationFile[] {
     .filter((f) => /^\d{4}_.+\.sql$/.test(f))
     .sort();
   const names: string[] = [];
-  if (options.withShims) names.push('dev/0000_dev_shims.sql');
+  if (options.withShims) names.push('dev/0000_dev_shims.sql', 'dev/0001_dev_shims_identities.sql');
   names.push(...core);
   if (options.withUpgrade) names.push('upgrade/0010_full_product_additions.sql');
   if (options.withForex) names.push('upgrade/0011_forex_enable.sql');

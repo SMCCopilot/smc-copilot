@@ -42,10 +42,10 @@ describe('MVP schema (migrations 0001-0009 with dev shims)', () => {
 
   it('applies every migration once and is idempotent on the second run', async () => {
     const first = await applyMigrations(sql, { withShims: true });
-    expect(first.applied).toHaveLength(10);
+    expect(first.applied).toHaveLength(11);
     const second = await applyMigrations(sql, { withShims: true });
     expect(second.applied).toEqual([]);
-    expect(second.skipped).toHaveLength(10);
+    expect(second.skipped).toHaveLength(11);
   });
 
   it('creates the 55 MVP tables the plan promises (partition children excluded)', async () => {
@@ -78,7 +78,7 @@ describe('MVP schema (migrations 0001-0009 with dev shims)', () => {
 
   it('records the migrations in smc_meta and keeps that schema out of public', async () => {
     const [row] = await sql<{ n: number }[]>`select count(*)::int as n from smc_meta.migrations`;
-    expect(row?.n).toBe(10);
+    expect(row?.n).toBe(11);
   });
 
   it('refuses a migration whose content changed after it was applied (forward-only)', async () => {
@@ -127,8 +127,8 @@ describe('concurrent runners', () => {
       applyMigrations(a, { withShims: true }),
       applyMigrations(b, { withShims: true }),
     ]);
-    expect(ra.applied.length + rb.applied.length).toBe(10);
+    expect(ra.applied.length + rb.applied.length).toBe(11);
     const [row] = await a<{ n: number }[]>`select count(*)::int as n from smc_meta.migrations`;
-    expect(row?.n).toBe(10);
+    expect(row?.n).toBe(11);
   });
 });

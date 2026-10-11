@@ -32,6 +32,12 @@ try {
     withUpgrade: args.has('--upgrade'),
     withForex: args.has('--forex'),
   });
+  // The canonical seed ships a dev-only invite code. A real database must never keep it.
+  if (!args.has('--shims')) {
+    const removed =
+      await sql`delete from invite_codes where code = 'DEV-BETA-0001' and note = 'dev only' returning code`;
+    if (removed.length > 0) console.log('removed the dev-only sample invite code');
+  }
   for (const name of result.applied) console.log(`applied  ${name}`);
   for (const name of result.skipped) console.log(`skipped  ${name}`);
   console.log(`done: ${result.applied.length} applied, ${result.skipped.length} already present`);

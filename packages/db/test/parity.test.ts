@@ -42,8 +42,11 @@ describe('packages/db migrations vs canonical set-b/sql', () => {
     const names = selectMigrations({ withShims: true, withUpgrade: true, withForex: true }).map(
       (m) => m.name,
     );
-    expect(names[0]).toBe('dev/0000_dev_shims.sql');
-    expect(names.slice(1, 10)).toEqual([...names.slice(1, 10)].sort());
+    expect(names.slice(0, 2)).toEqual([
+      'dev/0000_dev_shims.sql',
+      'dev/0001_dev_shims_identities.sql',
+    ]);
+    expect(names.slice(2, 11)).toEqual([...names.slice(2, 11)].sort());
     expect(names.slice(-2)).toEqual([
       'upgrade/0010_full_product_additions.sql',
       'upgrade/0011_forex_enable.sql',
