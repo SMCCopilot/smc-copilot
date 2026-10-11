@@ -18,7 +18,9 @@
     "engine:label-pack": "node tools/engine/src/label-pack.mjs",
     "engine:fidelity": "node tools/engine/src/fidelity-cli.mjs",
     "engine:fetch-history": "node tools/engine/src/fetch-history.mjs",
-    "engine:backtest": "node tools/engine/src/backtest.mjs"
+    "engine:backtest": "node tools/engine/src/backtest.mjs",
+    "ai:eval": "node tools/ai-eval/src/eval.mjs",
+    "ai:session-hour": "node tools/ai-eval/src/session-hour.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
