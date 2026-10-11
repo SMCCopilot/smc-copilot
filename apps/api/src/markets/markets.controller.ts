@@ -1,6 +1,8 @@
 import { Controller, Get, Inject, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import { TimeframeSchema } from '@smc/contracts';
 import { z } from 'zod';
+import { AccountGuard, GatesGuard, UserOnly } from '../account/account.guards.js';
+import { RATE_LIMITS, RateLimit, RateLimitGuard } from '../account/rate-limit.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { ApiProblemError } from '../common/problem.js';
 import { parseWith } from '../common/validation.js';
@@ -49,13 +51,33 @@ export class MarketsController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UserOnly()
+  @Get('venues')
+  async venues() {
+    const rows = await this.markets.venues();
+    const feeds = this.runtime?.monitor?.all() ?? [];
+    return {
+      items: rows.map((v) => {
+        const mine = feeds.filter((f) => f.canonical.startsWith(`${v.id}:`));
+        const status =
+          !this.runtime || mine.length === 0 || mine.some((f) => f.state === 'STALE')
+            ? 'DOWN'
+            : mine.every((f) => f.state === 'OK')
+              ? 'LIVE'
+              : 'DEGRADED';
+        return { id: v.id, name: v.name, analysis: v.analysis, status };
+      }),
+    };
+  }
+
+  @UserOnly()
   @Get('instruments')
   async list() {
     return { items: await this.markets.list() };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UserOnly()
+  @RateLimit(RATE_LIMITS.resolve)
   @Get('instruments/resolve')
   async resolve(@Query() raw: unknown) {
     const q = parseWith(ResolveQuerySchema, raw);
@@ -74,7 +96,7 @@ export class MarketsController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UserOnly()
   @Get('instruments/:id')
   async one(@Param('id', ParseUUIDPipe) id: string) {
     const instrument = await this.markets.get(id);
@@ -82,7 +104,7 @@ export class MarketsController {
     return instrument;
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UserOnly()
   @Get('instruments/:id/status')
   async instrumentStatus(@Param('id', ParseUUIDPipe) id: string) {
     if (!(await this.markets.get(id))) throw new ApiProblemError('NOT_FOUND');
@@ -105,7 +127,7 @@ export class MarketsController {
   }
 
   /** Always registered (keeps the contract identical to Set A) but refuses unless the licence view says DISPLAY_OK. */
-  @UseGuards(JwtAuthGuard, LicenseGuard)
+  @UseGuards(JwtAuthGuard, AccountGuard, GatesGuard, RateLimitGuard, LicenseGuard)
   @Get('instruments/:id/candles')
   async candles(@Param('id', ParseUUIDPipe) id: string, @Query() raw: unknown) {
     const q = parseWith(CandlesQuerySchema, raw);

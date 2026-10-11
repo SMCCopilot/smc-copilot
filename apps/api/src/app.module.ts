@@ -4,6 +4,7 @@ import type { Env } from '@smc/config';
 import { LoggerModule, PinoLogger } from 'nestjs-pino';
 import type { DestinationStream } from 'pino';
 import { AccountModule } from './account/account.module.js';
+import { ApiModule } from './api.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { buildLoggerParams } from './common/logging.js';
 import { ProblemFilter } from './common/problem.filter.js';
@@ -33,6 +34,7 @@ export class AppModule {
         HealthModule,
         IngestModule,
         EngineModule,
+        ApiModule,
       ],
       providers: [
         { provide: ENV, useValue: env },

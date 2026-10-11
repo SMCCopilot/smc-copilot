@@ -98,6 +98,12 @@ export class MarketsService {
     return row ? toDto(row) : undefined;
   }
 
+  async venues(): Promise<{ id: string; name: string; analysis: boolean }[]> {
+    const rows = await this.db()<{ id: string; name: string; analysis_enabled: boolean }[]>`
+      select id, name, analysis_enabled from venues where enabled and kind = 'CEX' and analysis_enabled order by id`;
+    return rows.map((r) => ({ id: r.id, name: r.name, analysis: r.analysis_enabled }));
+  }
+
   /** Effective licence for one instrument, straight from the view. */
   async effectiveLicense(id: string): Promise<LicenseClass | undefined> {
     const [row] = await this.db()<{ effective_class: LicenseClass }[]>`
