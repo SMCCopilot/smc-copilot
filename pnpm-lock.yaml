@@ -44,6 +44,9 @@ importers:
       '@noble/hashes':
         specifier: ^2.4.0
         version: 2.4.0
+      '@smc/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@smc/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics

@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { type AccountRequest, UserOnly } from '../account/account.guards.js';
 import { RATE_LIMITS, RateLimit } from '../account/rate-limit.js';
 import { ApiProblemError } from '../common/problem.js';
+import { assertNoSecret } from '../common/secrets.js';
 import { parseWith } from '../common/validation.js';
 import { SQL } from '../config/tokens.js';
 import { JournalService } from './journal.service.js';
@@ -106,6 +107,7 @@ export class JournalController {
   @HttpCode(204)
   async feedback(@Req() req: AccountRequest, @Body() body: unknown): Promise<void> {
     const b = parseWith(FeedbackSchema, body);
+    assertNoSecret(b.comment);
     if (!this.sqlOrNull) throw new ApiProblemError('NOT_READY', 'The database is not configured.');
     await this.sqlOrNull`
       insert into user_feedback (workspace_id, user_id, target_type, target_id, rating, comment)

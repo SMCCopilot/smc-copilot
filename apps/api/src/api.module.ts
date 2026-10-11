@@ -1,7 +1,23 @@
 import { Module } from '@nestjs/common';
+import {
+  AnthropicAdapter,
+  type FetchLike,
+  GeminiAdapter,
+  LlmRouter,
+  OpenAiAdapter,
+  PriceTable,
+} from '@smc/ai';
+import type { Env } from '@smc/config';
+import { AiAdminController } from './ai/ai-admin.controller.js';
+import { AiGateService } from './ai/ai-gate.service.js';
+import { AiMeterService } from './ai/ai-meter.service.js';
+import { NarrativeController } from './ai/narrative.controller.js';
+import { NarrativeService } from './ai/narrative.service.js';
+import { ProviderConfigService } from './ai/provider-config.service.js';
 import { AnalysisController } from './analysis/analysis.controller.js';
 import { AnalysisService } from './analysis/analysis.service.js';
 import { IdempotencyInterceptor } from './common/idempotency.js';
+import { ENV, LLM_ROUTER } from './config/tokens.js';
 import { DevController } from './dev/dev.controller.js';
 import { GateController } from './gate/gate.controller.js';
 import { GateService } from './gate/gate.service.js';
@@ -30,6 +46,8 @@ import { TradesService } from './trades/trades.service.js';
     TradesController,
     JournalController,
     DevController,
+    NarrativeController,
+    AiAdminController,
   ],
   providers: [
     AnalysisService,
@@ -43,6 +61,28 @@ import { TradesService } from './trades/trades.service.js';
     PositionMonitor,
     RealtimeService,
     IdempotencyInterceptor,
+    ProviderConfigService,
+    AiMeterService,
+    AiGateService,
+    NarrativeService,
+    {
+      provide: LLM_ROUTER,
+      inject: [ENV, ProviderConfigService, AiMeterService],
+      useFactory: (env: Env, source: ProviderConfigService, meter: AiMeterService): LlmRouter => {
+        const f = ((url, init) => fetch(url, init)) as FetchLike;
+        return new LlmRouter({
+          source,
+          adapters: {
+            anthropic: new AnthropicAdapter(f),
+            openai: new OpenAiAdapter(f),
+            gemini: new GeminiAdapter(f),
+          },
+          prices: PriceTable.parse(env.AI_PRICES_JSON),
+          onCall: meter.onCall,
+          onOutcome: meter.onOutcome,
+        });
+      },
+    },
   ],
   exports: [
     AnalysisService,
@@ -53,6 +93,10 @@ import { TradesService } from './trades/trades.service.js';
     TradesService,
     JournalService,
     NotificationsService,
+    NarrativeService,
+    AiGateService,
+    ProviderConfigService,
+    LLM_ROUTER,
   ],
 })
 export class ApiModule {}

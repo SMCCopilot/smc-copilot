@@ -4,6 +4,7 @@ import type { Sql } from '@smc/db';
 import type { z } from 'zod';
 import { AccountService } from '../account/account.service.js';
 import { ApiProblemError } from '../common/problem.js';
+import { assertNoSecret } from '../common/secrets.js';
 import { SQL } from '../config/tokens.js';
 import { GateService } from '../gate/gate.service.js';
 import { decodeCursor, encodeCursor } from '../setups/setups.service.js';
@@ -105,6 +106,7 @@ export class TradesService {
     b: z.infer<typeof TradeCreateSchema>,
     ip: string | null,
   ): Promise<TradeDto> {
+    assertNoSecret(b.notes);
     if (b.planId && !b.gateId) {
       throw new ApiProblemError(
         'GATE_TOKEN_INVALID',
@@ -198,6 +200,7 @@ export class TradesService {
     workspaceId: string,
     b: z.infer<typeof TradePatchSchema>,
   ) {
+    assertNoSecret(b.notes);
     const cur = await this.get(id, workspaceId);
     if (cur.status !== 'OPEN') throw new ApiProblemError('CONFLICT', 'The trade is closed.');
     await this.sql`

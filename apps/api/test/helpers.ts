@@ -80,6 +80,13 @@ export interface TestAppOptions {
   readonly env?: Record<string, string>;
   readonly logSink?: LogSink;
   readonly keys?: TestKeys;
+  /** Replace a provider: with a ready value, or a factory that receives the listed dependencies. */
+  readonly overrides?: readonly {
+    provide: unknown;
+    value?: unknown;
+    factory?: (...deps: never[]) => unknown;
+    inject?: unknown[];
+  }[];
 }
 
 export async function createTestApp(
@@ -100,6 +107,12 @@ export async function createTestApp(
         issuer: ISSUER,
       }),
     );
+  }
+  for (const o of options.overrides ?? []) {
+    const target = builder.overrideProvider(o.provide as never);
+    builder = o.factory
+      ? target.useFactory({ factory: o.factory as never, inject: (o.inject ?? []) as never })
+      : target.useValue(o.value);
   }
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true });

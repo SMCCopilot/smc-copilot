@@ -84,6 +84,22 @@ export class AnalysisService {
     return { state, cfg: strategy.config, strategyId: strategy.id };
   }
 
+  /** The engine's facts for one instrument, as the AI layer sees them (and nothing else). */
+  async marketFacts(instrumentId: string) {
+    const instrument = await this.markets.get(instrumentId);
+    if (!instrument) throw new ApiProblemError('NOT_FOUND');
+    const { state, cfg } = await this.loadState(instrumentId);
+    const asOf = closeOf(state);
+    const monitor = this.runtime?.monitor?.statusOf(instrumentId)?.state;
+    const dataQuality: AnalysisResponse['dataQuality'] =
+      monitor === 'DEGRADED' || monitor === 'STALE'
+        ? monitor
+        : monitor === 'OK' || Date.now() - asOf <= STALE_AFTER_MS
+          ? 'OK'
+          : 'STALE';
+    return { facts: buildFacts(state, cfg, { asOf, dataQuality }), instrument, asOf };
+  }
+
   async snapshot(
     instrumentId: string,
     workspaceId: string,

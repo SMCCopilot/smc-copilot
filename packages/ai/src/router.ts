@@ -11,6 +11,7 @@ import {
   type JobId,
   type LlmRequest,
   type LlmUsage,
+  type ModelTier,
   type ProviderAdapter,
   type ProviderId,
   type ProviderSource,
@@ -82,11 +83,15 @@ export class LlmRouter {
     await this.o.onOutcome?.(callId, outcome);
   }
 
-  async call(job: JobId, req: LlmRequest, opts: { dataClass: DataClass }): Promise<LlmResult> {
+  async call(
+    job: JobId,
+    req: LlmRequest,
+    opts: { dataClass: DataClass; tier?: ModelTier },
+  ): Promise<LlmResult> {
     if ((req.images?.length ?? 0) > 0 && opts.dataClass !== 'D1') {
       throw new Error('a request that carries an image must be classed D1');
     }
-    const tier = JOB_TIER[job];
+    const tier = opts.tier ?? JOB_TIER[job];
     const all = [...(await this.o.source.providers())].sort((a, b) => a.priority - b.priority);
     const enabled = all.filter((p) => p.enabled);
     const usable = enabled.filter((p) => p.apiKey && p.models[tier] && this.o.adapters[p.id]);

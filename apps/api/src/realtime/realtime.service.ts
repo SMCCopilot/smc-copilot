@@ -19,6 +19,7 @@ import {
 } from '@smc/contracts';
 import type { Sql } from '@smc/db';
 import { Server, type Socket } from 'socket.io';
+import { NarrativeService } from '../ai/narrative.service.js';
 import { AnalysisService } from '../analysis/analysis.service.js';
 import { ApiProblemError } from '../common/problem.js';
 import { ENV, EVENT_BUS, SQL } from '../config/tokens.js';
@@ -85,6 +86,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     private readonly gate: GateService,
     private readonly notifications: NotificationsService,
     private readonly positions: PositionMonitor,
+    private readonly narratives: NarrativeService,
     @Optional() @Inject(EVENT_BUS) private readonly bus: EventBus | null,
   ) {}
 
@@ -112,6 +114,10 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     this.notifications.onCreated = (_w, userId, n) =>
       this.toUser(userId, 'notification', n satisfies NotificationDto);
     this.positions.onEvent = (_w, userId, e) => this.toUser(userId, 'position.event', e);
+    this.narratives.hasWatchers = (id) => this.inRoom(id).length > 0;
+    this.narratives.onReady = (id, n) => {
+      for (const c of this.inRoom(id)) this.emit(c, 'narrative.done', n);
+    };
     if (this.bus) {
       this.unsub.push(
         this.bus.subscribe('engine.updated', (e) => this.pushAnalysis(e.instrumentId)),
@@ -137,6 +143,8 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     this.gate.onState = null;
     this.notifications.onCreated = null;
     this.positions.onEvent = null;
+    this.narratives.hasWatchers = null;
+    this.narratives.onReady = null;
     await new Promise<void>((resolve) => {
       if (!this.io) return resolve();
       this.io.close(() => resolve());
@@ -288,6 +296,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
           resumedFrom: typeof p.lastSeq === 'number' ? p.lastSeq : null,
         });
         await this.pushAnalysis(ctx.instrumentId, ctx);
+        await this.pushNarrative(ctx);
         return;
       }
       case 'session.pause':
@@ -301,6 +310,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       case 'context.set':
         await this.setContext(socket, ctx, p.instrumentId as string, p.tf as Timeframe);
         await this.pushAnalysis(ctx.instrumentId, ctx);
+        await this.pushNarrative(ctx);
         return;
       case 'analysis.request':
         ctx.lastSnapshotId = null;
@@ -451,6 +461,17 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
         if (e instanceof ApiProblemError && e.code === 'ANALYSIS_UNAVAILABLE') continue;
         this.log.warn(`push failed: ${String(e)}`);
       }
+    }
+  }
+
+  /** The current explanation for the session's instrument: model text if cached, else the template. */
+  private async pushNarrative(ctx: Ctx): Promise<void> {
+    if (!ctx.instrumentId) return;
+    try {
+      this.emit(ctx, 'narrative.done', await this.narratives.current(ctx.instrumentId));
+    } catch (e) {
+      if (e instanceof ApiProblemError && e.code === 'ANALYSIS_UNAVAILABLE') return;
+      this.log.warn(`narrative push failed: ${String(e)}`);
     }
   }
 

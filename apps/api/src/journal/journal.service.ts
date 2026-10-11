@@ -3,6 +3,7 @@ import type { JournalNoteSchema, JournalPatchSchema } from '@smc/contracts';
 import type { Sql } from '@smc/db';
 import type { z } from 'zod';
 import { ApiProblemError } from '../common/problem.js';
+import { assertNoSecret } from '../common/secrets.js';
 import { SQL } from '../config/tokens.js';
 import { decodeCursor, encodeCursor } from '../setups/setups.service.js';
 
@@ -69,6 +70,7 @@ export class JournalService {
   }
 
   async addNote(userId: string, workspaceId: string, b: z.infer<typeof JournalNoteSchema>) {
+    assertNoSecret(b.notes, ...b.tags);
     if (b.tradeId) {
       const [t] = await this
         .sql`select 1 from trade_records where id = ${b.tradeId} and workspace_id = ${workspaceId}`;
@@ -83,6 +85,7 @@ export class JournalService {
 
   /** Only the user's words are editable; the recorded facts of an entry (kind, plan, payload) never change. */
   async patch(id: string, workspaceId: string, b: z.infer<typeof JournalPatchSchema>) {
+    assertNoSecret(b.notes, ...(b.tags ?? []));
     const [r] = await this.sql<EntryRow[]>`
       update journal_entries set notes = coalesce(${b.notes ?? null}, notes), tags = coalesce(${b.tags ?? null}, tags)
        where id = ${id} and workspace_id = ${workspaceId}

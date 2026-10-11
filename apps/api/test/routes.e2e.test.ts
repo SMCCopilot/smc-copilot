@@ -68,7 +68,7 @@ describe('route inventory', () => {
         if (!prefix.startsWith('v1')) continue;
         const classGuards = (R.getMetadata('__guards__', cls) as unknown[] | undefined) ?? [];
         for (const name of Object.getOwnPropertyNames(cls.prototype)) {
-          const fn = (cls.prototype as Record<string, unknown>)[name];
+          const fn = Object.getOwnPropertyDescriptor(cls.prototype, name)?.value as unknown;
           if (typeof fn !== 'function' || R.getMetadata('method', fn) === undefined) continue;
           seen++;
           const sub = String(R.getMetadata('path', fn) ?? '');
@@ -147,6 +147,21 @@ describe('journal, notifications and feedback', () => {
     const sum = await request(http).get('/v1/journal/summary').set('Authorization', a.auth);
     expect(sum.body.winRate).toBeNull();
     expect(sum.body.winRateReason).toBe('INSUFFICIENT_HISTORY');
+  });
+
+  it('refuses a note that looks like a seed phrase and stores nothing', async () => {
+    const app = await boot();
+    const a = await readyUser();
+    const phrase =
+      'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+    const r = await request(app.getHttpServer())
+      .post('/v1/journal/notes')
+      .set('Authorization', a.auth)
+      .send({ notes: phrase, tags: [] });
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('SECRET_DETECTED');
+    expect(JSON.stringify(r.body)).not.toContain('abandon');
+    expect((await sql`select 1 from journal_entries`).length).toBe(0);
   });
 
   it('lists and marks notifications read for their owner only; feedback is stored', async () => {
