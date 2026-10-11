@@ -40,6 +40,8 @@ import { SetupsService } from './setups/setups.service.js';
 import { PositionMonitor } from './trades/position-monitor.js';
 import { TradesController } from './trades/trades.controller.js';
 import { TradesService } from './trades/trades.service.js';
+import { VoiceController } from './voice/voice.controller.js';
+import { VoiceService } from './voice/voice.service.js';
 
 /** The read APIs, risk and sessions (B05 week 10). Account guards and flags come from the global AccountModule. */
 @Module({
@@ -56,6 +58,7 @@ import { TradesService } from './trades/trades.service.js';
     AiAdminController,
     ChatController,
     ExplainController,
+    VoiceController,
   ],
   providers: [
     AnalysisService,
@@ -77,6 +80,7 @@ import { TradesService } from './trades/trades.service.js';
     ChatService,
     ContextService,
     ExplainService,
+    VoiceService,
     {
       provide: LLM_ROUTER,
       inject: [ENV, ProviderConfigService, AiMeterService],

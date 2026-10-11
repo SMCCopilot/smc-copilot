@@ -1,0 +1,16 @@
+{
+  "name": "@smc/tool-voice-eval",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@smc/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  }
+}

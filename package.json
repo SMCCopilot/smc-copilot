@@ -20,7 +20,9 @@
     "engine:fetch-history": "node tools/engine/src/fetch-history.mjs",
     "engine:backtest": "node tools/engine/src/backtest.mjs",
     "ai:eval": "node tools/ai-eval/src/eval.mjs",
-    "ai:session-hour": "node tools/ai-eval/src/session-hour.mjs"
+    "ai:session-hour": "node tools/ai-eval/src/session-hour.mjs",
+    "voice:pin-models": "node tools/voice-eval/src/pin-models.mjs",
+    "voice:eval": "node tools/voice-eval/src/eval.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

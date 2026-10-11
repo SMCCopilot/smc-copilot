@@ -8,13 +8,14 @@ import {
   Optional,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { FORBIDDEN_BY_VOICE, parseCommand } from '@smc/ai';
+import { parseCommand } from '@smc/ai';
 import type { Env } from '@smc/config';
 import {
   CLIENT_EVENT_TYPES,
   ClientEventSchemas,
   type ClientEventType,
   type ErrorCode,
+  forbiddenByVoice,
   type OcrContext,
   RESERVED_CLIENT_EVENTS,
   type Timeframe,
@@ -43,6 +44,7 @@ import { MarketsService } from '../markets/markets.service.js';
 import { verifyWsToken } from '../sessions/ws-token.js';
 import { SetupsService } from '../setups/setups.service.js';
 import { PositionMonitor } from '../trades/position-monitor.js';
+import { VoiceService } from '../voice/voice.service.js';
 
 /** Past this many queued packets a socket is slow: pushes are skipped and the client resyncs from `seq` (A02 section 4). */
 const BACKPRESSURE_PACKETS = 100;
@@ -69,6 +71,8 @@ interface Ctx {
   /** Chat messages the client asked to stop; their remaining pieces are not sent. */
   cancelled: Set<string>;
   hint: HintState;
+  /** Which live setup a voice "next / previous setup" moves from. */
+  setupCursor: number;
   /** False until the stored sequence is loaded; nothing is pushed before then, so numbers never collide. */
   ready: boolean;
 }
@@ -108,6 +112,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     private readonly chat: ChatService,
     private readonly explain: ExplainService,
     private readonly contextSvc: ContextService,
+    private readonly voiceSvc: VoiceService,
     private readonly journal: JournalService,
     @Optional() @Inject(EVENT_BUS) private readonly bus: EventBus | null,
   ) {}
@@ -243,6 +248,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       dirty: false,
       cancelled: new Set<string>(),
       hint: newHintState(),
+      setupCursor: 0,
       ready: false,
     };
     ctx.socketId = socket.id;
@@ -447,22 +453,27 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     const log = (outcome: string, route: string | null, command: string | null) =>
       sql`insert into voice_events (workspace_id, user_id, session_id, engine, confidence, outcome, route, command_id)
           values (${ctx.workspaceId}, ${ctx.userId}, ${ctx.sessionId}, ${p.sttEngine}, ${p.sttConfidence}, ${outcome}, ${route}, ${command})`;
-    if (FORBIDDEN_BY_VOICE.test(p.text)) {
+    // The server corrects what was heard with its own glossary: whatever the browser did, this is the authority.
+    const heard = p.text;
+    const text = (await this.voiceSvc.correct(heard)).text;
+    const forbidden = forbiddenByVoice(heard) ?? forbiddenByVoice(text);
+    if (forbidden) {
       await log('FORBIDDEN_BY_VOICE', 'COMMAND', null);
       this.emit(ctx, 'error', {
         code: 'VOICE_FORBIDDEN_ACTION',
         detail: 'That cannot be done by voice. Use the on-screen button.',
+        action: forbidden,
       });
       return;
     }
-    const cmd = p.sttConfidence >= 0.6 ? parseCommand(p.text) : null;
+    const cmd = p.sttConfidence >= 0.6 ? parseCommand(text) : null;
     if (!cmd) {
       await log(p.sttConfidence < 0.6 ? 'LOW_CONFIDENCE' : 'OK', 'QUESTION', null);
       await this.chat.send(
         this.caller(socket, ctx),
         {
           clientMsgId: p.utteranceId,
-          text: p.text,
+          text,
           inputMode: 'voice',
           sttConfidence: p.sttConfidence,
           sttEngine: p.sttEngine,
@@ -472,6 +483,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       return;
     }
     await log('OK', 'COMMAND', cmd.command);
+    const extra: Record<string, unknown> = {};
     if (cmd.command === 'SWITCH_TF') {
       const tf = TimeframeSchema.safeParse(cmd.tf);
       if (!tf.success) {
@@ -487,6 +499,17 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
         source: 'voice',
       });
       await this.pushAnalysis(ctx.instrumentId, ctx);
+    } else if (cmd.command === 'SWITCH_INSTRUMENT') {
+      const r = await this.contextSvc.resolveText(cmd.text);
+      if (r.canonical) {
+        await this.setContext(socket, ctx, r.canonical, ctx.tf, 'voice');
+        await this.pushAnalysis(ctx.instrumentId, ctx);
+        await this.pushNarrative(ctx);
+      } else {
+        // Not clear (spot or perpetual, which venue) or unknown: ask, never guess.
+        extra.needsPick = true;
+        extra.candidates = r.candidates;
+      }
     } else if (cmd.command === 'PAUSE_RESUME') {
       await sql`update copilot_sessions set state = ${cmd.resume ? 'ACTIVE' : 'PAUSED'} where id = ${ctx.sessionId} and state <> 'ENDED'`;
       this.emit(ctx, 'session.state', {
@@ -496,12 +519,46 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     } else if (cmd.command === 'JOURNAL_NOTE') {
       assertNoSecret(cmd.note);
       await this.journal.addNote(ctx.userId, ctx.workspaceId, { notes: cmd.note, tags: ['voice'] });
+    } else if (cmd.command === 'SHOW_SETUP' || cmd.command === 'WATCH_SETUP') {
+      const live = ctx.instrumentId
+        ? (await this.setups.activeFor(ctx.instrumentId, ctx.workspaceId)).filter(
+            (x) => x.state === 'ARMED' || x.state === 'TRIGGERED',
+          )
+        : [];
+      if (cmd.command === 'SHOW_SETUP') {
+        const n = live.length;
+        const next =
+          cmd.ordinal === 'NEXT'
+            ? (ctx.setupCursor + 1) % Math.max(1, n)
+            : cmd.ordinal === 'PREVIOUS'
+              ? (ctx.setupCursor - 1 + Math.max(1, n)) % Math.max(1, n)
+              : cmd.ordinal - 1;
+        const target = live[next];
+        if (target) {
+          ctx.setupCursor = next;
+          extra.setupId = target.id;
+        } else {
+          extra.setupId = null;
+        }
+      } else {
+        extra.setupId = live[ctx.setupCursor]?.id ?? null;
+      }
     }
+    // EXPLAIN_CHART and MUTE are carried out by the browser, which holds the capture and the speaker.
     this.emit(ctx, 'voice.final', {
       utteranceId: p.utteranceId,
       route: 'COMMAND',
       command: cmd.command,
       args: cmd,
+      heard,
+      corrected:
+        text !==
+        heard
+          .toLowerCase()
+          .replace(/[.,!?]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      ...extra,
     });
   }
 
@@ -531,7 +588,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     ctx: Ctx,
     canonical: string,
     tf: Timeframe | null,
-    source: 'manual' | 'ocr' = 'manual',
+    source: 'manual' | 'ocr' | 'voice' = 'manual',
   ): Promise<void> {
     const [row] = await (this.sql as Sql)<
       { id: string }[]

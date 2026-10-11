@@ -12,4 +12,6 @@ export * from './strategy.js';
 export * from './timeframe.js';
 export * from './trade.js';
 export * from './voice.js';
+export * from './voice-glossary.js';
+export * from './voice-grammar.js';
 export * from './ws.js';

@@ -1,0 +1,119 @@
+{
+  "_note": "Speech models run on the user's device. The browser downloads exactly these files and refuses any whose SHA-256 differs. Fill revision, sha256 and bytes with: pnpm voice:pin-models. An engine with any unpinned file is reported UNPINNED and is not used.",
+  "engines": [
+    {
+      "tag": "whisper-web",
+      "label": "Whisper tiny (English), on device",
+      "backend": "webgpu",
+      "repo": "onnx-community/whisper-tiny.en",
+      "revision": "2575352d61be1bf7225cf8f8b268a4678025fc58",
+      "files": [
+        {
+          "id": "config",
+          "path": "config.json",
+          "sha256": "251ea843b5901a99efa58c0b99b8052c6019aa3e7d2baf46693a1128ff606233",
+          "bytes": 2197
+        },
+        {
+          "id": "generation_config",
+          "path": "generation_config.json",
+          "sha256": "7b2e8451ed5f118e75fdd991409d72119d21d2fef1eba9723f68fb9c57fe5dc9",
+          "bytes": 1646
+        },
+        {
+          "id": "preprocessor_config",
+          "path": "preprocessor_config.json",
+          "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d",
+          "bytes": 339
+        },
+        {
+          "id": "tokenizer",
+          "path": "tokenizer.json",
+          "sha256": "5eb60cec1e77aeeb6869a2bb5a8e01a84c3fe5d072d75369343021fe6f5310d0",
+          "bytes": 2405679
+        },
+        {
+          "id": "tokenizer_config",
+          "path": "tokenizer_config.json",
+          "sha256": "93879c3dccdd4b976f709acd85b44778873f30c275e67026f30ca1e4c975230c",
+          "bytes": 282662
+        },
+        {
+          "id": "encoder",
+          "path": "onnx/encoder_model_quantized.onnx",
+          "sha256": "e93ec822f16a8fd264e7de972ad17d615ea7334b75a52d54c50c2e18dd503a25",
+          "bytes": 10124993
+        },
+        {
+          "id": "decoder",
+          "path": "onnx/decoder_model_merged_quantized.onnx",
+          "sha256": "c0592d0749413c960569e1c7fb806b060d5d18f3ebad4a95cbf9a77dc6e9be52",
+          "bytes": 30718858
+        }
+      ]
+    },
+    {
+      "tag": "moonshine-web",
+      "label": "Moonshine tiny, on device (no GPU needed)",
+      "backend": "wasm",
+      "repo": "onnx-community/moonshine-tiny-ONNX",
+      "revision": "a6da1241cd305dcd64eab1edbd615f2bb9aabb95",
+      "files": [
+        {
+          "id": "config",
+          "path": "config.json",
+          "sha256": "558e1e02069137c796ace1e50c48d8fe451f04a295929138e6bea885517f0edb",
+          "bytes": 921
+        },
+        {
+          "id": "generation_config",
+          "path": "generation_config.json",
+          "sha256": "f9b3f711b57be7def2e50a8942f64f36ee0a55fad5b84ff93a687b6c5bcc1d44",
+          "bytes": 147
+        },
+        {
+          "id": "preprocessor_config",
+          "path": "preprocessor_config.json",
+          "sha256": "fa43a7017ef85cd1d0fba0d9aae77c8adb16990ae6f11115631f41ec5d8aa679",
+          "bytes": 128
+        },
+        {
+          "id": "tokenizer",
+          "path": "tokenizer.json",
+          "sha256": "7b913404bdd039af4756783218af4440bc07fb7d6d8258d677e34f95b3ec416f",
+          "bytes": 3761754
+        },
+        {
+          "id": "tokenizer_config",
+          "path": "tokenizer_config.json",
+          "sha256": "edaee394565d428ea98a663ae7209cdcfeefc5585c42d7a570ff7c986df2cd15",
+          "bytes": 135735
+        },
+        {
+          "id": "encoder",
+          "path": "onnx/encoder_model_quantized.onnx",
+          "sha256": "c6fc4b7bc5af75c0591fd157a1f3829b533d18e9769a888fd95a62e470dd4f4a",
+          "bytes": 7937661
+        },
+        {
+          "id": "decoder",
+          "path": "onnx/decoder_model_merged_quantized.onnx",
+          "sha256": "eed87831c3a6103534aae7d47a5d485025c659a1323901513961c39fe8a1a367",
+          "bytes": 20243286
+        }
+      ]
+    }
+  ],
+  "vad": {
+    "repo": "onnx-community/silero-vad",
+    "revision": "e71cae966052b992a7eca6b17738916ce0eca4ec",
+    "files": [
+      {
+        "id": "model",
+        "path": "onnx/model.onnx",
+        "sha256": "a4a068cd6cf1ea8355b84327595838ca748ec29a25bc91fc82e6c299ccdc5808",
+        "bytes": 2243022
+      }
+    ]
+  }
+}

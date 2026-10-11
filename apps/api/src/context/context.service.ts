@@ -213,6 +213,31 @@ export class ContextService {
     return out;
   }
 
+  /** A market named in words ("eth perp", "bitcoin"): the best match, or the shortlist when it is not clear. */
+  async resolveText(
+    text: string,
+  ): Promise<{ canonical: string | null; ambiguous: boolean; candidates: string[] }> {
+    // "ETH perp" -> ETHUSDT on a perpetual market; "bitcoin spot" -> BTCUSDT on spot.
+    const perp = /\b(?:perp|perps|perpetual)\b/i.test(text);
+    const spot = /\bspot\b/i.test(text);
+    const base = text
+      .replace(/\b(?:perp|perps|perpetual|spot)\b/gi, '')
+      .trim()
+      .replace(/\s+/g, '');
+    const query = /(?:USDT|USD|USDC)$/i.test(base) || base.includes(':') ? base : `${base}USDT`;
+    const { result } = await this.markets.resolve({
+      text: query,
+      ...(perp ? { isPerp: true } : spot ? { isPerp: false } : {}),
+    });
+    const names = result.candidates.slice(0, 3).map((c) => c.instrument.canonical);
+    const first = names[0] ?? null;
+    return {
+      canonical: result.ambiguous ? null : first,
+      ambiguous: result.ambiguous,
+      candidates: names,
+    };
+  }
+
   /** Throws when the instrument id does not exist (a manual pick that is not analysed). */
   async instrumentByCanonical(
     canonical: string,

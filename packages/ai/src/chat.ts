@@ -118,59 +118,9 @@ export function adviceSummary(facts: MarketFacts | null, space: RefSpace | null)
 
 // ---- commands -----------------------------------------------------------------------------------------------
 
-export type Command =
-  | { command: 'EXPLAIN_CHART' }
-  | { command: 'SWITCH_TF'; tf: string }
-  | { command: 'SHOW_SETUP'; ordinal: number }
-  | { command: 'PAUSE_RESUME'; resume: boolean }
-  | { command: 'JOURNAL_NOTE'; note: string };
-
-const TF_WORDS: Record<string, string> = {
-  '1 minute': '1m',
-  'one minute': '1m',
-  '5 minute': '5m',
-  'five minute': '5m',
-  '15 minute': '15m',
-  'fifteen minute': '15m',
-  '1 hour': '1h',
-  'one hour': '1h',
-  hourly: '1h',
-  '4 hour': '4h',
-  'four hour': '4h',
-  daily: '1d',
-  'one day': '1d',
-};
-
-/** The deterministic command grammar (A02 section 6.5). It can only produce the commands listed in the type. */
-export function parseCommand(raw: string): Command | null {
-  const t = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[.!?]+$/g, '');
-  if (/^(?:please\s+)?explain\s+(?:this|the)\s+chart$/.test(t)) return { command: 'EXPLAIN_CHART' };
-  if (/^(?:pause|stop\s+listening)$/.test(t)) return { command: 'PAUSE_RESUME', resume: false };
-  if (/^(?:resume|continue)$/.test(t)) return { command: 'PAUSE_RESUME', resume: true };
-  const tf =
-    /^(?:switch\s+to|go\s+to|show)\s+(?:the\s+)?(\d+\s?[mhd]|[a-z0-9 ]+?)(?:\s+chart|\s+timeframe)?$/.exec(
-      t,
-    );
-  if (tf) {
-    const v = (tf[1] ?? '').replace(/\s+/g, ' ').trim();
-    const short = /^(\d+)\s?([mhd])$/.exec(v);
-    if (short) return { command: 'SWITCH_TF', tf: `${short[1]}${short[2]}` };
-    const word = TF_WORDS[v];
-    if (word) return { command: 'SWITCH_TF', tf: word };
-  }
-  const show = /^show\s+setup\s+(\d{1,2})$/.exec(t);
-  if (show) return { command: 'SHOW_SETUP', ordinal: Number(show[1]) };
-  const note = /^(?:note|journal)\s*[:,-]?\s+(.{3,280})$/.exec(raw.trim().toLowerCase());
-  if (note) return { command: 'JOURNAL_NOTE', note: (note[1] ?? '').slice(0, 280) };
-  return null;
-}
-
-/** Spoken or typed requests for things voice may never do (invariant 1). Used to answer clearly instead of ignoring. */
-export const FORBIDDEN_BY_VOICE =
-  /\b(?:confirm|approve|accept)\s+(?:the\s+|my\s+)?(?:trade|gate|order|plan)\b|\blog\s+(?:this\s+|my\s+|the\s+)?trade\b|\b(?:change|set|raise|lower)\s+(?:my\s+)?risk\b|\bdelete\s+(?:my\s+)?(?:data|account|journal|everything)\b|\b(?:pay|purchase|subscribe|upgrade)\b/i;
+export type { VoiceCommand as Command } from '@smc/contracts';
+// The grammar lives in @smc/contracts so the browser and the server share one definition.
+export { FORBIDDEN_BY_VOICE, parseVoiceCommand as parseCommand } from '@smc/contracts';
 
 // ---- redaction ----------------------------------------------------------------------------------------------
 

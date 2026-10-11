@@ -284,6 +284,16 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2))
 
+  tools/voice-eval:
+    dependencies:
+      '@smc/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2))
+
 packages:
 
   '@biomejs/biome@2.5.15':
