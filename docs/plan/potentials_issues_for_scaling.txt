@@ -1,0 +1,1 @@
+1. | **Zero retention of screen frames** | Frames exist only in memory (browser, then server RAM, then the model provider's API call). Never written to disk, storage or logs. A02, A05 section 12 - Managing store Frames on Server RAM
