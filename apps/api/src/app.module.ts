@@ -3,6 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import type { Env } from '@smc/config';
 import { LoggerModule, PinoLogger } from 'nestjs-pino';
 import type { DestinationStream } from 'pino';
+import { AccountModule } from './account/account.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { buildLoggerParams } from './common/logging.js';
 import { ProblemFilter } from './common/problem.filter.js';
@@ -28,6 +29,7 @@ export class AppModule {
         LoggerModule.forRoot(buildLoggerParams(env, logStream)),
         DbModule,
         AuthModule,
+        AccountModule,
         HealthModule,
         IngestModule,
         EngineModule,

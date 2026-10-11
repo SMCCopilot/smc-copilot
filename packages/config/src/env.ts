@@ -56,6 +56,15 @@ const EnvSchema = z
     WS_TOKEN_SECRET: optionalString,
     ABUSE_HASH_SALT: optionalString,
     TURNSTILE_SECRET: optionalString,
+    // Explicit opt-out of the Cloudflare Turnstile bot check on the invite endpoint. Production otherwise requires
+    // TURNSTILE_SECRET. With the opt-out the closed-beta invite code and per-address attempt limits are the only gate.
+    TURNSTILE_DISABLED: z.stringbool().default(false),
+    // The public Supabase anon key (safe to ship to browsers); only the optional dev client needs it.
+    SUPABASE_ANON_KEY: optionalString,
+    // Version string of the disclaimer text users must accept (A09). Changing it asks everyone to accept again.
+    DISCLAIMER_VERSION: z.string().min(1).max(32).default('2026-10-01'),
+    // Serve the minimal HTML dev client at /dev (wallet sign-in, session, analysis, gate, trades, journal).
+    DEV_CLIENT_ENABLED: z.stringbool().default(false),
 
     BINANCE_WS_URL: z.url().default('wss://data-stream.binance.vision'),
     BINANCE_REST_URL: z.url().default('https://data-api.binance.vision'),
@@ -99,7 +108,6 @@ const EnvSchema = z
       'SUPABASE_JWKS_URL',
       'WS_TOKEN_SECRET',
       'ABUSE_HASH_SALT',
-      'TURNSTILE_SECRET',
     ] as const;
     for (const key of required) {
       if (env[key] === undefined) {
@@ -120,6 +128,14 @@ const EnvSchema = z
           message: `must be at least ${min} characters`,
         });
       }
+    }
+    if (!env.TURNSTILE_DISABLED && env.TURNSTILE_SECRET === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TURNSTILE_SECRET'],
+        message:
+          'required in production (or set TURNSTILE_DISABLED=true to opt out of the bot check)',
+      });
     }
     if (env.CORS_ORIGINS.length === 0) {
       ctx.addIssue({ code: 'custom', path: ['CORS_ORIGINS'], message: 'required in production' });

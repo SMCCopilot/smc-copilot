@@ -1,3 +1,4 @@
+export * from './account.js';
 export * from './admin.js';
 export * from './candle.js';
 export * from './facts.js';

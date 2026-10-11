@@ -76,7 +76,9 @@ export function toProblem(error: unknown, correlationId: string): MappedProblem 
       headers:
         error.code === 'AUTH_REQUIRED' || error.code === 'TOKEN_EXPIRED'
           ? { 'WWW-Authenticate': 'Bearer' }
-          : {},
+          : error.code === 'RATE_LIMITED' && typeof error.extras?.retryAfterSec === 'number'
+            ? { 'Retry-After': String(error.extras.retryAfterSec) }
+            : {},
     };
   }
 
