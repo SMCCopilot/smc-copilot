@@ -23,7 +23,9 @@
     "pino": "^10.4.0",
     "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "pg-boss": "^12.37.1",
+    "@smc/market-data": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.2.7",

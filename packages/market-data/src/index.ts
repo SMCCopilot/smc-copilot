@@ -7,4 +7,7 @@ export * from './http.js';
 export * from './managed-connection.js';
 export * from './provider.js';
 export * from './replay.js';
+export * from './resolve.js';
+export * from './stream-registry.js';
 export * from './validate.js';
+export * from './watchdog.js';
