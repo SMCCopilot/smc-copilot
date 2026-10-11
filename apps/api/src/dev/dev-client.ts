@@ -89,6 +89,31 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
     <pre id="journal"></pre>
   </section>
 
+  <section><h2>7. Explanation of the analysis</h2>
+    <div id="narr-src" class="muted">-</div>
+    <div id="narr"></div>
+  </section>
+
+  <section><h2>8. Chat</h2>
+    <div class="muted">Ask about the chart or about Smart Money Concepts. It will not tell you to trade.</div>
+    <pre id="chatlog"></pre>
+    <div class="row"><input id="chatin" size="50" placeholder="ask a question"><button id="chatsend">Send</button><span id="budget" class="muted"></span></div>
+  </section>
+
+  <section><h2>9. Explain a chart image</h2>
+    <div class="muted">The picture is read once and not kept. Only your market and a short written answer are stored.</div>
+    <div class="row"><input type="file" id="img" accept="image/png,image/jpeg,image/webp"><select id="exsrc"><option value="UPLOAD">Upload (old screenshot allowed)</option><option value="SHARE">Live capture</option></select><button id="explain">Explain</button></div>
+    <div id="exstage" class="muted"></div>
+    <pre id="exout"></pre>
+  </section>
+
+  <section><h2>10. AI providers (admin only)</h2>
+    <div class="muted">Turn each provider on or off. Needs your account to have the admin role. Changes apply within seconds.</div>
+    <div class="row"><button id="aiload">Load</button><button id="aispend">Show spend</button></div>
+    <table id="aiprov"><thead><tr><th>Provider</th><th>On</th><th>Key</th><th>Order</th><th>Data it may see</th><th></th></tr></thead><tbody></tbody></table>
+    <pre id="aispendout"></pre>
+  </section>
+
   <section><h2>Event log</h2><pre id="log2"></pre></section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -166,8 +191,12 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
     socket.on('connect', function () { $('sock').textContent = 'connected'; socket.emit('session.start', { sessionId: sessionId, lastSeq: lastSeq || undefined }); });
     socket.on('connect_error', function (e) { $('sock').textContent = 'refused: ' + e.message; log('connect_error', { m: e.message }); });
     socket.on('disconnect', function () { $('sock').textContent = 'disconnected'; });
-    ['session.state', 'analysis.update', 'setup.event', 'feed.status', 'warning', 'error', 'gate.state', 'position.event', 'notification', 'context.updated'].forEach(function (t) {
+    ['session.state', 'analysis.update', 'setup.event', 'feed.status', 'warning', 'error', 'gate.state', 'position.event', 'notification', 'context.updated', 'narrative.done', 'chat.chunk', 'chat.done', 'budget.update', 'voice.final'].forEach(function (t) {
       socket.on(t, function (env) {
+        if (t === 'narrative.done') { renderNarr(env.payload); return; }
+        if (t === 'chat.chunk') { chatChunk(env.payload); return; }
+        if (t === 'chat.done') { chatDone(env.payload); return; }
+        if (t === 'budget.update') { $('budget').textContent = 'AI today: $' + env.payload.spentUsd.toFixed(3) + ' of $' + env.payload.limitUsd.toFixed(2); return; }
         if (env && typeof env.seq === 'number') lastSeq = Math.max(lastSeq, env.seq);
         if (t === 'analysis.update') renderAnalysis(env.payload); else log(t, env && env.payload);
         if (t === 'setup.event') { setups[env.payload.setup.id] = env.payload.setup; renderSetups(); }
@@ -250,6 +279,88 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   $('addnote').onclick = function () { api('POST', '/v1/journal/notes', { notes: $('note').value, tags: [] }).then(function () { $('note').value = ''; loadJournal(); }); };
   $('refresh').onclick = function () { loadJournal(); loadTrades(); };
   setInterval(function () { if (token) loadJournal(); }, 30000);
+
+  function renderNarr(n) {
+    $('narr-src').innerHTML = (n.aiGenerated ? '<b>AI-written</b>' : 'Template text') + (n.generating ? ' - a fuller explanation is being written' : '') + ' | as of ' + n.asOf;
+    var c = n.content;
+    $('narr').innerHTML = '<p><b>' + c.headline + '</b></p><p>' + c.bias_summary + '</p>' +
+      c.scenarios.map(function (s) { return '<p><i>' + s.kind.toLowerCase() + ':</i> ' + s.if_then + '</p>'; }).join('') +
+      (c.risks_and_unknowns.length ? '<p class="muted">' + c.risks_and_unknowns.join(' ') + '</p>' : '') +
+      c.history.map(function (h) { return '<p class="muted">' + h.text + '</p>'; }).join('');
+  }
+
+  var chatBuf = '';
+  function chatChunk(e) { chatBuf += e.delta; $('chatlog').textContent = $('chatlog').dataset.base + 'Assistant: ' + chatBuf; }
+  function chatDone(e) { $('chatlog').dataset.base += 'Assistant: ' + e.text + (e.aiGenerated ? '  [AI]' : '') + '\n\n'; chatBuf = ''; $('chatlog').textContent = $('chatlog').dataset.base; }
+  $('chatlog').dataset.base = '';
+  $('chatsend').onclick = function () {
+    var t = $('chatin').value.trim();
+    if (!t || !socket) return;
+    $('chatlog').dataset.base += 'You: ' + t + '\n';
+    $('chatlog').textContent = $('chatlog').dataset.base;
+    socket.emit('chat.send', { clientMsgId: crypto.randomUUID(), text: t, inputMode: 'text' });
+    $('chatin').value = '';
+  };
+  $('chatin').onkeydown = function (e) { if (e.key === 'Enter') $('chatsend').click(); };
+
+  $('explain').onclick = function () {
+    var file = $('img').files[0];
+    if (!file) { $('exstage').textContent = 'choose an image first'; return; }
+    var fd = new FormData();
+    fd.append('image', file);
+    fd.append('source', $('exsrc').value);
+    if (session) fd.append('sessionId', session.sessionId);
+    $('exout').textContent = '';
+    $('exstage').textContent = 'sending...';
+    fetch('/v1/explain', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd }).then(function (r) {
+      if (!r.ok) return r.json().then(function (j) { $('exstage').textContent = 'refused: ' + (j.code || r.status) + ' ' + (j.detail || ''); });
+      var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
+      function pump() {
+        return reader.read().then(function (x) {
+          if (x.done) return;
+          buf += dec.decode(x.value, { stream: true });
+          var parts = buf.split('\n\n'); buf = parts.pop();
+          parts.forEach(function (p) {
+            var ev = /^event: (.+)$/m.exec(p), dt = /^data: (.+)$/m.exec(p);
+            if (!ev || !dt) return;
+            var d = JSON.parse(dt[1]);
+            if (ev[1] === 'explain.stage') $('exstage').textContent = d.stage + '...';
+            else if (ev[1] === 'explain.chunk') $('exout').textContent += d.delta;
+            else if (ev[1] === 'explain.done') $('exstage').textContent = d.mode + (d.aiGenerated ? ' (AI-written)' : ' (template)') + (d.warnings.length ? ' - ' + d.warnings.join(', ') : '');
+          });
+          return pump();
+        });
+      }
+      return pump();
+    });
+  };
+
+  function adminApi(method, path, body) {
+    return api(method, path, body, { 'X-Admin-Confirm': 'yes' });
+  }
+  function loadProviders() {
+    return adminApi('GET', '/v1/admin/ai/providers').then(function (r) {
+      $('aiprov').tBodies[0].innerHTML = r.items.map(function (p) {
+        return '<tr><td>' + p.id + '</td><td><b class="' + (p.enabled ? 'ok' : 'bad') + '">' + (p.enabled ? 'ON' : 'off') + '</b> <span class="muted">(' + p.enabledSource + ')</span></td><td>' +
+          (p.keyPresent ? 'set' : '<span class="bad">missing</span>') + '</td><td><input size="2" value="' + p.priority + '" data-prio="' + p.id + '"></td><td>' +
+          ['D0', 'D1', 'D2'].map(function (c) { return '<label><input type="checkbox" data-cls="' + p.id + '" value="' + c + '"' + (p.dataClasses.indexOf(c) >= 0 ? ' checked' : '') + '>' + c + '</label>'; }).join(' ') +
+          '</td><td><button data-tog="' + p.id + '" data-on="' + (p.enabled ? '1' : '0') + '">' + (p.enabled ? 'Turn off' : 'Turn on') + '</button> <button data-save="' + p.id + '">Save order and data</button></td></tr>';
+      }).join('');
+      Array.prototype.forEach.call(document.querySelectorAll('button[data-tog]'), function (b) {
+        b.onclick = function () { adminApi('PUT', '/v1/admin/ai/providers/' + b.getAttribute('data-tog'), { enabled: b.getAttribute('data-on') !== '1' }).then(loadProviders); };
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('button[data-save]'), function (b) {
+        var id = b.getAttribute('data-save');
+        b.onclick = function () {
+          var cls = Array.prototype.map.call(document.querySelectorAll('input[data-cls="' + id + '"]:checked'), function (x) { return x.value; });
+          var prio = Number(document.querySelector('input[data-prio="' + id + '"]').value);
+          adminApi('PUT', '/v1/admin/ai/providers/' + id, { priority: prio, dataClasses: cls }).then(loadProviders);
+        };
+      });
+    });
+  }
+  $('aiload').onclick = loadProviders;
+  $('aispend').onclick = function () { adminApi('GET', '/v1/admin/ai/spend').then(function (r) { $('aispendout').textContent = JSON.stringify(r, null, 2); }); };
 })();
 </script>
 </body>

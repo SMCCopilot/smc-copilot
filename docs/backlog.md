@@ -50,3 +50,13 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | Position monitor events fire once per type per trade and are not unique-indexed | acceptable for MVP | refine from live use |
 | Blocklist additions and `blockUser` do not void open gates; a block takes effect at the next reap (up to 60 s) for sockets | minor | Phase 9 |
 | `toDto` loads the risk profile per setup per push | cache per workspace | Phase 9 |
+| True provider token streaming for chat with `chat.retract` on a late violation | answers are validated before sending, so retraction is never needed today; streaming lowers time to first token | when first-token latency matters |
+| J4 "why no trade?" and J5 post-session review jobs, translation into other languages, 5% sampled online judge | no weeks assigned in B05; templates cover the product without them | post-MVP |
+| Eval results into `eval_runs`; OCR eval on 100 crops; image-read eval and bake-off between providers | needs live keys and the browser OCR model | with spike S1 and the first live run |
+| Live verification of the three provider request shapes (Anthropic, OpenAI, Gemini) | only tested against a fake network so far; first live call is the owner's | first live run |
+| Price table has no built-in prices | plan marks them "verify"; fallback is deliberately high | owner enters real prices in `AI_PRICES_JSON` |
+| Narrative minimum interval and cache hit counters are in memory | single process | M6 |
+| `AiMeter` and rate limiters are per process | one API process until the worker split | M6 |
+| Price comparison for OCR reconcile reveals a little about the price (capped at 60 an hour) | accepted under "analysis only"; could be replaced by a coarser match signal | Phase 9 |
+| Narrative language is English only; Explain/chat in other languages not translated | A05 6.5 | when demand appears |
+| The dev client builds HTML by string concatenation of server text | acceptable for a local test harness; escape before any public use | before any public use |

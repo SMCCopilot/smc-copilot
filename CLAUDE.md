@@ -31,6 +31,8 @@ pnpm engine:label-pack --db --instrument X --from D --to D --out label-pack   # 
 pnpm engine:fidelity --pack label-pack/charts.json --labels labels.json --report docs/engine-fidelity.md
 pnpm engine:fetch-history --symbol BTCUSDT --market SPOT --from 2025-09-01 --to 2026-10-01 --out data/history/X.ndjson [--dns 1.1.1.1]   # public klines, raw data stays out of git
 pnpm engine:backtest --candles data/history/X.ndjson [--candles ...] --from 2025-10-01 --to 2026-10-01 --report docs/backtest-report.md [--db]
+pnpm ai:eval                                   # AI guardrail harness check (free, offline); add --live --provider X --judge Y for a real model (prints a cost estimate, needs --yes)
+pnpm ai:session-hour --provider anthropic      # measure the cost of a replayed session hour (estimate first, needs --yes)
 ```
 
 ## Layout and dependency rules (A01 section 6)
