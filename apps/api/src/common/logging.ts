@@ -57,7 +57,13 @@ export function safeErr(err: unknown): { type: string; code?: string; stack?: st
   };
   // Drop everything before the first real frame: the header is `Name: message`, and a multi-line message could
   // otherwise contain a line that looks like a frame.
-  const lines = typeof e.stack === 'string' ? e.stack.split(/\r?\n/) : [];
+  const raw =
+    typeof e.stack !== 'string'
+      ? ''
+      : typeof e.message === 'string' && e.message !== ''
+        ? e.stack.split(e.message).join('')
+        : e.stack;
+  const lines = raw.split(/\r?\n/);
   const firstFrame = lines.findIndex((l) => /^\s+at /.test(l));
   const frames =
     firstFrame >= 0
