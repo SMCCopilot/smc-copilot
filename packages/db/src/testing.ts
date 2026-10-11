@@ -56,6 +56,22 @@ async function useExistingServer(serverUrl: string): Promise<TestServer> {
   };
 }
 
+function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    work.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 async function startEmbedded(): Promise<TestServer> {
   const { default: EmbeddedPostgres } = await import('embedded-postgres');
   const databaseDir = mkdtempSync(join(tmpdir(), 'smc-pg-'));
@@ -69,8 +85,16 @@ async function startEmbedded(): Promise<TestServer> {
     onLog: () => {},
     onError: () => {},
   });
-  await pg.initialise();
-  await pg.start();
+  // A failed spawn (for example a path over Windows' 260 character limit) never rejects inside the library,
+  // so bound startup and say what to check instead of hanging until the test runner gives up.
+  await withDeadline(
+    (async () => {
+      await pg.initialise();
+      await pg.start();
+    })(),
+    90_000,
+    'embedded Postgres did not start within 90 s; on Windows check that the repository path is short (under about 100 characters)',
+  );
   return {
     async createDatabase() {
       const name = dbName();
