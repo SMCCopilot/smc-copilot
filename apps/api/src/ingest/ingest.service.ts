@@ -25,7 +25,9 @@ export type HandleResult =
   | { kind: 'duplicate' }
   | { kind: 'quarantined'; reason: QuarantineReason }
   | { kind: 'unmapped' }
-  | { kind: 'forming' };
+  | { kind: 'forming' }
+  /** Shed under back-pressure; the caller must not count it as received. */
+  | { kind: 'dropped' };
 
 export type Source = 'live' | 'backfill';
 
@@ -83,7 +85,7 @@ export class IngestService {
   };
 
   /** Counters for operators; exposed through the admin feeds endpoint. */
-  readonly counters = { stored: 0, duplicates: 0, quarantined: 0, unmapped: 0 };
+  readonly counters = { stored: 0, duplicates: 0, quarantined: 0, unmapped: 0, dropped: 0 };
 
   constructor(
     private readonly store: CandleStore,
@@ -119,7 +121,8 @@ export class IngestService {
       this.log.warn(
         `ingest backlog for ${instrument.canonical} exceeded ${MAX_PENDING_PER_INSTRUMENT}; dropping a candle`,
       );
-      return Promise.resolve({ kind: 'forming' } as const);
+      this.counters.dropped += 1;
+      return Promise.resolve({ kind: 'dropped' } as const);
     }
     state.pending += 1;
     const previous = this.chains.get(instrument.id) ?? Promise.resolve();
@@ -188,7 +191,7 @@ export class IngestService {
   private async load(instrument: InstrumentRow, state: InstrumentState): Promise<void> {
     if (state.loaded) return;
     state.lastOpen = await this.store.latestOpenTime(instrument.id, '1m');
-    state.incidentOpen = await this.store.hasOpenIncident(instrument.id);
+    state.incidentOpen = await this.store.hasOpenDataQualityIncident(instrument.id);
     state.loaded = true;
   }
 
@@ -229,6 +232,7 @@ export class IngestService {
     );
     if (!result.ok) {
       if (result.reason === 'CONFLICTING_DUPLICATE') {
+        state.agreeStreak = 0;
         await this.openIncident(instrument, 'V5', { openTime: candle.openTime });
       }
       return this.reject(instrument, providerId, result.reason, raw);
@@ -242,6 +246,7 @@ export class IngestService {
     const stored: StoredCandle = { ...candle, closed: true, flags, status: 'CLOSED' };
     const lastBefore = state.lastOpen;
     const events: PublishedEvent[] = [];
+    const afterCommit: (() => void)[] = [];
 
     const inserted = await this.store.begin(async (tx) => {
       if (!(await this.store.insertCandle(stored, tx))) return false;
@@ -257,6 +262,7 @@ export class IngestService {
           stored,
           tx,
           events,
+          afterCommit,
         );
       }
       return true;
@@ -266,7 +272,8 @@ export class IngestService {
       return { kind: 'duplicate' };
     }
 
-    // Committed: update memory, then tell the world.
+    // Committed: only now is it safe to drop timers the transaction made unnecessary.
+    for (const action of afterCommit) action();
     this.counters.stored += 1;
     state.recent.set(stored.openTime, stored);
     if (state.recent.size > RECENT_CAP) {
@@ -296,6 +303,7 @@ export class IngestService {
       stored.openTime > lastBefore + MINUTE &&
       !this.backfillActive.has(instrument.id)
     ) {
+      this.armSkippedBuckets(instrument, state, lastBefore, stored.openTime);
       await this.onGap(instrument, lastBefore + MINUTE, stored.openTime);
     }
     await this.crosscheck(instrument, state, stored, result.crosscheck);
@@ -337,6 +345,7 @@ export class IngestService {
     justInserted: StoredCandle,
     tx: Sql,
     events: PublishedEvent[],
+    afterCommit: (() => void)[],
   ): Promise<void> {
     const bucketEnd = bucketOpen + TIMEFRAME_MS[tf];
     if (reachedMs < bucketEnd) return;
@@ -346,8 +355,10 @@ export class IngestService {
     const timerKey = `${tf}|${bucketOpen}`;
 
     if (agg.missing.length === 0) {
-      state.timers.get(timerKey)?.();
-      state.timers.delete(timerKey);
+      afterCommit.push(() => {
+        state.timers.get(timerKey)?.();
+        state.timers.delete(timerKey);
+      });
       const outcome = await this.store.upsertHtf(agg.candle, tx);
       if (outcome === 'inserted') {
         events.push({
@@ -375,16 +386,47 @@ export class IngestService {
       return;
     }
     // Incomplete: only the live minute that closes the bucket starts the clock; a backfill is already the remedy.
-    if (closesBucket(justInserted.openTime, tf) && !state.timers.has(timerKey)) {
-      const cancel = this.clock.setTimeout(() => {
-        state.timers.delete(timerKey);
-        void this.storeIncomplete(instrument, tf, bucketOpen, source).catch((e: unknown) =>
-          this.log.warn(
-            `storing INCOMPLETE ${tf} candle failed: ${(e as Error)?.constructor?.name}`,
-          ),
-        );
-      }, this.config.incompleteTimeoutMs);
-      state.timers.set(timerKey, cancel);
+    if (closesBucket(justInserted.openTime, tf)) {
+      this.armIncomplete(instrument, state, tf, bucketOpen, source);
+    }
+  }
+
+  /** Starts the wait after which a bucket that is still missing minutes is stored INCOMPLETE. Idempotent per bucket. */
+  private armIncomplete(
+    instrument: InstrumentRow,
+    state: InstrumentState,
+    tf: Timeframe,
+    bucketOpen: number,
+    source: Source,
+  ): void {
+    const timerKey = `${tf}|${bucketOpen}`;
+    if (state.timers.has(timerKey)) return;
+    const cancel = this.clock.setTimeout(() => {
+      state.timers.delete(timerKey);
+      void this.storeIncomplete(instrument, tf, bucketOpen, source).catch((e: unknown) =>
+        this.log.warn(`storing INCOMPLETE ${tf} candle failed: ${(e as Error)?.constructor?.name}`),
+      );
+    }, this.config.incompleteTimeoutMs);
+    state.timers.set(timerKey, cancel);
+  }
+
+  /**
+   * After a live gap the minute that would have closed an earlier bucket never arrives, so nothing would ever start that
+   * bucket's clock. Arm it for every bucket the stream skipped past (bounded), so downstream sees an INCOMPLETE row
+   * rather than a hole if the backfill is slow or fails.
+   */
+  private armSkippedBuckets(
+    instrument: InstrumentRow,
+    state: InstrumentState,
+    lastBefore: number,
+    openTime: number,
+  ): void {
+    for (const tf of DERIVED_TIMEFRAMES) {
+      const tfMs = TIMEFRAME_MS[tf];
+      let bucket = bucketStart(lastBefore, tf);
+      for (let n = 0; bucket + tfMs <= openTime && n < 64; n++, bucket += tfMs) {
+        this.armIncomplete(instrument, state, tf, bucket, 'live');
+      }
     }
   }
 
@@ -461,8 +503,8 @@ export class IngestService {
     if (verdict === 'DIVERGE') {
       state.agreeStreak = 0;
       await this.openIncident(instrument, 'V7', { openTime: stored.openTime, close: stored.c });
-    } else if (verdict === 'AGREE') {
-      await this.noteAgreement(instrument, state);
+    } else {
+      await this.noteClean(instrument, state);
     }
     // This instrument may itself be the peer of others whose candle arrived first.
     for (const primary of this.registry.primariesCheckedBy(instrument.id)) {
@@ -485,20 +527,22 @@ export class IngestService {
           diffPct,
         });
       } else if (!(primaryCandle.flags & FLAG.CROSSCHECK_DIVERGENCE)) {
-        await this.noteAgreement(primary, primaryState);
+        await this.noteClean(primary, primaryState);
       }
     }
   }
 
-  private async noteAgreement(instrument: InstrumentRow, state: InstrumentState): Promise<void> {
+  /** Data-quality incidents (V5, V7) close themselves after a run of clean candles, so a feed cannot stay DEGRADED forever. */
+  private async noteClean(instrument: InstrumentRow, state: InstrumentState): Promise<void> {
     if (!state.incidentOpen) return;
     state.agreeStreak += 1;
-    if (state.agreeStreak >= this.config.agreeToClose) {
-      state.agreeStreak = 0;
-      if (await this.store.closeIncident(instrument.id, 'V7')) {
-        state.incidentOpen = await this.store.hasOpenIncident(instrument.id);
-        this.bus.publish('dq.incident', { instrumentId: instrument.id, rule: 'V7', opened: false });
+    if (state.agreeStreak < this.config.agreeToClose) return;
+    state.agreeStreak = 0;
+    for (const rule of ['V5', 'V7']) {
+      if (await this.store.closeIncident(instrument.id, rule)) {
+        this.bus.publish('dq.incident', { instrumentId: instrument.id, rule, opened: false });
       }
     }
+    state.incidentOpen = await this.store.hasOpenDataQualityIncident(instrument.id);
   }
 }

@@ -77,6 +77,9 @@ const EnvSchema = z
 
     // Live venue ingest (Phase 1). Off by default so tests and database-less development never open sockets.
     INGEST_ENABLED: z.stringbool().default(false),
+    // Trust the Cloudflare-supplied client address for the admin allow-list. Only true when the API is reachable
+    // solely through the tunnel (production compose); anywhere else the header could be forged.
+    TRUST_PROXY_HEADERS: z.stringbool().default(false),
     // Dev only: resolve names through these DNS servers when the local network blocks venue hosts.
     DNS_SERVERS: csv.pipe(z.array(z.ipv4())),
 

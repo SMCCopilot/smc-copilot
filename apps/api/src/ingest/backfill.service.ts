@@ -62,6 +62,8 @@ export class BackfillIncompleteError extends Error {
  * history for a new instrument. Idempotent end to end: running a job twice leaves the same rows.
  */
 export class BackfillService {
+  private readonly lastMissing = new Map<string, number>();
+
   constructor(
     private readonly store: CandleStore,
     private readonly registry: InstrumentRegistry,
@@ -195,8 +197,8 @@ export class BackfillService {
     })) {
       for (const raw of page) {
         if (raw.openTimeMs < job.fromMs || raw.openTimeMs >= job.toMs) continue;
-        received += 1;
-        await this.ingest.handleRaw(provider.id, raw, 'backfill');
+        const outcome = await this.ingest.handleRaw(provider.id, raw, 'backfill');
+        if (outcome.kind !== 'dropped') received += 1;
       }
     }
     await this.ingest.idle();
@@ -207,7 +209,12 @@ export class BackfillService {
     if (missing > 0) {
       // The venue may genuinely have no data (maintenance); do not retry forever for an old, empty range.
       const old = this.clock.now() - job.toMs > 60 * MINUTE;
-      if (old && received === 0) {
+      // Two attempts that leave exactly the same minutes missing mean the venue has a hole there (maintenance).
+      const key = `${job.instrumentId}:${job.fromMs}:${job.toMs}`;
+      const sameHole = this.lastMissing.get(key) === missing;
+      this.lastMissing.set(key, missing);
+      if (old && (received === 0 || sameHole)) {
+        this.lastMissing.delete(key);
         await this.store.setGapStatus(instrument.id, job.fromMs, gapTo, 'UNRESOLVABLE');
         this.log.warn(
           `backfill for ${instrument.canonical} found no venue data; marked UNRESOLVABLE`,
@@ -216,11 +223,14 @@ export class BackfillService {
       }
       throw new BackfillIncompleteError(missing);
     }
+    this.lastMissing.delete(`${job.instrumentId}:${job.fromMs}:${job.toMs}`);
     await this.store.setGapStatus(instrument.id, job.fromMs, gapTo, 'RESOLVED');
+    // Higher-timeframe candles rebuilt by this backfill may open before the 1m range, so the recompute range is
+    // widened to the start of the earliest day it touches (consumers replay from a snapshot at or before it).
     this.bus.publish('candle.backfilled', {
       instrumentId: instrument.id,
       canonical: instrument.canonical,
-      fromMs: job.fromMs,
+      fromMs: bucketStart(job.fromMs, '1d'),
       toMs: job.toMs,
     });
   }

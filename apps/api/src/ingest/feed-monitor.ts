@@ -92,6 +92,17 @@ export class FeedMonitor {
     after: FeedState,
     reasons: readonly string[],
   ): Promise<void> {
+    if (before === undefined && after !== 'STALE') {
+      // First evaluation after a (re)start: an incident left open by the previous process is over.
+      if (await this.store.closeIncident(instrument.id, 'FEED_STALE')) {
+        this.bus.publish('dq.incident', {
+          instrumentId: instrument.id,
+          rule: 'FEED_STALE',
+          opened: false,
+        });
+      }
+      return;
+    }
     // Waiting for the first candle after a start is warm-up, not an outage worth an incident.
     const real = reasons.some((r) => r === 'CANDLE_OVERDUE' || r === 'FLAT_CANDLES');
     if (after === 'STALE' && before !== 'STALE' && real) {

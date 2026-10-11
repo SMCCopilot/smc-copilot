@@ -39,7 +39,7 @@ export class AdminGuard implements CanActivate {
         throw new ApiProblemError('FORBIDDEN', 'Administrator access is required.');
       }
     } else {
-      const ip = adminSourceIp(req);
+      const ip = adminSourceIp(req, this.env.TRUST_PROXY_HEADERS);
       const family = isIP(ip) === 6 ? 'ipv6' : 'ipv4';
       if (isIP(ip) === 0 || !this.allow.check(ip, family)) {
         throw new ApiProblemError('FORBIDDEN', 'Administrator access is required.');
@@ -53,11 +53,12 @@ export class AdminGuard implements CanActivate {
 }
 
 /** Source address of an admin request as text, with an IPv4-mapped IPv6 prefix removed. */
-export function adminSourceIp(req: {
-  headers: Record<string, unknown>;
-  ip?: string | undefined;
-}): string {
-  const header = req.headers['cf-connecting-ip'];
+export function adminSourceIp(
+  req: { headers: Record<string, unknown>; ip?: string | undefined },
+  trustProxyHeaders: boolean,
+): string {
+  // The Cloudflare header is only believed when the API is reachable solely through the tunnel.
+  const header = trustProxyHeaders ? req.headers['cf-connecting-ip'] : undefined;
   const raw = typeof header === 'string' && header !== '' ? header : (req.ip ?? '');
-  return raw.replace(/^::ffff:/, '');
+  return raw.replace(/^::ffff:/i, '');
 }

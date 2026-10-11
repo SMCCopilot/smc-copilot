@@ -68,11 +68,16 @@ class IngestLifecycle implements OnApplicationBootstrap, OnApplicationShutdown {
       useFactory: (env: Env, sql: Sql | null, bus: EventBus): IngestRuntime | null => {
         if (!env.INGEST_ENABLED) return null;
         const log = new Logger('Ingest');
+        if (env.APP_ROLE === 'api') return null; // only the worker role ingests (APP_ROLE=all in the MVP)
         if (!sql) {
           log.warn('INGEST_ENABLED is set but DATABASE_URL is not: live ingest stays off');
           return null;
         }
-        if (env.DNS_SERVERS.length > 0) {
+        if (env.DNS_SERVERS.length > 0 && env.NODE_ENV === 'production') {
+          log.error(
+            'DNS_SERVERS is set in production and is ignored: the override is for development only',
+          );
+        } else if (env.DNS_SERVERS.length > 0) {
           installDnsOverride(env.DNS_SERVERS);
           log.warn(`DNS override active (${env.DNS_SERVERS.join(', ')}): development use only`);
         }

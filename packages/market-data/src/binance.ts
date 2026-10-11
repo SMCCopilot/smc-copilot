@@ -73,7 +73,9 @@ export class BinanceProvider implements MarketDataProvider {
     for (const marketType of ['SPOT', 'PERP'] as const) {
       const symbols = specs.filter((s) => s.marketType === marketType && s.tf === '1m');
       if (symbols.length === 0) continue;
-      const streams = symbols.map((s) => `${s.venueSymbol.toLowerCase()}@kline_1m`).join('/');
+      const streams = symbols
+        .map((s) => `${encodeURIComponent(s.venueSymbol.toLowerCase())}@kline_1m`)
+        .join('/');
       const conn = new ManagedConnection({
         url: `${this.options.wsUrl[marketType]}/stream?streams=${streams}`,
         factory: this.socketFactory,

@@ -16,6 +16,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
+      TRUST_PROXY_HEADERS: "true" # the API is only reachable through the tunnel
     # Reached only through cloudflared on the internal network, plus loopback for local checks.
     ports:
       - "127.0.0.1:3000:3000"

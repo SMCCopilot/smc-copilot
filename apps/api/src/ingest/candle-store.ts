@@ -70,6 +70,10 @@ export class CandleStore {
 
   /** Creates the monthly partitions covering [fromMs, toMs] so history older than the pre-created window can be stored. */
   async ensurePartitions(fromMs: number, toMs: number): Promise<void> {
+    // A malformed job (fromMs = 0) would otherwise create hundreds of partitions.
+    if (toMs - fromMs > 120 * 31 * 86_400_000) {
+      throw new Error('refusing to create partitions for a range over 10 years');
+    }
     const start = new Date(fromMs);
     const end = new Date(toMs);
     let y = start.getUTCFullYear();
@@ -218,9 +222,11 @@ export class CandleStore {
     return rows.length > 0;
   }
 
-  async hasOpenIncident(instrumentId: string): Promise<boolean> {
+  /** Open incidents that make the data itself untrustworthy (FEED_STALE and RECONCILE have their own states). */
+  async hasOpenDataQualityIncident(instrumentId: string): Promise<boolean> {
     const [row] = await this.sql<{ n: number }[]>`
-      select count(*)::int as n from dq_incidents where instrument_id = ${instrumentId} and closed_at is null`;
+      select count(*)::int as n from dq_incidents
+       where instrument_id = ${instrumentId} and closed_at is null and rule in ('V5', 'V7')`;
     return (row?.n ?? 0) > 0;
   }
 }

@@ -110,22 +110,27 @@ export class BybitProvider implements MarketDataProvider {
     }
   }
 
+  /**
+   * Bybit returns the NEWEST `limit` rows inside [start, end], so a long range is walked backwards: each page moves
+   * `end` below the oldest row received. Pages are collected and yielded oldest first (adapters always emit oldest
+   * first). Walking forward would silently drop everything but the last page.
+   */
   async *fetchCandles(request: FetchRequest): AsyncIterable<RawCandle[]> {
     const tfMs = TIMEFRAME_MS[request.tf];
-    let from = request.fromMs;
-    while (from < request.toMs) {
+    const pages: RawCandle[][] = [];
+    let end = request.toMs - 1;
+    while (end >= request.fromMs) {
       const url =
         `${this.options.restUrl}/v5/market/kline?category=linear&symbol=${encodeURIComponent(request.venueSymbol)}` +
-        `&interval=${INTERVAL[request.tf]}&start=${from}&end=${request.toMs - 1}&limit=${PAGE}`;
+        `&interval=${INTERVAL[request.tf]}&start=${request.fromMs}&end=${end}&limit=${PAGE}`;
       const body = (await getJson(url, { fetchImpl: this.fetchImpl, limiter: this.limiter })) as {
         retCode?: number;
         result?: { list?: string[][] };
       };
       if (body.retCode !== 0) throw new Error(`Bybit klines returned retCode ${body.retCode}`);
       const list = body.result?.list ?? [];
-      if (list.length === 0) return;
+      if (list.length === 0) break;
       const now = this.clock.now();
-      // Bybit returns newest first; adapters always emit oldest first (A03 normalisation notes).
       const page: RawCandle[] = [...list].reverse().flatMap((row) => {
         const openTimeMs = Number(row[0]);
         if (!Number.isFinite(openTimeMs)) return [];
@@ -145,12 +150,13 @@ export class BybitProvider implements MarketDataProvider {
           },
         ];
       });
-      if (page.length === 0) return;
-      yield page;
-      const last = page[page.length - 1]?.openTimeMs ?? from;
-      if (last < from || list.length < PAGE) return;
-      from = last + tfMs;
+      if (page.length === 0) break;
+      pages.unshift(page);
+      const oldest = page[0]?.openTimeMs ?? request.fromMs;
+      if (list.length < PAGE || oldest <= request.fromMs) break;
+      end = oldest - 1;
     }
+    for (const page of pages) yield page;
   }
 
   async fetchMarkets(symbols: readonly string[], marketType: MarketType): Promise<VenueMarket[]> {

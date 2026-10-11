@@ -24,7 +24,11 @@ export function installDnsOverride(servers: readonly string[]): () => void {
     ) as {
       all?: boolean;
     };
-    if (isIp(hostname) || hostname === 'localhost') {
+    if (
+      isIp(hostname) ||
+      hostname === 'localhost' ||
+      (options as { family?: number }).family === 6
+    ) {
       (original as (...a: unknown[]) => void)(hostname, optionsOrCallback, maybeCallback);
       return;
     }

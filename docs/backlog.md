@@ -11,3 +11,8 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | `feed_usage` request counters (A03 section 2.3 audit) | not needed to prove the data path; no terms question depends on it yet | before venue terms are negotiated |
 | Resolve by price needs a price within 24 h; cold instruments resolve by key only | acceptable at MVP | Phase 7 (OCR) |
 | Request paths are logged in full | no route carries wallet addresses or codes yet | before Phase 4 identity routes |
+| Cross-check divergence flag is not propagated to an already-closed higher-timeframe candle | the 1m row carries it; the engine reads the 1m flag for sweep decisions | Phase 2 if G1 shows it matters |
+| `RateLimitedError.retryAfterMs` is ignored by the queue retry (30 s backoff) | harmless at current volume | when backfill volume grows |
+| A live candle lost to a handler error heals only through next-minute gap detection | at most one minute of delay | Phase 9 hardening |
+| ManagedConnection can briefly hold three sockets if the active one drops during a rotation | self-corrects within the rotation window | Phase 9 |
+| Venue flag changes need a restart to reach the running feed (the API says so) | rare operator action | M6 |

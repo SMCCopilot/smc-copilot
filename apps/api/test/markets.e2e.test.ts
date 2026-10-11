@@ -154,6 +154,26 @@ describe('resolve', () => {
     ).toBe(422);
   });
 
+  it('the price parameter cannot be used to probe prices of instruments without display rights', async () => {
+    const id = await idOf('BINANCE:PERP:BTCUSDT');
+    await sql`truncate candles`;
+    await sql`insert into candles (instrument_id, tf, open_time, o, h, l, c, v, provider_id, status, flags)
+              values (${id}, '1m', now() - interval '2 minutes', 61000, 61300, 60900, 61234, 1, 'binance', 'CLOSED', 0)`;
+    const http = await boot();
+    const auth = await user();
+    const probe = async (price: number) =>
+      (
+        await request(http)
+          .get(`/v1/instruments/resolve?q=BTCUSDT&price=${price}`)
+          .set('Authorization', auth)
+      ).body;
+    const near = await probe(61230);
+    expect(await probe(1)).toEqual(near);
+    expect(await probe(99999999)).toEqual(near);
+    expect(JSON.stringify(near)).not.toMatch(/within|61234/i);
+    await sql`truncate candles`;
+  });
+
   it('uses the last price to separate assets', async () => {
     const res = await request(await boot())
       .get('/v1/instruments/resolve?q=ETHUSDT&price=99999')
@@ -236,7 +256,7 @@ describe('licence gating of raw candles (invariant 6)', () => {
     const res = await request(await boot())
       .get(`/v1/instruments/${bybit}/candles?tf=1m`)
       .set('Authorization', await user());
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404); // a cross-check series is not user-visible at all, whatever other venues' terms say
     await sql`delete from venue_terms`;
   });
 
@@ -302,7 +322,10 @@ describe('admin access class', () => {
   });
 
   it('enforces the source-address allow-list, including CIDR ranges', async () => {
-    const http = await boot({ ADMIN_IP_ALLOWLIST: '203.0.113.0/24,2001:db8::1' });
+    const http = await boot({
+      ADMIN_IP_ALLOWLIST: '203.0.113.0/24,2001:db8::1',
+      TRUST_PROXY_HEADERS: 'true',
+    });
     const call = (ip: string) =>
       request(http)
         .get('/v1/admin/feeds')
@@ -314,6 +337,16 @@ describe('admin access class', () => {
     expect((await call('2001:db8::1')).status).toBe(200);
     expect((await call('198.51.100.1')).status).toBe(403);
     expect((await call('not-an-ip')).status).toBe(403);
+  });
+
+  it('ignores a forged CF-Connecting-IP unless proxy headers are trusted', async () => {
+    const http = await boot({ ADMIN_IP_ALLOWLIST: '203.0.113.0/24' }); // TRUST_PROXY_HEADERS defaults to false
+    const res = await request(http)
+      .get('/v1/admin/feeds')
+      .set('Authorization', await admin())
+      .set('X-Admin-Confirm', 'yes')
+      .set('CF-Connecting-IP', '203.0.113.9');
+    expect(res.status).toBe(403);
   });
 
   it('validates terms input and writes an audit row; unknown venue is 404', async () => {

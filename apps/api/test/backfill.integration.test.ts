@@ -189,6 +189,24 @@ describe('BackfillService and seeding', () => {
     expect(events.filter((e) => e.name === 'candle.backfilled')).toEqual([]);
   });
 
+  it('treats a hole the venue repeats on a second attempt as UNRESOLVABLE instead of retrying forever', async () => {
+    for (const m of [0, 1, 4]) await ingest.handleRaw('binance', minute(m), 'live');
+    venue.data = [minute(2)]; // the venue never has minute 3
+    const job = { instrumentId: id(), fromMs: BASE + 2 * MIN, toMs: BASE + 4 * MIN };
+    await expect(backfill.run(job)).rejects.toBeInstanceOf(BackfillIncompleteError);
+    await backfill.run(job); // same outcome again: stop
+    const [gap] = await sql<{ status: string }[]>`select status from candle_gaps`;
+    expect(gap?.status).toBe('UNRESOLVABLE');
+  });
+
+  it('widens the announced recompute range to the start of the day so higher-timeframe buckets are covered', async () => {
+    for (const m of [0, 1, 4]) await ingest.handleRaw('binance', minute(m), 'live');
+    venue.data = [minute(2), minute(3)];
+    await backfill.run({ instrumentId: id(), fromMs: BASE + 2 * MIN, toMs: BASE + 4 * MIN });
+    const ev = events.find((e) => e.name === 'candle.backfilled')?.payload as { fromMs: number };
+    expect(ev.fromMs).toBe(Date.UTC(2026, 9, 11, 0, 0));
+  });
+
   it('gives up cleanly on an old range the venue has no data for', async () => {
     await ingest.handleRaw('binance', minute(0), 'live');
     await ingest.handleRaw('binance', minute(3), 'live');
@@ -334,6 +352,40 @@ describe('BackfillService and seeding', () => {
       await backfill.seed(instrument() as NonNullable<ReturnType<typeof instrument>>);
       expect(await count(sql`where tf = '1h' and open_time = ${new Date(current)}`)).toBe(0);
     });
+  });
+});
+
+describe('FeedMonitor after a restart', () => {
+  it('closes a FEED_STALE incident the previous process left open once the feed is healthy', async () => {
+    await sql`truncate candles, candle_quarantine, candle_gaps, dq_incidents`;
+    const clock = new FakeClock();
+    const bus = new InMemoryEventBus();
+    const quiet = { warn: () => {}, info: () => {} };
+    const ingest = new IngestService(store, registry, bus, new InMemoryJobQueue(), clock, quiet);
+    const instrument = registry.forVenueSymbol('binance', 'PERP', 'BTCUSDT');
+    if (!instrument) throw new Error('seed missing');
+    await sql`insert into dq_incidents (instrument_id, venue_id, rule) values (${instrument.id}, 'BINANCE', 'FEED_STALE')`;
+    const last = Math.floor(clock.now() / MIN) * MIN - MIN;
+    clock.nowMs = last + MIN + 1000;
+    await ingest.handleRaw('binance', candleAt('1m', last, 100), 'live');
+    const monitor = new FeedMonitor(
+      [
+        {
+          instrument,
+          health: () => ({ connected: true, lastMessageAtMs: clock.nowMs - 300, reconnects: 0 }),
+        },
+      ],
+      ingest,
+      store,
+      bus,
+      clock,
+      quiet,
+    );
+    await monitor.tick();
+    expect(monitor.statusOf(instrument.id)?.state).toBe('OK');
+    expect(
+      await sql`select 1 from dq_incidents where rule = 'FEED_STALE' and closed_at is null`,
+    ).toHaveLength(0);
   });
 });
 

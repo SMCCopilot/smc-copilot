@@ -223,6 +223,21 @@ describe('IngestService', () => {
     });
   });
 
+  it('a V5 conflict incident closes itself after five clean candles and no longer leaves the feed degraded', async () => {
+    await h.feed('binance', raw('BTCUSDT', 'PERP', 0));
+    await h.feed('binance', raw('BTCUSDT', 'PERP', 0, { c: 150, h: 151 })); // conflict
+    expect(h.ingest.stateSnapshot(btcPerp()?.id ?? '').incidentOpen).toBe(true);
+    for (let m = 1; m <= 5; m++) await h.feed('binance', raw('BTCUSDT', 'PERP', m));
+    expect(h.ingest.stateSnapshot(btcPerp()?.id ?? '').incidentOpen).toBe(false);
+    expect(await count('dq_incidents', sql`where closed_at is null`)).toBe(0);
+  });
+
+  it('a FEED_STALE row left open by a previous process does not count as a data-quality incident', async () => {
+    await sql`insert into dq_incidents (instrument_id, venue_id, rule) values (${btcPerp()?.id}, 'BINANCE', 'FEED_STALE')`;
+    await h.feed('binance', raw('BTCUSDT', 'PERP', 0));
+    expect(h.ingest.stateSnapshot(btcPerp()?.id ?? '').incidentOpen).toBe(false);
+  });
+
   it('an identical repeat is a harmless no-op (idempotent)', async () => {
     await h.feed('binance', raw('BTCUSDT', 'PERP', 0));
     expect(await h.feed('binance', raw('BTCUSDT', 'PERP', 0))).toEqual({ kind: 'duplicate' });
@@ -303,6 +318,17 @@ describe('IngestService', () => {
       ).toEqual([]);
       const minute2 = (await store.range(id, '1m', BASE + 2 * MIN, BASE + 3 * MIN))[0];
       expect(minute2?.flags).toBe(FLAG.BACKFILLED);
+    });
+
+    it('stores an INCOMPLETE 5m candle for a bucket the stream skipped past, even if the backfill never arrives', async () => {
+      for (const m of [0, 1, 2, 3]) await h.feed('binance', raw('BTCUSDT', 'PERP', m));
+      await h.feed('binance', raw('BTCUSDT', 'PERP', 7)); // minute 4 (which would close 0-4) never arrived
+      expect(await count('candles', sql`where tf = '5m'`)).toBe(0);
+      h.clock.advance(91_000);
+      await new Promise((r) => setTimeout(r, 200));
+      await h.ingest.idle();
+      const [five] = await store.range(btcPerp()?.id ?? '', '5m', BASE, BASE + 5 * MIN);
+      expect(five).toMatchObject({ status: 'INCOMPLETE' });
     });
 
     it('does not report a gap while a backfill is already filling that instrument', async () => {

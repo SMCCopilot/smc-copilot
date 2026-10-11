@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Inject, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import type { Env } from '@smc/config';
 import { VenuePatchSchema, VenueTermsInputSchema } from '@smc/contracts';
 import type { AuthenticatedRequest } from '../auth/jwt-auth.guard.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { ApiProblemError } from '../common/problem.js';
 import { parseWith } from '../common/validation.js';
-import { INGEST_RUNTIME } from '../config/tokens.js';
+import { ENV, INGEST_RUNTIME } from '../config/tokens.js';
 import type { IngestRuntime } from '../ingest/ingest.runtime.js';
 import { MarketsService } from '../markets/markets.service.js';
 import { AdminGuard, adminSourceIp } from './admin.guard.js';
@@ -15,10 +16,14 @@ export class AdminController {
   constructor(
     private readonly markets: MarketsService,
     @Inject(INGEST_RUNTIME) private readonly runtime: IngestRuntime | null,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   private actor(req: AuthenticatedRequest) {
-    return { userId: req.principal.userId, ip: adminSourceIp(req) || null };
+    return {
+      userId: req.principal.userId,
+      ip: adminSourceIp(req, this.env.TRUST_PROXY_HEADERS) || null,
+    };
   }
 
   /** Feed health per instrument plus the counters an operator needs to see at a glance. */
@@ -53,6 +58,7 @@ export class AdminController {
     const patch = parseWith(VenuePatchSchema, body);
     if (!(await this.markets.patchVenue(id, patch, this.actor(req))))
       throw new ApiProblemError('NOT_FOUND');
-    return { ok: true };
+    // The running feed keeps its venue set until the next restart; say so instead of implying immediate effect.
+    return { ok: true, effective: 'after_restart' };
   }
 }

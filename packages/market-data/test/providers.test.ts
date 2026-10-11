@@ -420,6 +420,50 @@ describe('REST history', () => {
     expect(got.map((c) => c.openTimeMs)).toEqual([t, t + 60_000, t + 120_000]);
   });
 
+  it('Bybit walks a range longer than one page backwards and still returns every candle oldest first', async () => {
+    const clock = new FakeScheduler();
+    const top = Math.floor(clock.now() / 60_000) * 60_000 - 30 * 60_000;
+    const total = 2500;
+    const start = top - total * 60_000;
+    // The venue serves the newest 1000 rows inside [start, end], newest first.
+    const venue = (url: string) => {
+      const q = new URL(url).searchParams;
+      const s = Number(q.get('start'));
+      const e = Number(q.get('end'));
+      const rows: string[][] = [];
+      for (
+        let t = Math.floor(Math.min(e, top - 60_000) / 60_000) * 60_000;
+        t >= s && rows.length < 1000;
+        t -= 60_000
+      ) {
+        rows.push([String(t), '1', '2', '0.5', '1.5', '10', '100']);
+      }
+      return okJson({ retCode: 0, result: { list: rows } });
+    };
+    const bybit = new BybitProvider({
+      wsUrl: 'wss://x',
+      restUrl: 'https://b',
+      fetchImpl: venue,
+      scheduler: clock,
+    });
+    const got: RawCandle[] = [];
+    for await (const page of bybit.fetchCandles({
+      venueSymbol: 'BTCUSDT',
+      marketType: 'PERP',
+      tf: '1m',
+      fromMs: start,
+      toMs: top,
+    }))
+      got.push(...page);
+    expect(got).toHaveLength(total);
+    expect(got[0]?.openTimeMs).toBe(start);
+    expect(got.at(-1)?.openTimeMs).toBe(top - 60_000);
+    expect(new Set(got.map((c) => c.openTimeMs)).size).toBe(total);
+    expect(got.map((c) => c.openTimeMs)).toEqual(
+      [...got.map((c) => c.openTimeMs)].sort((a, b) => a - b),
+    );
+  });
+
   it('turns HTTP 451/403 into GeoBlockedError and 429 into RateLimitedError with the venue wait', async () => {
     const make = (code: number, headers?: Record<string, string>) =>
       new BinanceProvider({

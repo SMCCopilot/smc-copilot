@@ -101,7 +101,10 @@ export class MarketsService {
   /** Effective licence for one instrument, straight from the view. */
   async effectiveLicense(id: string): Promise<LicenseClass | undefined> {
     const [row] = await this.db()<{ effective_class: LicenseClass }[]>`
-      select effective_class from instrument_license where instrument_id = ${id}`;
+      select l.effective_class from instrument_license l
+        join instruments i on i.id = l.instrument_id
+        join venues v on v.id = i.venue_id
+       where l.instrument_id = ${id} and i.active and v.enabled and v.analysis_enabled`;
     return row?.effective_class;
   }
 
@@ -121,7 +124,11 @@ export class MarketsService {
       select distinct on (instrument_id) instrument_id, c from candles
        where tf = '1m' and open_time > now() - interval '1 day'
        order by instrument_id, open_time desc`;
-    const priceOf = new Map(prices.map((p) => [p.instrument_id, Number(p.c)]));
+    // A price-based answer reveals the price: use stored prices only for instruments cleared for raw display (invariant 6).
+    const cleared = new Set(listed.filter((i) => i.rawDataAllowed).map((i) => i.id));
+    const priceOf = new Map(
+      prices.filter((p) => cleared.has(p.instrument_id)).map((p) => [p.instrument_id, Number(p.c)]),
+    );
     const instruments = new Map<string, ResolvableInstrument>(
       listed.map((i) => [
         i.id,
