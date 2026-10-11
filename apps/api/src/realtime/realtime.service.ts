@@ -54,6 +54,8 @@ const REPLAY_LIMIT = 500;
 const COMPACT_TYPES = new Set(['analysis.update']);
 /** Streamed pieces are not kept for replay: the closing event carries the whole text. */
 const NOT_LOGGED = new Set(['chat.chunk', 'explain.chunk', 'explain.stage']);
+/** The resume log keeps that a command happened, not what was said or written. */
+const REDACTED_LOG = new Set(['voice.final']);
 
 interface Ctx {
   sessionId: string;
@@ -73,6 +75,8 @@ interface Ctx {
   hint: HintState;
   /** Which live setup a voice "next / previous setup" moves from. */
   setupCursor: number;
+  /** Times of recent voice commands, for a per-session rate limit. */
+  voiceTimes: number[];
   /** False until the stored sequence is loaded; nothing is pushed before then, so numbers never collide. */
   ready: boolean;
 }
@@ -249,6 +253,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       cancelled: new Set<string>(),
       hint: newHintState(),
       setupCursor: 0,
+      voiceTimes: [],
       ready: false,
     };
     ctx.socketId = socket.id;
@@ -450,12 +455,23 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     p: { utteranceId: string; text: string; sttConfidence: number; sttEngine: string },
   ): Promise<void> {
     const sql = this.sql as Sql;
+    const nowMs = Date.now();
+    ctx.voiceTimes = ctx.voiceTimes.filter((x) => nowMs - x < 60_000);
+    if (ctx.voiceTimes.length >= 30) {
+      this.emit(ctx, 'error', {
+        code: 'RATE_LIMITED',
+        detail: 'Too many voice commands. Try again shortly.',
+      });
+      return;
+    }
+    ctx.voiceTimes.push(nowMs);
     const log = (outcome: string, route: string | null, command: string | null) =>
       sql`insert into voice_events (workspace_id, user_id, session_id, engine, confidence, outcome, route, command_id)
           values (${ctx.workspaceId}, ${ctx.userId}, ${ctx.sessionId}, ${p.sttEngine}, ${p.sttConfidence}, ${outcome}, ${route}, ${command})`;
     // The server corrects what was heard with its own glossary: whatever the browser did, this is the authority.
     const heard = p.text;
-    const text = (await this.voiceSvc.correct(heard)).text;
+    const fix = await this.voiceSvc.correct(heard);
+    const text = fix.text;
     const forbidden = forbiddenByVoice(heard) ?? forbiddenByVoice(text);
     if (forbidden) {
       await log('FORBIDDEN_BY_VOICE', 'COMMAND', null);
@@ -551,13 +567,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       command: cmd.command,
       args: cmd,
       heard,
-      corrected:
-        text !==
-        heard
-          .toLowerCase()
-          .replace(/[.,!?]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim(),
+      corrected: fix.changes.length > 0,
       ...extra,
     });
   }
@@ -612,6 +622,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       .sql as Sql)`update copilot_sessions set instrument_id = ${inst.id}, tf = ${tf} where id = ${ctx.sessionId}`;
     // The instrument the user is looking at now is the baseline later hints are compared with.
     ctx.hint = { candidate: null, count: 0, locked: inst.id };
+    ctx.setupCursor = 0;
     this.emit(ctx, 'context.updated', { instrumentId: inst.canonical, tf, source });
   }
 
@@ -656,9 +667,14 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       correlationId: randomUUID(),
       payload,
     };
-    const stored = COMPACT_TYPES.has(type)
-      ? { snapshotId: (payload as { snapshotId?: string }).snapshotId ?? null }
-      : payload;
+    const stored = REDACTED_LOG.has(type)
+      ? {
+          utteranceId: (payload as { utteranceId?: string }).utteranceId ?? null,
+          command: (payload as { command?: string }).command ?? null,
+        }
+      : COMPACT_TYPES.has(type)
+        ? { snapshotId: (payload as { snapshotId?: string }).snapshotId ?? null }
+        : payload;
     if (this.sql && !NOT_LOGGED.has(type)) {
       this.sql`
         insert into session_events (session_id, seq, type, payload)

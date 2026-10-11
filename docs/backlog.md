@@ -68,3 +68,6 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | Spoken-form correction is rule based; learn corrections from edited transcripts | edits are not recorded (and must not contain audio) | after beta |
 | The nightly workflow has never run | no GitHub remote yet | when a remote exists |
 | Model licences not reviewed by the owner | Whisper, Moonshine, Silero published as permissive | before launch |
+| Sign the speech model manifest (the server currently supplies addresses and hashes) | a compromised server could point the browser at its own files | before public launch |
+| Catch letter-spelled forbidden words and negations ("don't confirm") in the voice rules | harmless today: the grammar cannot express any action | Phase 9 |
+| Review step before a voice journal note is saved | notes are saved at once | when the real client exists |

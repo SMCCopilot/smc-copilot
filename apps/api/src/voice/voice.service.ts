@@ -56,7 +56,9 @@ const MAX_UTTERANCE_MS = 15_000;
 const MIN_CONFIDENCE = 0.6;
 
 const pinned = (g: ManifestGroup): boolean =>
-  Boolean(g.revision) && g.files.every((f) => Boolean(f.sha256) && Boolean(f.bytes));
+  Boolean(g.revision) &&
+  g.files.length > 0 &&
+  g.files.every((f) => Boolean(f.sha256) && Boolean(f.bytes));
 
 const filesOf = (g: ManifestGroup) =>
   g.files.map((f) => ({

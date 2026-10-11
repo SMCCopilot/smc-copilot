@@ -8,9 +8,9 @@ import { PHRASES } from '../src/phrases.mjs';
 import { hashFile, MANIFEST, pin, unpinned, urlOf } from '../src/pin-models.mjs';
 
 describe('the phrase set', () => {
-  it('has 200 phrases across the five categories, with unique ids', () => {
-    expect(PHRASES).toHaveLength(200);
-    expect(new Set(PHRASES.map((p) => p.id)).size).toBe(200);
+  it('has at least 200 phrases across the five categories, with unique ids', () => {
+    expect(PHRASES.length).toBeGreaterThanOrEqual(200);
+    expect(new Set(PHRASES.map((p) => p.id)).size).toBe(PHRASES.length);
     const cats = new Set(PHRASES.map((p) => p.category));
     expect([...cats].sort()).toEqual(['command', 'forbidden', 'jargon', 'question', 'symbol']);
   });
@@ -28,7 +28,7 @@ describe('text-only check of correction and grammar', () => {
 
   it('prints the numbered script to read aloud', () => {
     const { script } = main(['--print-script']);
-    expect(script.split('\n')).toHaveLength(200);
+    expect(script.split('\n').length).toBeGreaterThanOrEqual(200);
     expect(script).toContain('explain this chart');
   });
 });

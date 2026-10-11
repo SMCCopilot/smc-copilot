@@ -48,6 +48,37 @@ const ORDINALS: Readonly<Record<string, number>> = {
   fifth: 5,
 };
 
+/** Lookalike letters from other alphabets that a person or a model could use to dodge a pattern. */
+const LOOKALIKES: Readonly<Record<string, string>> = {
+  '\u0430': 'a',
+  '\u0435': 'e',
+  '\u043E': 'o',
+  '\u0440': 'p',
+  '\u0441': 'c',
+  '\u0445': 'x',
+  '\u0443': 'y',
+  '\u0456': 'i',
+  '\u0455': 's',
+  '\u0501': 'd',
+  '\u04BB': 'h',
+  '\u0475': 'v',
+};
+
+/** Compatibility-normalise, drop invisible characters and map common lookalikes, before any rule is applied. */
+export function normalizeSpoken(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(
+      /[\u00AD\u061C\u115F\u1160\u17B4\u17B5\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFEFF]/g,
+      '',
+    )
+    .replace(/[\uFE00-\uFE0F]/g, '')
+    .replace(
+      /[\u0430\u0435\u043E\u0440\u0441\u0445\u0443\u0456\u0455\u0501\u04BB\u0475]/g,
+      (c) => LOOKALIKES[c] ?? c,
+    );
+}
+
 const norm = (raw: string): string =>
   raw
     .trim()
@@ -55,7 +86,8 @@ const norm = (raw: string): string =>
     .replace(/[.!?,]+$/g, '')
     .replace(/\s+/g, ' ');
 
-export function parseVoiceCommand(raw: string): VoiceCommand | null {
+export function parseVoiceCommand(input: string): VoiceCommand | null {
+  const raw = normalizeSpoken(input);
   const t = norm(raw);
   if (/^(?:please\s+)?explain\s+(?:this|the)\s+chart$/.test(t)) return { command: 'EXPLAIN_CHART' };
   if (/^(?:pause|stop\s+listening)$/.test(t)) return { command: 'PAUSE_RESUME', resume: false };
@@ -88,7 +120,18 @@ export function parseVoiceCommand(raw: string): VoiceCommand | null {
     const word = TF_WORDS[v];
     if (word) return { command: 'SWITCH_TF', tf: word };
     // Anything else that looks like a market name: the server resolves it and asks when it is ambiguous.
-    if (/^[a-z0-9][a-z0-9 /:.-]{1,30}$/.test(v)) return { command: 'SWITCH_INSTRUMENT', text: v };
+    // Only a name that was recognised as a market (the corrected text writes assets in capitals) counts; "show me the
+    // risks" or "go to bed" are questions, not market switches.
+    const original =
+      /^(?:switch\s+to|go\s+to|show|open)\s+(?:the\s+)?(.{1,40}?)(?:\s+(?:chart|timeframe))?\s*[.!?]*$/i.exec(
+        raw.trim(),
+      );
+    if (
+      /\b[A-Z][A-Z0-9]{1,9}\b/.test(original?.[1] ?? '') &&
+      /^[a-z0-9][a-z0-9 /:.-]{1,30}$/.test(v)
+    ) {
+      return { command: 'SWITCH_INSTRUMENT', text: v };
+    }
   }
   const note = /^(?:note|journal)\s*[:,-]?\s+(.{3,280})$/.exec(raw.trim().toLowerCase());
   if (note?.[1]) return { command: 'JOURNAL_NOTE', note: note[1].slice(0, 280) };
@@ -115,10 +158,14 @@ const FORBIDDEN: readonly (readonly [VoiceForbiddenAction, RegExp])[] = [
     'delete_data',
     /\b(?:delete|erase|wipe|remove)\s+(?:my\s+)?(?:data|journal|everything|history)\b/i,
   ],
-  ['pay', /\b(?:pay|purchase|buy\s+a\s+plan|subscribe|upgrade)\b/i],
+  [
+    'pay',
+    /\b(?:pay\s+(?:the|my|for|now|invoice|bill|subscription)|purchase|buy\s+a\s+plan|subscribe|upgrade\s+(?:my|the|to|plan|account)|upgrade$)\b/i,
+  ],
 ];
 
-export function forbiddenByVoice(text: string): VoiceForbiddenAction | null {
+export function forbiddenByVoice(input: string): VoiceForbiddenAction | null {
+  const text = normalizeSpoken(input).replace(/\s+/g, ' ');
   for (const [action, re] of FORBIDDEN) if (re.test(text)) return action;
   return null;
 }

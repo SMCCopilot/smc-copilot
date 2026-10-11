@@ -312,7 +312,11 @@ describe('push to talk', () => {
     r.p.done();
     await r.p.press();
     await r.p.release();
-    expect(bad.calls).toBe(1); // a failed engine is skipped for the rest of the session
+    expect(bad.calls).toBe(2); // one slip is forgiven; a second in a row retires the engine
+    r.p.done();
+    await r.p.press();
+    await r.p.release();
+    expect(bad.calls).toBe(2);
 
     const none = rig([
       engine('whisper-web', '', 0.9, true),
@@ -321,7 +325,10 @@ describe('push to talk', () => {
     await none.p.press();
     await none.p.release();
     expect(none.log.warnings).toContain('STT_UNAVAILABLE');
-    expect(none.p.current).toBe('UNAVAILABLE');
+    expect(none.p.current).toBe('IDLE'); // first failures are forgiven
+    await none.p.press();
+    await none.p.release();
+    expect(none.p.current).toBe('UNAVAILABLE'); // second in a row retires both: typing only
   });
 
   it('too little audio is no speech; a quiet low-confidence result is flagged but still editable', async () => {
@@ -365,5 +372,110 @@ describe('push to talk', () => {
     await r.p.press();
     await r.p.release();
     expect(r.p.latencies).toHaveLength(1);
+  });
+});
+
+describe('push to talk: review regressions', () => {
+  const glossary = buildGlossary(['BTC']);
+  function mk(over: Partial<AudioCapture> = {}, tr?: SttEngine['transcribe']) {
+    let t = 0;
+    const timers: { at: number; fn: () => void }[] = [];
+    const warnings: VoiceWarning[] = [];
+    const eng: SttEngine = {
+      tag: 'whisper-web',
+      transcribe: tr ?? (async () => ({ text: 'mute', confidence: 0.9 })),
+    };
+    const starts = { n: 0, stops: 0 };
+    const cap: AudioCapture = {
+      start: async () => {
+        starts.n++;
+      },
+      stop: async () => {
+        starts.stops++;
+        return new Float32Array(16000).fill(0.1);
+      },
+      ...over,
+    };
+    const p = new PushToTalk({
+      capture: cap,
+      engines: [eng],
+      glossary: () => glossary,
+      clock: {
+        now: () => t,
+        after: (ms, fn) => {
+          const e = { at: t + ms, fn };
+          timers.push(e);
+          return () => {
+            const i = timers.indexOf(e);
+            if (i >= 0) timers.splice(i, 1);
+          };
+        },
+      },
+      minConfidence: 0.6,
+      maxUtteranceMs: 15000,
+      onState: () => {},
+      onTranscript: () => {},
+      onWarning: (w) => warnings.push(w),
+      onReport: () => {},
+    });
+    return {
+      p,
+      warnings,
+      starts,
+      advance: (ms: number) => {
+        t += ms;
+        for (const e of [...timers])
+          if (e.at <= t) {
+            timers.splice(timers.indexOf(e), 1);
+            e.fn();
+          }
+      },
+    };
+  }
+
+  it('two quick presses open the microphone once', async () => {
+    const r = mk();
+    await Promise.all([r.p.press(), r.p.press()]);
+    expect(r.starts.n).toBe(1);
+  });
+
+  it('letting go while the microphone is still opening stops straight away', async () => {
+    let open: () => void = () => {};
+    const r = mk({
+      start: () =>
+        new Promise<void>((res) => {
+          open = res;
+        }),
+    });
+    const pressing = r.p.press();
+    await r.p.release();
+    open();
+    await pressing;
+    expect(r.starts.stops).toBe(1);
+    expect(r.p.current).not.toBe('RECORDING');
+  });
+
+  it('a microphone that fails to stop does not wedge the controller', async () => {
+    const r = mk({
+      stop: async () => {
+        throw new Error('gone');
+      },
+    });
+    await r.p.press();
+    await r.p.release();
+    expect(r.p.current).toBe('IDLE');
+    await r.p.press();
+    expect(r.p.current).toBe('RECORDING');
+  });
+
+  it('an engine that ignores the abort signal cannot hang it: the deadline wins', async () => {
+    const r = mk({}, () => new Promise(() => {}));
+    await r.p.press();
+    const releasing = r.p.release();
+    await Promise.resolve();
+    r.advance(15001);
+    await releasing;
+    expect(r.warnings).toContain('STT_UNAVAILABLE');
+    expect(r.p.current).not.toBe('TRANSCRIBING');
   });
 });

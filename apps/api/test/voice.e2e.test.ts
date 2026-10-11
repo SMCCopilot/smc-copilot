@@ -226,7 +226,7 @@ describe('voice over the socket', () => {
     expect((await f1).payload.needsPick).toBeUndefined();
 
     const f2 = once<{ payload: { needsPick?: boolean; candidates?: string[] } }>(s, 'voice.final');
-    say(s, 'switch to dogecoinxyz');
+    say(s, 'switch to cardano');
     const e2 = await f2;
     expect(e2.payload.needsPick).toBe(true);
     expect(e2.payload.candidates).toEqual([]);
@@ -281,5 +281,43 @@ describe('voice over the socket', () => {
     const err = once<{ payload: { code: string } }>(s, 'error');
     say(s, 'Confirm the, trade!');
     expect((await err).payload.code).toBe('VOICE_FORBIDDEN_ACTION');
+  });
+});
+
+describe('review regressions', () => {
+  it('a question that starts like a switch is answered, not treated as a market change', async () => {
+    const { http, url } = await boot();
+    const s = await started(url, await user(http));
+    const done = once<{ payload: { text: string } }>(s, 'chat.done');
+    say(s, 'show me the risks');
+    expect((await done).payload.text.length).toBeGreaterThan(0);
+  });
+
+  it('the resume log keeps that a command happened, not what was said', async () => {
+    const { http, url } = await boot();
+    const u = await user(http);
+    const s = await started(url, u);
+    const f = once(s, 'voice.final');
+    say(s, 'note my secret plan is to wait for the sweep');
+    await f;
+    await new Promise((r) => setTimeout(r, 200));
+    const rows = await sql<
+      { payload: unknown }[]
+    >`select payload from session_events where session_id = ${u.sessionId} and type = 'voice.final'`;
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows[0]?.payload)).not.toContain('secret plan');
+    expect(JSON.stringify(rows[0]?.payload)).toContain('JOURNAL_NOTE');
+  });
+
+  it('a burst of voice commands is slowed down', async () => {
+    const { http, url } = await boot();
+    const s = await started(url, await user(http));
+    let limited = false;
+    s.on('error', (e: { payload?: { code?: string } }) => {
+      if (e.payload?.code === 'RATE_LIMITED') limited = true;
+    });
+    for (let i = 0; i < 35; i++) say(s, 'mute');
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(limited).toBe(true);
   });
 });

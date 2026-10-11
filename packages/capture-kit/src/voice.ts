@@ -252,16 +252,25 @@ export class PushToTalk {
     this.o.onState(s);
   }
 
+  /** True from the moment a press is accepted until the recording is handed over: blocks a second press. */
+  private busy = false;
+  /** The button was let go before the microphone finished opening. */
+  private releaseEarly = false;
+  private failures = new Map<SttEngineTag, number>();
+
   async press(): Promise<void> {
-    if (this.state !== 'IDLE' && this.state !== 'REVIEW') return;
+    if (this.busy || (this.state !== 'IDLE' && this.state !== 'REVIEW')) return;
     if (this.o.engines.every((e) => this.failed.has(e.tag))) {
       this.set('UNAVAILABLE');
       this.o.onWarning('STT_UNAVAILABLE');
       return;
     }
+    this.busy = true;
+    this.releaseEarly = false;
     try {
       await this.o.capture.start();
     } catch {
+      this.busy = false;
       this.o.onWarning('MIC_PERMISSION_DENIED');
       this.set('UNAVAILABLE');
       return;
@@ -269,21 +278,40 @@ export class PushToTalk {
     this.recordedAt = this.o.clock.now();
     this.set('RECORDING');
     // A held key must not record forever.
+    this.cancelTimer?.();
     this.cancelTimer = this.o.clock.after(this.o.maxUtteranceMs, () => {
       this.o.onWarning('TOO_LONG');
       void this.release();
     });
+    // Let go while the microphone was still opening: stop at once instead of recording until the limit.
+    if (this.releaseEarly) await this.release();
   }
 
   async release(): Promise<void> {
-    if (this.state !== 'RECORDING') return;
+    if (this.state !== 'RECORDING') {
+      if (this.busy) this.releaseEarly = true;
+      return;
+    }
     this.cancelTimer?.();
     this.cancelTimer = null;
     const releasedAt = this.o.clock.now();
     this.set('TRANSCRIBING');
-    let pcm: Float32Array | null = await this.o.capture.stop();
+    let pcm: Float32Array | null = null;
     const durationMs = releasedAt - this.recordedAt;
     try {
+      try {
+        pcm = await this.o.capture.stop();
+      } catch {
+        this.o.onReport({
+          engine: this.firstEngine(),
+          outcome: 'ERROR',
+          durationMs,
+          errorCode: 'CAPTURE_FAILED',
+        });
+        this.o.onWarning('NO_SPEECH');
+        this.set('IDLE');
+        return;
+      }
       if (pcm.length < (this.o.minSamples ?? 4800)) {
         this.o.onReport({ engine: this.firstEngine(), outcome: 'NO_SPEECH', durationMs });
         this.o.onWarning('NO_SPEECH');
@@ -293,17 +321,28 @@ export class PushToTalk {
       for (const engine of this.o.engines) {
         if (this.failed.has(engine.tag)) continue;
         const ctl = new AbortController();
-        const stop = this.o.clock.after(15_000, () => ctl.abort());
+        let stopTimer: () => void = () => {};
+        // An engine that ignores the abort signal must not hang the controller: the deadline wins the race.
+        const deadline = new Promise<never>((_, reject) => {
+          stopTimer = this.o.clock.after(15_000, () => {
+            ctl.abort();
+            reject(new Error('engine deadline'));
+          });
+        });
         try {
-          const r = await engine.transcribe(pcm, ctl.signal);
-          stop();
+          const r = await Promise.race([engine.transcribe(pcm, ctl.signal), deadline]);
+          stopTimer();
+          this.failures.delete(engine.tag);
           const latencyMs = this.o.clock.now() - releasedAt;
           this.latencies.push(latencyMs);
           this.deliver(engine.tag, r.text, r.confidence, latencyMs, durationMs);
           return;
         } catch {
-          stop();
-          this.failed.add(engine.tag);
+          stopTimer();
+          // One slip is forgiven; the second in a row retires the engine for the session.
+          const n = (this.failures.get(engine.tag) ?? 0) + 1;
+          this.failures.set(engine.tag, n);
+          if (n >= 2) this.failed.add(engine.tag);
           this.o.onReport({
             engine: engine.tag,
             outcome: 'ERROR',
@@ -313,11 +352,12 @@ export class PushToTalk {
         }
       }
       this.o.onWarning('STT_UNAVAILABLE');
-      this.set('UNAVAILABLE');
+      this.set(this.o.engines.every((e) => this.failed.has(e.tag)) ? 'UNAVAILABLE' : 'IDLE');
     } finally {
       // The recording is dropped as soon as the utterance is handled, whatever happened.
       if (pcm) pcm.fill(0);
       pcm = null;
+      this.busy = false;
     }
   }
 

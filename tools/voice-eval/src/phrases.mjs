@@ -238,6 +238,12 @@ const questions = [
   'how does displacement work',
   'what timeframe is the bias',
   'what is the risk calculator for',
+  'show me the risks',
+  'open the journal and tell me about it',
+  'go to bed with a clear plan',
+  'pay attention to the order block',
+  'show me why this is graded b',
+  'what does the upgrade of structure mean',
 ].map((q) => P('question', q, `${q[0].toUpperCase()}${q.slice(1)}?`, { command: null }));
 
 const forbidden = [

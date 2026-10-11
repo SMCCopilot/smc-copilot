@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizeSpoken } from './voice-grammar.js';
 
 /**
  * Spoken-form correction (A02 section 6.4). Speech engines hear "bee tee see perp" and "choke"; this turns what was
@@ -176,9 +177,61 @@ function timeframes(text: string, changes: Correction[]): string {
   );
 }
 
+/** Words that are also assets in the database but are ordinary speech first: never rewritten on their own. */
+const COMMON_WORDS = new Set([
+  'one',
+  'link',
+  'gas',
+  'key',
+  'time',
+  'open',
+  'sun',
+  'the',
+  'for',
+  'you',
+  'new',
+  'top',
+  'all',
+  'now',
+  'win',
+  'fun',
+  'run',
+  'joy',
+  'art',
+  'ace',
+  'bit',
+  'got',
+  'next',
+  'cash',
+  'trade',
+  'move',
+  'hold',
+  'mask',
+  'power',
+  'rare',
+  'real',
+  'safe',
+  'sand',
+  'star',
+  'swap',
+  'true',
+  'wave',
+  'work',
+  'world',
+  'zero',
+  'chain',
+  'coin',
+  'dog',
+  'cat',
+  'pepe_',
+]);
+const KNOWN_SHORT = new Set(['btc', 'eth', 'sol', 'bnb', 'xrp', 'ada', 'doge', 'avax']);
+const saidAsSymbol = (w: string): boolean =>
+  KNOWN_SHORT.has(w) || (w.length >= 4 && !COMMON_WORDS.has(w));
+
 export function correctTranscript(input: string, g: Glossary): CorrectionResult {
   const changes: Correction[] = [];
-  let text = ` ${lower(input).replace(/[.,!?]/g, ' ')} `.replace(/\s+/g, ' ');
+  let text = ` ${lower(normalizeSpoken(input)).replace(/[.,!?]/g, ' ')} `.replace(/\s+/g, ' ');
 
   // 1. Multi-word and misheard phrases, longest first, whole-word matches only.
   const entries = [...g.terms, ...g.symbols]
@@ -220,7 +273,9 @@ export function correctTranscript(input: string, g: Glossary): CorrectionResult 
   // A symbol said as a word ("pepe", "sol") is written the way the product writes it.
   text = out
     .map((w) =>
-      w.length >= 3 && w === w.toLowerCase() && symbols.has(w.toUpperCase()) ? w.toUpperCase() : w,
+      w === w.toLowerCase() && symbols.has(w.toUpperCase()) && saidAsSymbol(w)
+        ? w.toUpperCase()
+        : w,
     )
     .join(' ');
 
