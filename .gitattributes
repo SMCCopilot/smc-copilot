@@ -1,2 +1,9 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Normalise line endings: the VM and CI are Linux, the dev machine is Windows.
+* text=auto eol=lf
+*.sh text eol=lf
+*.sql text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.onnx binary
