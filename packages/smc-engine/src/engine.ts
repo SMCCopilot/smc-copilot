@@ -1,7 +1,8 @@
 import { type Candle, type StrategyConfig, TIMEFRAME_MS } from '@smc/contracts';
 import { emptyAtr, updateAtr } from './atr.js';
+import { emptyPeriod, stepLiquidity } from './liquidity.js';
 import { emptyScale, stepScale } from './scale.js';
-import type { CandleLite, EngineEvent, EngineState, TfState } from './types.js';
+import type { CandleLite, EngineEvent, EngineState, Swing, TfState } from './types.js';
 import { type BreakInfo, stepZones } from './zones.js';
 
 export const WINDOW_BARS = 600;
@@ -18,6 +19,9 @@ const emptyTf = (): TfState => ({
   external: emptyScale(),
   fvgs: [],
   orderBlocks: [],
+  pools: [],
+  pending: [],
+  period: emptyPeriod(),
 });
 
 /**
@@ -97,6 +101,17 @@ export function step(
   }
   const zones = stepZones(ctx, prev.fvgs, prev.orderBlocks, breaks);
 
+  const newSwings = [...internal.events, ...external.events]
+    .filter((ev) => ev.type === 'SWING_HIGH' || ev.type === 'SWING_LOW')
+    .map((ev) => {
+      const st = ev.scale === 'internal' ? internal.state : external.state;
+      return st.swings.find((s) => s.id === ev.id) as Swing;
+    });
+  const liquidity = stepLiquidity(ctx, prev.pools, prev.pending, prev.period, newSwings, [
+    ...internal.state.swings,
+    ...external.state.swings,
+  ]);
+
   const tfState: TfState = {
     window: bars,
     base,
@@ -105,6 +120,9 @@ export function step(
     external: external.state,
     fvgs: zones.fvgs,
     orderBlocks: zones.orderBlocks,
+    pools: liquidity.pools,
+    pending: liquidity.pending,
+    period: liquidity.period,
   };
   return {
     state: {
@@ -112,6 +130,6 @@ export function step(
       perTf: { ...state.perTf, [tf]: tfState },
       lastCandleOpenTime: { ...state.lastCandleOpenTime, [tf]: candle.openTime },
     },
-    events: [...internal.events, ...external.events, ...zones.events],
+    events: [...internal.events, ...external.events, ...zones.events, ...liquidity.events],
   };
 }

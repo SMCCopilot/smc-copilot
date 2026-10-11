@@ -57,6 +57,40 @@ export interface TfState {
   external: ScaleState;
   fvgs: Fvg[];
   orderBlocks: OrderBlock[];
+  pools: LiquidityPool[];
+  pending: PendingSweep[];
+  period: PeriodState;
+}
+
+export type PoolKind = 'EQH' | 'EQL' | 'PDH' | 'PDL' | 'PWH' | 'PWL';
+
+export interface LiquidityPool {
+  id: string;
+  kind: PoolKind;
+  /** BUY = liquidity above price (highs), SELL = below. */
+  side: 'BUY' | 'SELL';
+  level: number;
+  strength: number;
+  createdAt: number;
+  /** Open times of the swing bars that make up an equal-level pool. */
+  members: number[];
+}
+
+export interface PendingSweep {
+  poolId: string;
+  fromIndex: number;
+  fromOpenTime: number;
+  extreme: number;
+}
+
+/** Running UTC day/week extremes used to create previous-period levels. */
+export interface PeriodState {
+  dayStart: number;
+  dayHigh: number;
+  dayLow: number;
+  weekStart: number;
+  weekHigh: number;
+  weekLow: number;
 }
 
 export type Dir = 'BULL' | 'BEAR';
@@ -124,7 +158,10 @@ export type EngineEventType =
   | 'OB_BEAR'
   | 'OB_TESTED'
   | 'OB_MITIGATED'
-  | 'OB_EXPIRED';
+  | 'OB_EXPIRED'
+  | 'POOL_NEW'
+  | 'LIQ_SWEEP'
+  | 'LIQ_RUN';
 
 export interface EngineEvent {
   /** sha1(instrumentId|tf|type:scale|anchorOpenTime|strategyVersionId): stable across re-runs. */

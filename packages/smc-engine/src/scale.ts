@@ -35,9 +35,10 @@ export function eventId(
   type: EngineEventType,
   scale: Scale | null,
   anchor: number,
+  extra = '',
 ): string {
   return sha1(
-    `${ctx.instrumentId}|${ctx.tf}|${type}:${scale ?? 'zone'}|${anchor}|${ctx.cfg.strategyVersionId}`,
+    `${ctx.instrumentId}|${ctx.tf}|${type}:${scale ?? 'zone'}|${anchor}${extra}|${ctx.cfg.strategyVersionId}`,
   );
 }
 
