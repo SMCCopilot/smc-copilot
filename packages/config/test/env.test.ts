@@ -52,6 +52,17 @@ describe('parseEnv', () => {
     expect(env.BINANCE_PERP_WS_URL).toBe('wss://fstream.binance.com/market');
   });
 
+  it('ingest is off by default and DNS servers must be IPv4 addresses', () => {
+    expect(parseEnv(dev).INGEST_ENABLED).toBe(false);
+    expect(parseEnv({ ...dev, INGEST_ENABLED: 'true' }).INGEST_ENABLED).toBe(true);
+    expect(parseEnv({ ...dev, DNS_SERVERS: '1.1.1.1, 8.8.8.8' }).DNS_SERVERS).toEqual([
+      '1.1.1.1',
+      '8.8.8.8',
+    ]);
+    expect(() => parseEnv({ ...dev, DNS_SERVERS: 'dns.example' })).toThrow(/DNS_SERVERS/);
+    expect(() => parseEnv({ ...dev, INGEST_ENABLED: 'maybe' })).toThrow(/INGEST_ENABLED/);
+  });
+
   it('treats blank values as unset everywhere, so defaults apply (a blank cost cap is not zero)', () => {
     const env = parseEnv({
       ...dev,

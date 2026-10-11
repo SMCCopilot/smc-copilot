@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { READINESS_CHECKS } from '../config/tokens.js';
 import { HealthController } from './health.controller.js';
 import { DbReadinessCheck, type ReadinessCheck, ReadinessService } from './readiness.js';
 
+@Global()
 @Module({
   controllers: [HealthController],
   providers: [
@@ -14,5 +15,6 @@ import { DbReadinessCheck, type ReadinessCheck, ReadinessService } from './readi
     },
     ReadinessService,
   ],
+  exports: [ReadinessService],
 })
 export class HealthModule {}

@@ -75,6 +75,11 @@ const EnvSchema = z
     AI_DAILY_BUDGET_DEFAULT_USD: z.coerce.number().nonnegative().default(0.05),
     AI_GLOBAL_DAILY_CAP_USD: z.coerce.number().nonnegative().default(10),
 
+    // Live venue ingest (Phase 1). Off by default so tests and database-less development never open sockets.
+    INGEST_ENABLED: z.stringbool().default(false),
+    // Dev only: resolve names through these DNS servers when the local network blocks venue hosts.
+    DNS_SERVERS: csv.pipe(z.array(z.ipv4())),
+
     SENTRY_DSN: optionalUrl,
     OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
     ADMIN_IP_ALLOWLIST: csv.pipe(z.array(ipOrCidr)),

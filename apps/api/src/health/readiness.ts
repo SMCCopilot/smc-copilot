@@ -57,6 +57,12 @@ export class ReadinessService {
 
   constructor(@Inject(READINESS_CHECKS) private readonly checks: ReadinessCheck[]) {}
 
+  /** Lets a module that starts later (live ingest) add its own check. */
+  register(check: ReadinessCheck): void {
+    this.checks.push(check);
+    this.last = null;
+  }
+
   /** Single-flight with a short cache: concurrent and repeated probes share one evaluation. */
   report(): Promise<ReadinessReport> {
     if (this.last && Date.now() - this.last.at < CACHE_MS) return Promise.resolve(this.last.report);

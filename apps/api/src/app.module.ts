@@ -9,6 +9,7 @@ import { ProblemFilter } from './common/problem.filter.js';
 import { ENV } from './config/tokens.js';
 import { DbModule } from './db/db.module.js';
 import { HealthModule } from './health/health.module.js';
+import { IngestModule } from './ingest/ingest.module.js';
 
 export interface AppModuleOptions {
   readonly env: Env;
@@ -27,6 +28,7 @@ export class AppModule {
         DbModule,
         AuthModule,
         HealthModule,
+        IngestModule,
       ],
       providers: [
         { provide: ENV, useValue: env },
