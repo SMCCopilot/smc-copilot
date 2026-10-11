@@ -21,7 +21,9 @@ async function main(): Promise<void> {
     env = parseEnv(process.env);
   } catch (error) {
     // EnvError lists variable names and failure kinds only, never values.
-    process.stderr.write(`${error instanceof EnvError ? error.message : String(error)}\n`);
+    process.stderr.write(
+      `${error instanceof EnvError ? error.message : `unexpected ${error instanceof Error ? error.constructor.name : typeof error} while reading configuration`}\n`,
+    );
     process.exit(1);
   }
 

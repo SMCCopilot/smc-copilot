@@ -1,5 +1,8 @@
 # Production-shaped Compose project for the Oracle free VM (B02 section 1). Secrets come from an env file that is
-# decrypted at deploy time (SOPS + age) and never committed:  docker compose --env-file .env.prod up -d
+# decrypted at deploy time (SOPS + age) and never committed. The container environment comes from env_file
+# below (path relative to infra/); the tunnel profile also needs CLOUDFLARE_TUNNEL_TOKEN in the shell or --env-file.
+#   docker compose up -d                      # api only
+#   docker compose --profile tunnel up -d     # api + cloudflared
 # UNVERIFIED until run on a host with a Docker daemon.
 name: smc-copilot
 
@@ -39,7 +42,7 @@ services:
     image: cloudflare/cloudflared:2026.10.0
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       api:
         condition: service_healthy

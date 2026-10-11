@@ -7,6 +7,7 @@
 import { Resolver } from 'node:dns';
 import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Agent, fetch, WebSocket } from 'undici';
 import { closedCandles, summarizeLags } from './lag.mjs';
 
@@ -69,7 +70,13 @@ const VENUES = {
   },
 };
 
-const outDir = join('.recordings', `s2-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+// Always under the repository root so the git-ignored .recordings folder is used wherever the script is launched.
+const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+const outDir = join(
+  repoRoot,
+  '.recordings',
+  `s2-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+);
 mkdirSync(outDir, { recursive: true });
 
 /** Local clock minus venue clock, estimated from one round trip (so lag is not blamed on a skewed machine clock). */
@@ -110,6 +117,10 @@ async function probeRest(venue) {
 function probeWs(name, venue, url, deadline) {
   return new Promise((resolve) => {
     const record = createWriteStream(join(outDir, `${name}.jsonl`), { flags: 'a' });
+    record.on('error', (e) => {
+      error = `recording failed: ${e.code ?? e.message}`;
+    });
+    let done = false;
     const lags = [];
     let frames = 0;
     let connectedAt = null;
@@ -117,6 +128,8 @@ function probeWs(name, venue, url, deadline) {
     let ping = null;
     const ws = new WebSocket(url, { dispatcher });
     const finish = () => {
+      if (done) return;
+      done = true;
       clearInterval(ping);
       clearTimeout(timer);
       try {
@@ -131,9 +144,12 @@ function probeWs(name, venue, url, deadline) {
       connectedAt = Date.now();
       if (venue.subscribe) ws.send(JSON.stringify(venue.subscribe));
       if (venue.pingEveryMs)
-        ping = setInterval(() => ws.send(JSON.stringify({ op: 'ping' })), venue.pingEveryMs);
+        ping = setInterval(() => {
+          if (!done && ws.readyState === 1) ws.send(JSON.stringify({ op: 'ping' }));
+        }, venue.pingEveryMs);
     });
     ws.addEventListener('message', (event) => {
+      if (done) return;
       const receivedAt = Date.now();
       const text = String(event.data);
       frames += 1;

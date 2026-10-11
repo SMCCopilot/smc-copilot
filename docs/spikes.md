@@ -33,7 +33,7 @@ Run 2026-10-11, 3-4 minutes each, `--dns 1.1.1.1`. **Dev-machine numbers only: t
 |---|---|---|---|---|
 | Binance spot (`data-stream.binance.vision`) | 200 | connects, frames flow | 3-4 | -329 / -328 ms (see Finding 3) |
 | Binance USD-M perp | 200 | `/stream` connects but sends **0 frames**; `/market/stream` works | 2 | -118 / -79 ms (see Finding 3) |
-| Bybit v5 linear perp | 200 | connects, frames flow | 4 | 72 / 82 ms |
+| Bybit v5 linear perp | 200 | connects, frames flow | 4 | 72 / 82 ms (raw, uncorrected) |
 
 No HTTP 451/403 from any venue on this machine.
 

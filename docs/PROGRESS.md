@@ -44,7 +44,7 @@ Running state. A fresh session should be able to resume from this file and `CLAU
 - Real server run: `/healthz` 200, `/readyz` 503 NOT_READY without a database, production start without secrets exits 1 listing variable names only.
 
 ### Spike S2 (dev machine, 2026-10-11)
-- Router DNS does not resolve the Binance/Bybit API hosts (public DNS does). Binance perp WebSocket moved to a `/market` path (old path sends no frames). Bybit lag 72-82 ms. Lag unmeasurable here (clock/RTT); must be measured on the VM. See docs/spikes.md and DECISIONS.
+- Router DNS does not resolve the Binance/Bybit API hosts (public DNS does). Binance perp WebSocket moved to a `/market` path (old path sends no frames). Bybit raw lag 72-82 ms (uncorrected). Lag is unmeasurable here (clock/RTT); must be measured on the VM. See docs/spikes.md and DECISIONS.
 
 ## Open items for the owner
 

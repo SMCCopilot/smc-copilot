@@ -24,7 +24,7 @@
 <table id="caps"><tbody></tbody></table>
 
 <h2>Screen capture test (about 10 s)</h2>
-<p>Share the chart window you normally use. The page crops the top-left header strip, downsizes it, encodes it as JPEG and
+<p>Share the chart window you normally use. The page crops the top-left header strip, encodes it as JPEG and
 reports size and cadence. The target is under 200 KB per frame at no more than 1 frame per second, and only changed frames.</p>
 <button type="button" id="start">Start capture test</button>
 <table id="cap"><tbody></tbody></table>
@@ -78,10 +78,12 @@ document.getElementById('start').onclick = async () => {
   let stream;
   try { stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false }); }
   catch (e) { row(tbody, 'getDisplayMedia', `refused: ${e.name}`, false); return; }
-  const video = document.getElementById('v'); video.srcObject = stream; await video.play();
-  const settings = stream.getVideoTracks()[0].getSettings();
+  const video = document.getElementById('v'); video.srcObject = stream;
   const canvas = document.getElementById('c'); const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  const sizes = [], encodeMs = []; let changed = 0, considered = 0, last = null;
+  const sizes = [], encodeMs = []; let changed = 0, considered = 0, last = null, settings = {};
+  try {
+  await video.play();
+  settings = stream.getVideoTracks()[0].getSettings();
   const t0 = performance.now();
   while (performance.now() - t0 < 10000) {
     const start = performance.now();
@@ -99,7 +101,10 @@ document.getElementById('start').onclick = async () => {
     }
     await new Promise((r) => setTimeout(r, Math.max(0, 1000 - (performance.now() - start))));
   }
-  for (const t of stream.getTracks()) t.stop();
+  } finally {
+    for (const t of stream.getTracks()) t.stop();
+    video.srcObject = null; canvas.width = 0; canvas.height = 0;
+  }
   const max = Math.max(0, ...sizes);
   result.capture = {
     surface: settings.displaySurface ?? 'unknown', width: settings.width, height: settings.height,

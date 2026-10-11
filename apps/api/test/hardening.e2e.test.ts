@@ -186,3 +186,15 @@ describe('database client (T2)', () => {
     await sql.end({ timeout: 1 });
   });
 });
+
+describe('safeErr', () => {
+  it('never emits message text, even a message line that looks like a stack frame', async () => {
+    const { safeErr } = await import('../src/common/logging.js');
+    const err = new Error('boom\n    at postgres://user:pw@host/db', {
+      cause: new Error('cause-secret'),
+    });
+    const out = JSON.stringify(safeErr(err));
+    expect(out).not.toMatch(/postgres:\/\/|pw@|boom|cause-secret/);
+    expect(JSON.parse(out).type).toBe('Error');
+  });
+});

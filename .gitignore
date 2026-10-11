@@ -15,7 +15,7 @@ keys.txt
 
 # Raw exchange data and recordings stay out of git (venue terms: A03 section 2.1, data.binance.vision is local-testing only).
 /data/
-/.recordings/
+**/.recordings/
 *.jsonl.gz
 
 .vscode/

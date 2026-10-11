@@ -53,11 +53,16 @@ export function safeErr(err: unknown): { type: string; code?: string; stack?: st
     constructor?: { name?: string };
     code?: unknown;
     stack?: unknown;
+    message?: unknown;
   };
+  // Drop everything before the first real frame: the header is `Name: message`, and a multi-line message could
+  // otherwise contain a line that looks like a frame.
+  const lines = typeof e.stack === 'string' ? e.stack.split(/\r?\n/) : [];
+  const firstFrame = lines.findIndex((l) => /^\s+at /.test(l));
   const frames =
-    typeof e.stack === 'string'
-      ? e.stack
-          .split(/\r?\n/)
+    firstFrame >= 0
+      ? lines
+          .slice(firstFrame)
           .filter((l) => /^\s+at /.test(l))
           .slice(0, 12)
           .join('\n')
