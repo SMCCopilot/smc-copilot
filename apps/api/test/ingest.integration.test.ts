@@ -233,7 +233,7 @@ describe('IngestService', () => {
   });
 
   it('a FEED_STALE row left open by a previous process does not count as a data-quality incident', async () => {
-    await sql`insert into dq_incidents (instrument_id, venue_id, rule) values (${btcPerp()?.id}, 'BINANCE', 'FEED_STALE')`;
+    await sql`insert into dq_incidents (instrument_id, venue_id, rule) values (${btcPerp()?.id ?? ''}, 'BINANCE', 'FEED_STALE')`;
     await h.feed('binance', raw('BTCUSDT', 'PERP', 0));
     expect(h.ingest.stateSnapshot(btcPerp()?.id ?? '').incidentOpen).toBe(false);
   });

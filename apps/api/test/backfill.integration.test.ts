@@ -395,8 +395,12 @@ describe('FeedMonitor', () => {
     const clock = new FakeClock();
     const bus = new InMemoryEventBus();
     const events: { name: string; payload: unknown }[] = [];
-    bus.subscribe('feed.status', (p) => events.push({ name: 'feed.status', payload: p }));
-    bus.subscribe('dq.incident', (p) => events.push({ name: 'dq.incident', payload: p }));
+    bus.subscribe('feed.status', (p) => {
+      events.push({ name: 'feed.status', payload: p });
+    });
+    bus.subscribe('dq.incident', (p) => {
+      events.push({ name: 'dq.incident', payload: p });
+    });
     const queue = new InMemoryJobQueue();
     const ingest = new IngestService(store, registry, bus, queue, clock, {
       warn: () => {},
