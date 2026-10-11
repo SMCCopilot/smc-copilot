@@ -78,7 +78,8 @@ export class NarrativeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The engine's facts with each live setup's stored base rate attached (only ever a sufficient cohort). */
-  private async factsWithStats(instrumentId: string) {
+  /** The engine's facts for one instrument with each live setup's stored base rate attached. */
+  async factsFor(instrumentId: string) {
     const { facts, instrument, asOf } = await this.analysis.marketFacts(instrumentId);
     const rows = await this.db<{ setup_key: string; stats: unknown }[]>`
       select s.setup_key, p.plan->'stats' as stats
@@ -118,7 +119,7 @@ export class NarrativeService implements OnModuleInit, OnModuleDestroy {
 
   /** What to show now: the cached model text for these exact facts, else the template (and a refresh is started). */
   async current(instrumentId: string): Promise<NarrativeResponse> {
-    const { facts, instrument, asOf } = await this.factsWithStats(instrumentId);
+    const { facts, instrument, asOf } = await this.factsFor(instrumentId);
     const hash = factsHash(facts);
     const [hit] = await this.db<{ content: NarrativeContent }[]>`
       select content from narratives

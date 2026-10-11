@@ -94,6 +94,12 @@ const EnvSchema = z
     AI_PRICES_JSON: optionalString,
     AI_DAILY_BUDGET_DEFAULT_USD: z.coerce.number().nonnegative().default(0.05),
     AI_GLOBAL_DAILY_CAP_USD: z.coerce.number().nonnegative().default(10),
+    // Rate limits on AI routes. The per-IP and per-device counters span accounts, so a scripted farm of free accounts
+    // behind one address or browser shares one allowance.
+    AI_USER_MESSAGES_PER_MINUTE: z.coerce.number().int().positive().default(10),
+    AI_USER_MESSAGES_PER_DAY: z.coerce.number().int().positive().default(200),
+    AI_IP_REQUESTS_PER_DAY: z.coerce.number().int().positive().default(150),
+    AI_DEVICE_REQUESTS_PER_DAY: z.coerce.number().int().positive().default(150),
 
     // Live venue ingest (Phase 1). Off by default so tests and database-less development never open sockets.
     INGEST_ENABLED: z.stringbool().default(false),

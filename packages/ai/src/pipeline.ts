@@ -4,7 +4,7 @@ import { checkRefs, type RefSpace, scanNumbers } from './guard.js';
 import { checkLexicon } from './lexicon.js';
 import type { LlmResult, LlmRouter } from './router.js';
 import { containsSecret } from './secrets.js';
-import type { DataClass, JobId, LlmImage, LlmTurn } from './types.js';
+import type { DataClass, JobId, LlmImage, LlmTurn, ModelTier } from './types.js';
 
 /** Pulls the first JSON object out of a model answer, tolerating a code fence or a sentence around it. */
 export function extractJson(text: string): unknown {
@@ -44,6 +44,8 @@ export interface GuardedOptions<T> {
   check?: (o: T) => string[];
   history?: readonly LlmTurn[];
   images?: readonly LlmImage[];
+  /** Override the job's usual model tier (a soft budget uses the fast model). */
+  tier?: ModelTier;
 }
 
 export type GuardedResult<T> =
@@ -78,7 +80,7 @@ export async function runGuarded<T>(o: GuardedOptions<T>): Promise<GuardedResult
           ...(o.history ? { history: o.history } : {}),
           ...(o.images ? { images: o.images } : {}),
         },
-        { dataClass: o.dataClass },
+        { dataClass: o.dataClass, ...(o.tier ? { tier: o.tier } : {}) },
       );
     } catch (e) {
       if (e instanceof AiUnavailableError) {

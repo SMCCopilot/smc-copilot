@@ -126,7 +126,7 @@ describe('socket', () => {
     expect((await lost).code).toBe('SESSION_CONTROLLER_TAKEN');
   });
 
-  it('rejects malformed events, says AI is off, and has no event that confirms a gate or logs a trade', async () => {
+  it('rejects malformed events, answers without AI configured, and has no event that confirms a gate or logs a trade', async () => {
     const { http, url } = await boot();
     const { sessionId, wsToken } = await userSession(http);
     const a = open(url, { wsToken });
@@ -138,10 +138,10 @@ describe('socket', () => {
     expect((await once<{ payload: { code: string } }>(a, 'error')).payload.code).toBe(
       'VALIDATION_FAILED',
     );
+    // No provider is enabled here: chat still answers, with the deterministic template, and does not error.
     a.emit('chat.send', { clientMsgId: 'm1', text: 'hello', inputMode: 'text' });
-    expect((await once<{ payload: { code: string } }>(a, 'error')).payload.code).toBe(
-      'AI_TEMPORARILY_UNAVAILABLE',
-    );
+    const done = await once<{ payload: { aiGenerated: boolean } }>(a, 'chat.done');
+    expect(done.payload.aiGenerated).toBe(false);
     // Unknown events are ignored, never acted on: nothing here can create a gate decision or a trade.
     a.emit('gate.confirm', { token: 'x' });
     a.emit('trade.open', { instrumentId: randomUUID() });

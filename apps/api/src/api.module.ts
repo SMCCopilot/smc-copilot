@@ -11,6 +11,8 @@ import type { Env } from '@smc/config';
 import { AiAdminController } from './ai/ai-admin.controller.js';
 import { AiGateService } from './ai/ai-gate.service.js';
 import { AiMeterService } from './ai/ai-meter.service.js';
+import { ChatController } from './ai/chat.controller.js';
+import { ChatService } from './ai/chat.service.js';
 import { NarrativeController } from './ai/narrative.controller.js';
 import { NarrativeService } from './ai/narrative.service.js';
 import { ProviderConfigService } from './ai/provider-config.service.js';
@@ -48,6 +50,7 @@ import { TradesService } from './trades/trades.service.js';
     DevController,
     NarrativeController,
     AiAdminController,
+    ChatController,
   ],
   providers: [
     AnalysisService,
@@ -65,6 +68,7 @@ import { TradesService } from './trades/trades.service.js';
     AiMeterService,
     AiGateService,
     NarrativeService,
+    ChatService,
     {
       provide: LLM_ROUTER,
       inject: [ENV, ProviderConfigService, AiMeterService],

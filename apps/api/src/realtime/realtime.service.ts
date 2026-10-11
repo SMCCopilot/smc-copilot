@@ -8,6 +8,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
+import { FORBIDDEN_BY_VOICE, parseCommand } from '@smc/ai';
 import type { Env } from '@smc/config';
 import {
   CLIENT_EVENT_TYPES,
@@ -16,15 +17,19 @@ import {
   type ErrorCode,
   RESERVED_CLIENT_EVENTS,
   type Timeframe,
+  TimeframeSchema,
 } from '@smc/contracts';
 import type { Sql } from '@smc/db';
 import { Server, type Socket } from 'socket.io';
+import { type ChatCaller, ChatService, type ChatSink } from '../ai/chat.service.js';
 import { NarrativeService } from '../ai/narrative.service.js';
 import { AnalysisService } from '../analysis/analysis.service.js';
 import { ApiProblemError } from '../common/problem.js';
+import { assertNoSecret } from '../common/secrets.js';
 import { ENV, EVENT_BUS, SQL } from '../config/tokens.js';
 import { GateService, type GateStateDto } from '../gate/gate.service.js';
 import type { EventBus } from '../ingest/event-bus.js';
+import { JournalService } from '../journal/journal.service.js';
 import { type NotificationDto, NotificationsService } from '../journal/notifications.service.js';
 import { MarketsService } from '../markets/markets.service.js';
 import { verifyWsToken } from '../sessions/ws-token.js';
@@ -51,6 +56,8 @@ interface Ctx {
   lastSnapshotId: string | null;
   seen: Map<string, string>;
   dirty: boolean;
+  /** Chat messages the client asked to stop; their remaining pieces are not sent. */
+  cancelled: Set<string>;
   /** False until the stored sequence is loaded; nothing is pushed before then, so numbers never collide. */
   ready: boolean;
 }
@@ -87,6 +94,8 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     private readonly notifications: NotificationsService,
     private readonly positions: PositionMonitor,
     private readonly narratives: NarrativeService,
+    private readonly chat: ChatService,
+    private readonly journal: JournalService,
     @Optional() @Inject(EVENT_BUS) private readonly bus: EventBus | null,
   ) {}
 
@@ -219,6 +228,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       lastSnapshotId: null,
       seen: new Map(),
       dirty: false,
+      cancelled: new Set<string>(),
       ready: false,
     };
     ctx.socketId = socket.id;
@@ -319,13 +329,136 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       case 'setup.watch':
       case 'context.hint':
         return;
+      case 'chat.send':
+        await this.chat.send(
+          this.caller(socket, ctx),
+          {
+            clientMsgId: p.clientMsgId as string,
+            text: p.text as string,
+            inputMode: p.inputMode as 'text' | 'voice',
+            sttConfidence: p.sttConfidence as number | undefined,
+            sttEngine: p.sttEngine as string | undefined,
+          },
+          this.sink(ctx),
+        );
+        return;
+      case 'chat.cancel':
+        ctx.cancelled.add(p.messageId as string);
+        return;
+      case 'voice.command':
+        await this.voice(
+          socket,
+          ctx,
+          p as { utteranceId: string; text: string; sttConfidence: number; sttEngine: string },
+        );
+        return;
       default:
-        // explain, chat and voice need the AI layer, which is off until Phase 5.
+        // Explain needs the chart image path (week 14).
         this.emit(ctx, 'error', {
           code: 'AI_TEMPORARILY_UNAVAILABLE',
-          detail: 'AI features are not enabled yet.',
+          detail: 'This feature is not available yet.',
         });
     }
+  }
+
+  /** Who is asking, for the shared free-allowance counters only. Never sent to a model. */
+  private caller(socket: Socket, ctx: Ctx): ChatCaller {
+    const fwd = this.env.TRUST_PROXY_HEADERS
+      ? socket.handshake.headers['x-forwarded-for']
+      : undefined;
+    const raw =
+      (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim() ||
+      socket.handshake.address ||
+      'unknown';
+    const device: unknown = socket.handshake.auth?.deviceId;
+    return {
+      sessionId: ctx.sessionId,
+      userId: ctx.userId,
+      workspaceId: ctx.workspaceId,
+      instrumentId: ctx.instrumentId,
+      ip: raw.replace(/^::ffff:/i, ''),
+      ...(typeof device === 'string' && device ? { deviceId: device.slice(0, 64) } : {}),
+    };
+  }
+
+  private sink(ctx: Ctx): ChatSink {
+    return {
+      chunk: (e) => this.emit(ctx, 'chat.chunk', e),
+      done: (e) => this.emit(ctx, 'chat.done', e),
+      budget: (b) => this.emit(ctx, 'budget.update', b),
+      cancelled: (id) => ctx.cancelled.has(id),
+    };
+  }
+
+  /**
+   * A spoken command. The closed grammar can only change the view, pause, or add a journal note; anything that could
+   * move money or data is refused here and, for the gate, again by the database (invariant 1).
+   */
+  private async voice(
+    socket: Socket,
+    ctx: Ctx,
+    p: { utteranceId: string; text: string; sttConfidence: number; sttEngine: string },
+  ): Promise<void> {
+    const sql = this.sql as Sql;
+    const log = (outcome: string, route: string | null, command: string | null) =>
+      sql`insert into voice_events (workspace_id, user_id, session_id, engine, confidence, outcome, route, command_id)
+          values (${ctx.workspaceId}, ${ctx.userId}, ${ctx.sessionId}, ${p.sttEngine}, ${p.sttConfidence}, ${outcome}, ${route}, ${command})`;
+    if (FORBIDDEN_BY_VOICE.test(p.text)) {
+      await log('FORBIDDEN_BY_VOICE', 'COMMAND', null);
+      this.emit(ctx, 'error', {
+        code: 'VOICE_FORBIDDEN_ACTION',
+        detail: 'That cannot be done by voice. Use the on-screen button.',
+      });
+      return;
+    }
+    const cmd = p.sttConfidence >= 0.6 ? parseCommand(p.text) : null;
+    if (!cmd) {
+      await log(p.sttConfidence < 0.6 ? 'LOW_CONFIDENCE' : 'OK', 'QUESTION', null);
+      await this.chat.send(
+        this.caller(socket, ctx),
+        {
+          clientMsgId: p.utteranceId,
+          text: p.text,
+          inputMode: 'voice',
+          sttConfidence: p.sttConfidence,
+          sttEngine: p.sttEngine,
+        },
+        this.sink(ctx),
+      );
+      return;
+    }
+    await log('OK', 'COMMAND', cmd.command);
+    if (cmd.command === 'SWITCH_TF') {
+      const tf = TimeframeSchema.safeParse(cmd.tf);
+      if (!tf.success) {
+        this.emit(ctx, 'error', { code: 'VALIDATION_FAILED', detail: 'Unknown timeframe.' });
+        return;
+      }
+      ctx.tf = tf.data;
+      ctx.lastSnapshotId = null;
+      await sql`update copilot_sessions set tf = ${tf.data} where id = ${ctx.sessionId}`;
+      this.emit(ctx, 'context.updated', {
+        instrumentId: ctx.canonical,
+        tf: tf.data,
+        source: 'voice',
+      });
+      await this.pushAnalysis(ctx.instrumentId, ctx);
+    } else if (cmd.command === 'PAUSE_RESUME') {
+      await sql`update copilot_sessions set state = ${cmd.resume ? 'ACTIVE' : 'PAUSED'} where id = ${ctx.sessionId} and state <> 'ENDED'`;
+      this.emit(ctx, 'session.state', {
+        state: cmd.resume ? 'ACTIVE' : 'PAUSED',
+        sessionId: ctx.sessionId,
+      });
+    } else if (cmd.command === 'JOURNAL_NOTE') {
+      assertNoSecret(cmd.note);
+      await this.journal.addNote(ctx.userId, ctx.workspaceId, { notes: cmd.note, tags: ['voice'] });
+    }
+    this.emit(ctx, 'voice.final', {
+      utteranceId: p.utteranceId,
+      route: 'COMMAND',
+      command: cmd.command,
+      args: cmd,
+    });
   }
 
   private async setContext(

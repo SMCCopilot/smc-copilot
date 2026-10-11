@@ -3,6 +3,7 @@ export * from './adapters/gemini.js';
 export * from './adapters/http.js';
 export * from './adapters/openai.js';
 export * from './breaker.js';
+export * from './chat.js';
 export * from './errors.js';
 export * from './guard.js';
 export * from './lexicon.js';
