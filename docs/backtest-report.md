@@ -20,26 +20,27 @@ Both templates had enough trades and neither met the pre-registered criteria. Th
 Evaluated period 2025-10-01 to 2026-10-01 (UTC). Candles from 2025-09-01 warm up the engine; setups created before the evaluated period are not counted.
 
 Split: tune 2025-10-01 to 2026-04-01, validate to 2026-07-01, final test to 2026-10-01.
-Trials counted: 2; adjusted alpha 0.025; bootstrap seed 1.
+Trials counted: 4; adjusted alpha 0.0125; bootstrap seed 1.
 
 ## Setup funnel (evaluated period)
 
 - candidates: 35661
-- rejected by hard filters: 26699
-- armed (got a shadow outcome): 8962
-- triggered (touched the POI then a confirming break): 1388
-- armed by template: T2 6829, T1 2133
-- rejection reasons: WRONG_PD_SIDE 14845, HTF_COUNTER_BIAS 7684, STOP_TOO_TIGHT 4590, NO_POI 4132, VOL_EXTREME 3698, POI_MITIGATED 1729, STOP_TOO_WIDE 1154, SPREAD_WIDE 822, NO_TARGET 368, RR_TOO_LOW 79
-- outcomes: NO_FILL 5095, SL_FIRST 3139, TP1_FIRST 624, EXPIRED_OPEN 97
-- ambiguous intrabar (stop assumed first): 120 (3.2% of resolved)
+- rejected by hard filters: 26722
+- armed: 8939
+- of those, still live when the data ended (no outcome yet, excluded from every statistic): 7
+- triggered (touched the POI then a confirming break): 1786
+- armed by template: T2 6806, T1 2133
+- rejection reasons: WRONG_PD_SIDE 14845, HTF_COUNTER_BIAS 7684, STOP_TOO_TIGHT 4590, NO_POI 4132, VOL_EXTREME 3698, POI_MITIGATED 1729, STOP_TOO_WIDE 1154, SPREAD_WIDE 822, NO_TARGET 287, RR_TOO_LOW 8
+- outcomes: SL_FIRST 4208, NO_FILL 3972, TP1_FIRST 626, EXPIRED_OPEN 126
+- ambiguous intrabar (stop assumed first): 36 (0.7% of resolved)
 
 ### Final test (evaluated against the criteria, looked at once)
 
 | Group | Trades | Win rate | Mean net R | CI of mean (adjusted) | Max drawdown R | Windows positive | Result |
 |---|---|---|---|---|---|---|---|
-| ALL | 938 | 15.7% | -1.324 | [-1.486, -1.139] | 1241.82 | 0/3 | FAIL |
-| T1 | 297 | 19.9% | -0.697 | [-0.922, -0.439] | 206.96 | 0/3 | FAIL |
-| T2 | 641 | 13.7% | -1.614 | [-1.827, -1.385] | 1034.87 | 0/3 | FAIL |
+| ALL | 1209 | 11.2% | -1.506 | [-1.806, -1.132] | 1824.59 | 0/3 | FAIL |
+| T1 | 325 | 17.5% | -0.836 | [-1.111, -0.525] | 271.56 | 0/3 | FAIL |
+| T2 | 884 | 8.9% | -1.752 | [-2.110, -1.298] | 1553.03 | 0/3 | FAIL |
 
 - ALL: expectancy lower bound is not above 0 R; positive in 0 of 3 windows (need 2)
 - T1: expectancy lower bound is not above 0 R; positive in 0 of 3 windows (need 2)
@@ -51,36 +52,36 @@ Gross R is before costs; fees are the round-trip taker fee expressed in R (5 bps
 
 | Group | Trades | Mean gross R | Mean fees R | Mean net R |
 |---|---|---|---|---|
-| ALL | 938 | -0.228 | 1.096 | -1.324 |
-| T2 | 641 | -0.228 | 1.387 | -1.614 |
-| T1 | 297 | -0.229 | 0.468 | -0.697 |
+| ALL | 1209 | -0.340 | 1.166 | -1.506 |
+| T2 | 884 | -0.345 | 1.408 | -1.752 |
+| T1 | 325 | -0.327 | 0.508 | -0.836 |
 
 ### Validate (information only)
 
 | Group | Trades | Win rate | Mean net R | CI of mean (adjusted) | Max drawdown R | Windows positive | Result |
 |---|---|---|---|---|---|---|---|
-| ALL | 908 | 17.2% | -1.281 | [-1.438, -1.128] | 1166.79 | 0/3 | - |
-| T1 | 270 | 25.6% | -0.589 | [-0.816, -0.372] | 159.22 | 0/3 | - |
-| T2 | 638 | 13.6% | -1.575 | [-1.765, -1.355] | 1007.81 | 0/3 | - |
+| ALL | 1195 | 13.2% | -1.422 | [-1.678, -1.170] | 1699.06 | 0/3 | - |
+| T1 | 301 | 21.9% | -0.741 | [-1.045, -0.381] | 223.07 | 0/3 | - |
+| T2 | 894 | 10.3% | -1.651 | [-1.944, -1.305] | 1477.69 | 0/3 | - |
 
 ### Tune (information only)
 
 | Group | Trades | Win rate | Mean net R | CI of mean (adjusted) | Max drawdown R | Windows positive | Result |
 |---|---|---|---|---|---|---|---|
-| ALL | 1917 | 16.7% | -1.030 | [-1.151, -0.910] | 1996.66 | 0/3 | - |
-| T1 | 533 | 26.5% | -0.440 | [-0.611, -0.264] | 242.33 | 0/3 | - |
-| T2 | 1384 | 13.0% | -1.258 | [-1.409, -1.089] | 1765.71 | 0/3 | - |
+| ALL | 2430 | 13.7% | -1.126 | [-1.307, -0.944] | 2757.13 | 0/3 | - |
+| T1 | 575 | 24.0% | -0.541 | [-0.768, -0.284] | 321.68 | 0/3 | - |
+| T2 | 1855 | 10.5% | -1.308 | [-1.513, -1.080] | 2446.22 | 0/3 | - |
 
 ## Cohorts over the whole evaluated period
 
 | Template | Grade | Setups | Resolved | Win rate | 95% CI (Wilson) | Mean net R | Fill rate | Enough history |
 |---|---|---|---|---|---|---|---|---|
-| T1 | A | 609 | 316 | 23.1% | [18.8%, 28.1%] | -0.581 | 55.2% | yes |
-| T1 | B | 1282 | 690 | 24.2% | [21.2%, 27.5%] | -0.541 | 57.4% | yes |
-| T1 | C | 236 | 94 | 30.9% | [22.4%, 40.8%] | -0.464 | 44.5% | yes |
-| T2 | A | 861 | 346 | 17.1% | [13.5%, 21.4%] | -0.865 | 40.5% | yes |
-| T2 | B | 3736 | 1547 | 12.4% | [10.9%, 14.1%] | -1.463 | 41.7% | yes |
-| T2 | C | 2231 | 770 | 13.5% | [11.3%, 16.1%] | -1.582 | 34.8% | yes |
+| T1 | A | 631 | 355 | 21.4% | [17.5%, 26.0%] | -0.660 | 59.4% | yes |
+| T1 | B | 1280 | 742 | 21.7% | [18.9%, 24.8%] | -0.657 | 61.5% | yes |
+| T1 | C | 216 | 104 | 23.1% | [16.0%, 32.0%] | -0.810 | 53.7% | yes |
+| T2 | A | 1009 | 538 | 9.5% | [7.3%, 12.2%] | -1.186 | 54.6% | yes |
+| T2 | B | 3927 | 2133 | 9.8% | [8.6%, 11.1%] | -1.518 | 54.8% | yes |
+| T2 | C | 1869 | 962 | 11.0% | [9.2%, 13.2%] | -1.638 | 52.3% | yes |
 
 ## Limits
 
@@ -88,3 +89,19 @@ Gross R is before costs; fees are the round-trip taker fee expressed in R (5 bps
 - Higher-timeframe bias is often unknown (few 4h and 1d candles in a year); bias-dependent scoring then falls back to the neutral value.
 - The fill model cannot see order books or queue position; real fills in fast markets would be worse.
 - In-sample risk: the designer is not blind to crypto history. A pass would justify a live shadow period, not trust.
+## Run history (nothing hidden)
+
+| Run | Measurement | Trials | Final-test trades | Mean net R | Mean gross R | Verdict |
+|---|---|---|---|---|---|---|
+| 1 | as pre-registered (commit 15f0252) | 2 | 938 | -1.324 | -0.228 | NO_EDGE_DETECTED |
+| 2 (this report) | corrected after independent review, see the change log in `docs/backtest-criteria.md` | 4 | 1209 | -1.506 | -0.340 | NO_EDGE_DETECTED |
+
+Run 1 is in `docs/backtest-report-run1.md`. The strategy rules and the acceptance thresholds were identical in both runs; the corrections made the cost model less flattering, removed targets that had already traded, resampled whole days for the confidence interval, and split at the exact registered dates.
+
+## What this means
+
+- The shipped `smc-core v1` rules, taken as written, **lost money in every period and for both templates**, with the loss concentrated in costs: gross R is slightly negative (about -0.3 R per trade) and round-trip fees take about 1.2 R per trade, because the stops are tight (as little as 0.3 ATR on 5m and 15m) against a 10 bps round-trip fee.
+- Win rates are low (T1 about 17%, T2 about 9% in the final test) because most plans target 3R or more from a tight stop.
+- This is evidence about these rules on this data, not about SMC as a discipline and not about what a human trader reading the same charts would do. Gate G1 (does the engine see what you see) is still the open question that decides whether the rules or the definitions need to change.
+- No parameter was tuned on this data. Any change to the rules is a new strategy version and needs a new untouched test period (forward shadow results on the live feed are the natural one).
+- Cost is the first thing to look at: a rule that rejects setups whose round-trip fee exceeds a fraction of R, and maker fees on limit entries, are the obvious candidates for a v2. They are listed in the backlog, not applied.
