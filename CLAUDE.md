@@ -60,7 +60,7 @@ Rules are enforced by `tools/boundaries` + `.dependency-cruiser.cjs` and have ne
 
 ## Conventions
 
-- Tests first; conventional commits; one logical change per commit; branches `phase-N/step-M-name`.
+- Tests first; conventional commits; one logical change per commit. Everything lives on the single branch `main` until the owner asks for separate branches.
 - Secrets live in `.env.local` (git-ignored) or SOPS files; only `.env.example` is committed. Never print secret values.
 - Supabase is hosted (no Docker for it). Local SQL smoke tests use plain Postgres with `0000_dev_shims.sql`.
 - Verify library APIs against current official docs, not memory.

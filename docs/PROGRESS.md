@@ -4,7 +4,7 @@ Running state. A fresh session should be able to resume from this file and `CLAU
 
 - **Current phase:** 1 (Market data core) built and verified locally; awaiting the owner's approval of Phase 2
 - **Owner priority:** build the tech and make it work through live testing; defer everything else.
-- **Branches:** step 1-2 on `phase-0/step-1-monorepo-scaffold`, step 3 on `phase-0/step-3-api-skeleton`, steps 4-5 on `phase-0/step-5-spike-s2` (cumulative; the last holds everything)
+- **Branch:** everything is on `main` (owner decision: one branch until told otherwise)
 
 ## Phase 0 steps
 
