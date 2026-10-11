@@ -21,6 +21,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@smc/contracts": "workspace:*"
+    "@smc/contracts": "workspace:*",
+    "zod": "^4.6.5"
   }
 }

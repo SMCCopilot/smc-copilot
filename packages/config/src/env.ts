@@ -73,14 +73,25 @@ const EnvSchema = z
     BYBIT_WS_URL: z.url().default('wss://stream.bybit.com/v5/public/linear'),
     BYBIT_REST_URL: z.url().default('https://api.bybit.com'),
 
+    // AI providers (Phase 5). Each is switched on or off by the owner: the *_ENABLED flag is the starting value,
+    // and an admin switch stored in the database (feature_flags) overrides it without a deploy.
     ANTHROPIC_API_KEY: optionalString,
-    FALLBACK_LLM_PROVIDER: optionalString,
-    FALLBACK_LLM_API_KEY: optionalString,
-    AI_MODEL_IMAGE_READ: optionalString,
-    AI_MODEL_NARRATIVE: optionalString,
-    AI_MODEL_CHAT: optionalString,
-    AI_MODEL_ROUTER: optionalString,
-    AI_MODEL_EXPLAIN: optionalString,
+    OPENAI_API_KEY: optionalString,
+    GEMINI_API_KEY: optionalString,
+    AI_PROVIDER_ANTHROPIC_ENABLED: z.stringbool().default(false),
+    AI_PROVIDER_OPENAI_ENABLED: z.stringbool().default(false),
+    AI_PROVIDER_GEMINI_ENABLED: z.stringbool().default(false),
+    // Order tried among the enabled providers (comma separated); the first that is healthy and allowed answers.
+    AI_PROVIDER_ORDER: z.string().default('anthropic,openai,gemini'),
+    // Model ids are configuration: a "fast" model (router, reading, short answers) and a "strong" one (narratives, chat, explain).
+    ANTHROPIC_MODEL_FAST: z.string().default('claude-haiku-5-5'),
+    ANTHROPIC_MODEL_STRONG: z.string().default('claude-sonnet-5-5'),
+    OPENAI_MODEL_FAST: optionalString,
+    OPENAI_MODEL_STRONG: optionalString,
+    GEMINI_MODEL_FAST: optionalString,
+    GEMINI_MODEL_STRONG: optionalString,
+    // Optional price overrides, USD per million tokens: {"model-id":{"in":1,"out":5,"cachedIn":0.1}}
+    AI_PRICES_JSON: optionalString,
     AI_DAILY_BUDGET_DEFAULT_USD: z.coerce.number().nonnegative().default(0.05),
     AI_GLOBAL_DAILY_CAP_USD: z.coerce.number().nonnegative().default(10),
 
@@ -151,7 +162,8 @@ const SECRET_KEYS = [
   'ABUSE_HASH_SALT',
   'TURNSTILE_SECRET',
   'ANTHROPIC_API_KEY',
-  'FALLBACK_LLM_API_KEY',
+  'OPENAI_API_KEY',
+  'GEMINI_API_KEY',
   'SENTRY_DSN',
 ] as const satisfies readonly (keyof Env)[];
 

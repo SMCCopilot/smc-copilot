@@ -1,2 +1,14 @@
-// ai: skeleton. Implementation lands in the phase listed in docs/PROGRESS.md.
-export const PACKAGE_NAME = '@smc/ai' as const;
+export * from './adapters/anthropic.js';
+export * from './adapters/gemini.js';
+export * from './adapters/http.js';
+export * from './adapters/openai.js';
+export * from './breaker.js';
+export * from './errors.js';
+export * from './guard.js';
+export * from './lexicon.js';
+export * from './narrative.js';
+export * from './pipeline.js';
+export * from './pricing.js';
+export * from './router.js';
+export * from './secrets.js';
+export * from './types.js';
