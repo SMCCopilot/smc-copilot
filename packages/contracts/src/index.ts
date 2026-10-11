@@ -9,5 +9,6 @@ export * from './plan.js';
 export * from './problem.js';
 export * from './strategy.js';
 export * from './timeframe.js';
+export * from './trade.js';
 export * from './voice.js';
 export * from './ws.js';
