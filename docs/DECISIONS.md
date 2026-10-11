@@ -84,3 +84,14 @@ Re-verify from the VM region in Phase 1 **[verify]**.
 ## D-015: Development database without Docker
 
 - `node tools/dev/src/dev-db.mjs` runs a persistent embedded Postgres 17 under `.dev-pg/` (git-ignored) with the auth shims applied. It is not Supabase and exists only for local live runs; Supabase remains the real database (decision D-007).
+
+## D-016: Production host is Railway, not the Oracle free VM
+
+- **Context:** the plan (A01, A08, B02) hosts on Oracle's free VM behind a Cloudflare Tunnel to honour "only Supabase and AI cost money". The owner decided to host on Railway.
+- **Choice:** deploy the API image to Railway (`railway.toml`, `infra/Dockerfile`). Supabase stays the database. The Oracle VM, Cloudflare Tunnel, Compose-on-VM, SOPS-on-VM and the VM-loss runbooks are no longer needed; Compose stays only as an optional local/alternative path.
+- **Consequences:**
+  - Railway is paid and metered (roughly $5-20 a month for one small always-on service; **[verify]** current pricing). This is a deliberate exception to the $0 rule, approved by the owner.
+  - Pick a **non-US region** (Binance blocks US IPs) close to the Supabase region. Spike S2 and S7 are re-run on Railway once deployed: the lag, 24 h and 72 h checks happen there.
+  - Railway terminates TLS and gives a public URL, so no tunnel. Railway forwards the client address in `X-Forwarded-For`; the admin allow-list currently reads the Cloudflare header only when `TRUST_PROXY_HEADERS=true`. Admin calls are refused in production until Phase 9 adds proper `X-Forwarded-For` handling (fail closed).
+  - Secrets are Railway service variables (the names in `.env.example`), not SOPS files.
+  - No idle-reclaim risk, so the A08 "keep-alive load" mitigation is dropped.

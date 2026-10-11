@@ -59,3 +59,6 @@ Running state. A fresh session should be able to resume from this file and `CLAU
 - `apps/api` (118 tests on real Postgres): ingest pipeline (atomic 1m + higher-timeframe writes, events after commit, quarantine, gaps, backfill via pg-boss, V7 both directions, INCOMPLETE handling), seeding, nightly reconcile, feed monitor, markets and admin endpoints, licence guard.
 - Live run on this machine (DNS override): Binance spot + perp and Bybit connected; history seeded; all 8 feeds OK; recorded frames replay to the same candles as REST (7/7 on each venue, 0 differences).
 - Not yet done: 24 h and 72 h soak and the p95 feed-lag figure (need the VM), Supabase run (needs credentials), CI on GitHub (needs a remote).
+
+## Owner decisions after Phase 1
+- Host the backend on **Railway** (D-016). Browser tests (S1/S3/S4) happen after all phases, using Claude Desktop. The owner will fill the credentials after all phases; `.env.example` lists every variable with where to get it.
