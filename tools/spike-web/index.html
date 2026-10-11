@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMC Copilot spike S4: capture and WebGPU</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --fg:#14181f; --muted:#5b6573; --line:#d8dde5; --ok:#0a7d3b; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1217; --fg:#e6e9ee; --muted:#9aa4b2; --line:#2a313c; --ok:#4cc27f; --bad:#ff7b72; } }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; max-width:760px; margin-inline:auto; }
+  h1 { font-size:20px; margin:0 0 4px; } p.sub { color:var(--muted); margin:0 0 16px; }
+  table { border-collapse:collapse; width:100%; margin:12px 0; } td,th { border-bottom:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+  .ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; }
+  button { font:inherit; padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; cursor:pointer; }
+  pre { background:color-mix(in srgb, var(--fg) 6%, transparent); padding:10px; border-radius:8px; overflow:auto; font-size:12px; }
+  canvas { display:none; }
+</style>
+</head>
+<body>
+<h1>Spike S4: capture and WebGPU matrix</h1>
+<p class="sub">Runs entirely in this browser. Nothing is uploaded; no frame is stored. Use localhost or HTTPS. Run it in each browser you care about, then paste the JSON into docs/spikes.md.</p>
+
+<h2>Capabilities</h2>
+<table id="caps"><tbody></tbody></table>
+
+<h2>Screen capture test (about 10 s)</h2>
+<p>Share the chart window you normally use. The page crops the top-left header strip, downsizes it, encodes it as JPEG and
+reports size and cadence. The target is under 200 KB per frame at no more than 1 frame per second, and only changed frames.</p>
+<button type="button" id="start">Start capture test</button>
+<table id="cap"><tbody></tbody></table>
+
+<h2>Result JSON</h2>
+<button type="button" id="copy">Copy</button>
+<pre id="out">{}</pre>
+<canvas id="c"></canvas><video id="v" muted playsinline hidden></video>
+
+<script>
+const result = { when: new Date().toISOString(), ua: navigator.userAgent, capabilities: {}, capture: null };
+const row = (tbody, k, v, good) => {
+  const tr = tbody.insertRow(); tr.insertCell().textContent = k;
+  const td = tr.insertCell(); td.textContent = v; if (good !== undefined) td.className = good ? 'ok' : 'bad';
+};
+const show = () => { document.getElementById('out').textContent = JSON.stringify(result, null, 2); };
+const caps = document.querySelector('#caps tbody');
+const add = (k, v, good) => { result.capabilities[k] = v; row(caps, k, String(v), good); show(); };
+
+(async () => {
+  add('crossOriginIsolated (needed for WASM threads)', self.crossOriginIsolated, self.crossOriginIsolated);
+  add('hardwareConcurrency', navigator.hardwareConcurrency ?? 'n/a');
+  add('deviceMemory GB (Chromium only)', navigator.deviceMemory ?? 'n/a');
+  add('getDisplayMedia', !!navigator.mediaDevices?.getDisplayMedia, !!navigator.mediaDevices?.getDisplayMedia);
+  add('getUserMedia (microphone)', !!navigator.mediaDevices?.getUserMedia, !!navigator.mediaDevices?.getUserMedia);
+  add('AudioWorklet', typeof AudioWorkletNode !== 'undefined', typeof AudioWorkletNode !== 'undefined');
+  add('OffscreenCanvas', typeof OffscreenCanvas !== 'undefined', typeof OffscreenCanvas !== 'undefined');
+  add('Web Worker', typeof Worker !== 'undefined', typeof Worker !== 'undefined');
+  add('WebAssembly', typeof WebAssembly !== 'undefined', typeof WebAssembly !== 'undefined');
+  // SIMD probe: a tiny module using v128.const.
+  const simd = WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11]));
+  add('WASM SIMD', simd, simd);
+  add('SharedArrayBuffer', typeof SharedArrayBuffer !== 'undefined', typeof SharedArrayBuffer !== 'undefined');
+  if (navigator.gpu) {
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (adapter) {
+        const info = adapter.info ?? (await adapter.requestAdapterInfo?.()) ?? {};
+        add('WebGPU adapter', `${info.vendor ?? ''} ${info.architecture ?? ''} ${info.description ?? ''}`.trim() || 'available', true);
+        add('WebGPU f16 shaders', adapter.features.has('shader-f16'), adapter.features.has('shader-f16'));
+        add('WebGPU maxBufferSize MB', Math.round(adapter.limits.maxBufferSize / 1048576));
+      } else add('WebGPU adapter', 'none (requestAdapter returned null)', false);
+    } catch (e) { add('WebGPU adapter', `error: ${e.name}`, false); }
+  } else add('WebGPU (navigator.gpu)', false, false);
+})();
+
+document.getElementById('copy').onclick = () => navigator.clipboard.writeText(document.getElementById('out').textContent);
+
+document.getElementById('start').onclick = async () => {
+  const tbody = document.querySelector('#cap tbody'); tbody.innerHTML = '';
+  let stream;
+  try { stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false }); }
+  catch (e) { row(tbody, 'getDisplayMedia', `refused: ${e.name}`, false); return; }
+  const video = document.getElementById('v'); video.srcObject = stream; await video.play();
+  const settings = stream.getVideoTracks()[0].getSettings();
+  const canvas = document.getElementById('c'); const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const sizes = [], encodeMs = []; let changed = 0, considered = 0, last = null;
+  const t0 = performance.now();
+  while (performance.now() - t0 < 10000) {
+    const start = performance.now();
+    const cropW = Math.min(video.videoWidth, 900), cropH = Math.min(video.videoHeight, 90);
+    canvas.width = cropW; canvas.height = cropH;
+    ctx.drawImage(video, 0, 0, cropW, cropH, 0, 0, cropW, cropH);
+    const small = ctx.getImageData(0, 0, cropW, cropH).data;
+    considered++;
+    let diff = 0; if (last) for (let i = 0; i < small.length; i += 64) diff += Math.abs(small[i] - last[i]); else diff = 1e9;
+    last = small.slice();
+    if (diff > 2000) {
+      changed++;
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.7));
+      sizes.push(blob.size); encodeMs.push(performance.now() - start);
+    }
+    await new Promise((r) => setTimeout(r, Math.max(0, 1000 - (performance.now() - start))));
+  }
+  for (const t of stream.getTracks()) t.stop();
+  const max = Math.max(0, ...sizes);
+  result.capture = {
+    surface: settings.displaySurface ?? 'unknown', width: settings.width, height: settings.height,
+    sampled: considered, changedFrames: changed, maxFrameBytes: max,
+    medianEncodeMs: encodeMs.sort((a, b) => a - b)[Math.floor(encodeMs.length / 2)] ?? null,
+  };
+  row(tbody, 'surface', result.capture.surface); row(tbody, 'source size', `${settings.width}x${settings.height}`);
+  row(tbody, 'sampled / changed', `${considered} / ${changed}`);
+  row(tbody, 'largest frame', `${max} bytes`, max < 200000);
+  row(tbody, 'median crop+encode', `${result.capture.medianEncodeMs?.toFixed(1)} ms`, (result.capture.medianEncodeMs ?? 0) < 50);
+  show();
+};
+</script>
+</body>
+</html>

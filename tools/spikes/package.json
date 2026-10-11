@@ -1,0 +1,17 @@
+{
+  "name": "@smc/tool-spikes",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "lint": "biome check .",
+    "test": "vitest run",
+    "s2": "node src/s2-venue-probe.mjs"
+  },
+  "dependencies": {
+    "undici": "^8.11.2"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  }
+}

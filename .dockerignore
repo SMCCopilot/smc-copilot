@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+**/dist
+.turbo
+coverage
+.recordings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+docs/plan
+tools/bin
