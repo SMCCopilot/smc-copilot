@@ -30,6 +30,7 @@ module.exports = {
       to: { path: '^packages/([^/]+)/', pathNot: '^packages/$1/' },
     },
     onlyContracts('smc-engine'),
+    onlyContracts('analytics'),
     onlyContracts('market-data'),
     onlyContracts('ai'),
     onlyContracts('db'),

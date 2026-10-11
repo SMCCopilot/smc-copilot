@@ -12,6 +12,8 @@ import ts from 'typescript';
 export const ALLOWED_INTERNAL = {
   contracts: [],
   'smc-engine': ['contracts'],
+  // statistics, risk arithmetic, calibration and backtest maths (no I/O; may use logarithms, unlike the engine)
+  analytics: ['contracts'],
   'market-data': ['contracts'],
   ai: ['contracts'],
   db: ['contracts'],

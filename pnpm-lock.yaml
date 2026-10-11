@@ -114,6 +114,16 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
+  packages/analytics:
+    dependencies:
+      '@smc/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      fast-check:
+        specifier: ^4.10.2
+        version: 4.10.2
+
   packages/capture-kit:
     dependencies:
       '@smc/contracts':
