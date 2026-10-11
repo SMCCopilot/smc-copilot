@@ -1,0 +1,9 @@
+# Pre-commit gates. CI re-runs all of them; hooks only shorten the feedback loop.
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{ts,tsx,js,mjs,cjs,json,jsonc}"
+      run: pnpm exec biome check --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+    secrets:
+      run: node tools/hooks/gitleaks-staged.mjs

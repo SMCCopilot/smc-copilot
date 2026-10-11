@@ -1,0 +1,13 @@
+title = "smc-copilot gitleaks config"
+
+[extend]
+useDefault = true
+
+# No blanket path allowlists: .env.example, the lockfile, docs and tests are exactly where a real secret gets
+# pasted by mistake. Obvious placeholders are allowed one by one, by exact value.
+[allowlist]
+description = "Known placeholder values"
+regexes = [
+  '''postgres(ql)?://postgres:postgres@(localhost|127\.0\.0\.1)''',
+  '''postgres(ql)?://u:p@db\.example''',
+]

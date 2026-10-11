@@ -1,0 +1,47 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Secrets: only .env.example is committed. Encrypted *.enc.* files (SOPS) are allowed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+age-key*.txt
+keys.txt
+
+# Raw exchange data and recordings stay out of git (venue terms: A03 section 2.1, data.binance.vision is local-testing only).
+/data/
+/.recordings/
+*.jsonl.gz
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+.claude
+docs/*
+!docs/DECISIONS.md
+!docs/PROGRESS.md
+!docs/backlog.md
+!docs/spikes.md
+!docs/engine-fidelity.md
+
+# More secret-bearing files
+.envrc
+*.env
+env.local
+.npmrc
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials*.json
+service-account*.json
+
+# Repo-local tool binaries (tools/hooks/install-gitleaks.mjs)
+/tools/bin/

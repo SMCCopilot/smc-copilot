@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+  - tools/*
+
+# pnpm 10 blocks dependency install scripts unless listed here.
+onlyBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+  - lefthook
+  - '@embedded-postgres/windows-x64'
+  - '@embedded-postgres/linux-x64'
+  - '@embedded-postgres/linux-arm64'
+  - '@embedded-postgres/darwin-arm64'
+  - '@embedded-postgres/darwin-x64'

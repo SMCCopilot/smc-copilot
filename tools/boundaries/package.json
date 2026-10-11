@@ -1,0 +1,20 @@
+{
+  "name": "@smc/tool-boundaries",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "check-boundaries": "./src/cli.mjs"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "typescript": "~5.9.3"
+  },
+  "devDependencies": {
+    "dependency-cruiser": "^18.5.0",
+    "vitest": "^4.1.11"
+  }
+}
