@@ -97,18 +97,21 @@ export class GateService {
       throw new ApiProblemError('FEED_STALE', 'The data feed is stale; no new gate can be issued.');
     }
 
-    // At most one open gate per user and plan: a new request voids the previous one.
-    await this.sql`
-      update gate_decisions set action = 'VOIDED', decided_at = now(), void_reason = 'SUPERSEDED'
-       where user_id = ${userId} and plan_id = ${planId} and action = 'ISSUED'`;
-
     const token = randomBytes(32).toString('base64url');
-    const [g] = await this.sql<GateRow[]>`
+    // At most one open gate per user and plan: void the previous and insert in one serialised transaction.
+    const gate = await this.sql.begin(async (tx) => {
+      const db = tx as unknown as Sql;
+      await db`select pg_advisory_xact_lock(hashtext(${`gate:${userId}:${planId}`}))`;
+      await db`
+        update gate_decisions set action = 'VOIDED', decided_at = now(), void_reason = 'SUPERSEDED'
+         where user_id = ${userId} and plan_id = ${planId} and action = 'ISSUED'`;
+      const [g] = await db<GateRow[]>`
       insert into gate_decisions (workspace_id, user_id, plan_id, plan_hash, token_hash, expires_at)
       values (${workspaceId}, ${userId}, ${planId}, ${info.this_hash}, ${hashToken(token)},
               now() + ${GATE_TTL_SEC} * interval '1 second')
       returning id, user_id, workspace_id, plan_id, plan_hash, action, expires_at, decided_at`;
-    const gate = g as GateRow;
+      return g as GateRow;
+    });
     await this.account.audit(userId, workspaceId, 'gate.issue', gate.id, ip, { planId });
     this.onState?.(workspaceId, userId, dto(gate));
     return { ...dto(gate), token };
@@ -196,6 +199,7 @@ export class GateService {
    * gate must be CONFIRMED for this exact plan, still within the use window, and unused.
    */
   async spend(tx: Sql, userId: string, gateId: string, planId: string): Promise<void> {
+    await tx`select pg_advisory_xact_lock(hashtext(${`spend:${gateId}`}))`;
     const [g] = await tx<(GateRow & { used: boolean; fresh: boolean })[]>`
       select g.id, g.user_id, g.workspace_id, g.plan_id, g.plan_hash, g.action, g.expires_at, g.decided_at,
              exists (select 1 from trade_records t where t.gate_id = g.id) as used,

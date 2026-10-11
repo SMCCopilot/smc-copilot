@@ -99,11 +99,11 @@ Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 
 
 ## Phase 4: identity, APIs, realtime, gate, trades, journal (all on `main`)
 
-**Status: built; independent review pending (see below).**
+**Status: built, independently reviewed (23 findings, 2 HIGH, fixed; D-029).**
 
 - [x] **W9 identity and gates**: wallet-first accounts (EVM and Solana, EIP-55 checksum, wallet mirror from `auth.identities`), invite, disclaimer version, 18+ attestation, address blocklist, step-up, wallet link/primary/unlink, optional email, abuse flags (salted hashes, no raw IPs), Turnstile, admin operations (invites, blocklist, entitlements, block, flags, kill switches, strategy versions, DQ incidents), all audited.
 - [x] **W10 read APIs**: venues, instruments, analysis snapshot (ETag/304, `snapshotId` = hash of the content), setups (list, one, history, rejected), cohort stats (only sufficient cohorts), sessions with idempotency keys (replay and conflict), risk profile and sizing.
 - [x] **W11 realtime and trading records**: Socket.IO `/ws` with resume, execution gate, trade log with realised R net of fees, position monitor, in-app notifications, journal (auto entries for setups shown, gates and trades; notes and tags; summary), feedback, HTML dev client.
 - [x] No test data in the owner's database: automated tests run on throwaway embedded Postgres; the real Supabase database holds reference rows only.
-- Tests: api 215 (real Postgres, real sockets).
+- Tests: api 219 (real Postgres, real sockets), including concurrency regressions.
 - [ ] **Unverified until the owner's live test**: a real wallet sign-in (the `identity_data` shape, unlink behaviour), Web3 providers enabled in Supabase Auth, the dev client in a browser, the realtime flow against live engine output, Railway deployment.

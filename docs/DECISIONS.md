@@ -175,3 +175,12 @@ Re-verify from the VM region in Phase 1 **[verify]**.
 ## D-028: Developer client
 
 - `GET /dev` (a single HTML page) exists only with `DEV_CLIENT_ENABLED=true`; `GET /dev/config` returns only the public Supabase URL and anon key. The page sets its own narrow Content-Security-Policy (inline script plus jsdelivr, for the Supabase and Socket.IO browser libraries), leaving the global policy untouched elsewhere. It never shows candles or exchange prices.
+
+## D-029: Phase 4 review outcome and accepted limits
+
+Independent review (fresh context, 23 findings, 2 HIGH). **Fixed:** double spend of one gate under concurrency and non-atomic gate issue (serialised with transaction-scoped advisory locks, statements re-read after the lock); concurrent session creation exceeding the limit; realised R measured against a moved stop (now the opening stop is kept in the journal); `PATCH` on a just-closed trade; missing `trust proxy` in production (rate limits, abuse flags and audit saw the proxy IP); a user stacking several invite codes; ended or blocked users keeping a socket; sequence numbers colliding while a session loads; position events judged on a bar that started before entry (now only bars from the entry on); concurrent first `/v1/me` calls racing on the wallet insert. Regression tests cover the concurrency cases.
+
+**Accepted, documented:**
+- **The server cannot tell a human tap from a scripted call.** The gate guarantees: REST only, no socket event, single use, 60 s, plan-hash bound, audited, and the database refuses any non-`UI_TAP` channel. A client that omits the voice marker header and calls the three endpoints in sequence is indistinguishable from a tap. A dwell-time or per-gate nonce rule is a product decision, in the backlog.
+- **Levels in analysis and plans are shown for INTERNAL_ONLY instruments.** The product shows analysis (swings, zones, plan levels) but never candles or a price stream; the candles route stays behind the licence guard. Whether swing and open levels count as raw exchange prices is a `[counsel]` item for the owner.
+- Idempotency keys orphaned by a crash block retries for up to 24 h; cursor pagination uses millisecond timestamps; `PATCH` of a journal entry cannot clear notes; the `/dev` page's CSP is loose by design and the page is off by default. All in the backlog.

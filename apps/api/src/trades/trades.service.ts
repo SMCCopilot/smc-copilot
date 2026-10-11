@@ -149,7 +149,7 @@ export class TradesService {
       await tx`
         insert into journal_entries (workspace_id, user_id, setup_id, plan_id, trade_id, kind, payload)
         values (${workspaceId}, ${userId}, ${setupId}, ${b.planId ?? null}, ${tradeId}, 'TRADE',
-                ${tx.json({ event: 'OPENED', direction: b.direction, entryPrice: b.entryPrice })})`;
+                ${tx.json({ event: 'OPENED', direction: b.direction, entryPrice: b.entryPrice, initialStop: b.stopPrice ?? null })})`;
       return tradeId;
     });
     await this.account.audit(userId, workspaceId, 'trade.open', id, ip, {
@@ -205,7 +205,7 @@ export class TradesService {
         stop_price = ${b.stopPrice === undefined ? cur.stopPrice : b.stopPrice},
         targets = ${b.targets === undefined ? cur.targets : b.targets},
         notes = ${b.notes === undefined ? cur.notes : b.notes}
-       where id = ${id} and workspace_id = ${workspaceId}`;
+       where id = ${id} and workspace_id = ${workspaceId} and status = 'OPEN'`;
     return this.emit(workspaceId, userId, await this.get(id, workspaceId));
   }
 
@@ -220,6 +220,11 @@ export class TradesService {
     const cur = await this.get(id, workspaceId);
     if (cur.status !== 'OPEN')
       throw new ApiProblemError('CONFLICT', 'The trade is already closed.');
+    // Risk is measured against the stop the trade opened with, not one moved later (a breakeven stop would give R = 0).
+    const [opened] = await this.sql<{ s: string | null }[]>`
+      select payload->>'initialStop' as s from journal_entries
+       where trade_id = ${id} and kind = 'TRADE' and payload->>'event' = 'OPENED' limit 1`;
+    const riskStop = opened?.s != null ? Number(opened.s) : cur.stopPrice;
     const r =
       cur.entryPrice === null
         ? null
@@ -227,7 +232,7 @@ export class TradesService {
             cur.direction,
             cur.entryPrice,
             b.exitPrice,
-            cur.stopPrice,
+            riskStop,
             takerFeeBps,
             cur.size,
             b.fee,

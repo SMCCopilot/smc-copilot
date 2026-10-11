@@ -116,11 +116,23 @@ export class SessionsService {
       instrumentId = last?.instrument_id ?? null;
     }
     const strategy = await this.analysis.activeStrategy();
-    const [row] = await this.sql<{ id: string }[]>`
+    const [row] = await this.sql.begin(async (tx) => {
+      const db = tx as unknown as Sql;
+      await db`select pg_advisory_xact_lock(hashtext(${`sessions:${workspaceId}`}))`;
+      const [open] = await db<{ n: number }[]>`
+        select count(*)::int as n from copilot_sessions where workspace_id = ${workspaceId} and state <> 'ENDED'`;
+      if ((open?.n ?? 0) >= lim.concurrent) {
+        throw new ApiProblemError(
+          'SESSION_LIMIT_REACHED',
+          'End your current session before starting another.',
+        );
+      }
+      return db<{ id: string }[]>`
       insert into copilot_sessions (workspace_id, user_id, instrument_id, tf, strategy_version_id, mode, capture_surface, client_info)
       values (${workspaceId}, ${userId}, ${instrumentId}, ${input.tf ?? null}, ${strategy.id}, ${input.mode},
-              ${input.capture?.surface ?? null}, ${this.sql.json({ webgpu: input.capture?.webgpu ?? false })})
+              ${input.capture?.surface ?? null}, ${db.json({ webgpu: input.capture?.webgpu ?? false })})
       returning id`;
+    });
     const sessionId = (row as { id: string }).id;
     const { token, expiresAt } = this.token(sessionId, userId);
 

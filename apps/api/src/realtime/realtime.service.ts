@@ -50,6 +50,8 @@ interface Ctx {
   lastSnapshotId: string | null;
   seen: Map<string, string>;
   dirty: boolean;
+  /** False until the stored sequence is loaded; nothing is pushed before then, so numbers never collide. */
+  ready: boolean;
 }
 
 export interface Envelope {
@@ -163,6 +165,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     >`
       select s.id, s.workspace_id, s.instrument_id, i.canonical, s.tf, s.started_at
         from copilot_sessions s left join instruments i on i.id = s.instrument_id
+        join profiles p on p.id = s.user_id and p.blocked_at is null and p.deleted_at is null
        where s.id = ${claims.sid} and s.user_id = ${claims.uid} and s.state <> 'ENDED'`;
     if (!s) throw new ApiProblemError('SESSION_NOT_ACTIVE');
     socket.data.ctx = {
@@ -208,6 +211,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       lastSnapshotId: null,
       seen: new Map(),
       dirty: false,
+      ready: false,
     };
     ctx.socketId = socket.id;
     this.sessions.set(ctx.sessionId, ctx);
@@ -218,6 +222,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
           select coalesce(max(seq), 0)::text as m from session_events where session_id = ${ctx.sessionId}`;
         ctx.seq = Number(m?.m ?? 0);
       }
+      ctx.ready = true;
       await socket.join(`session:${ctx.sessionId}`);
       if (ctx.instrumentId) await socket.join(`inst:${ctx.instrumentId}`);
     })().catch((e: unknown) => this.fail(ctx, e));
@@ -368,7 +373,9 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
   }
 
   private inRoom(instrumentId: string): Ctx[] {
-    return [...this.sessions.values()].filter((c) => c.instrumentId === instrumentId && c.socketId);
+    return [...this.sessions.values()].filter(
+      (c) => c.instrumentId === instrumentId && c.socketId && c.ready,
+    );
   }
 
   /** Numbers, logs and sends one event. The log keeps a compact form of large payloads (resume re-sends a snapshot). */
@@ -410,7 +417,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
 
   private toUser(userId: string, type: string, payload: unknown): void {
     for (const c of this.sessions.values())
-      if (c.userId === userId && c.socketId) this.emit(c, type, payload);
+      if (c.userId === userId && c.socketId && c.ready) this.emit(c, type, payload);
   }
 
   private fail(ctx: Ctx, e: unknown): void {
@@ -486,6 +493,19 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
 
   private async reap(): Promise<void> {
     const now = Date.now();
+    // Sessions ended over REST, and users blocked since connecting, must not keep streaming.
+    const ids = [...this.sessions.keys()];
+    if (ids.length > 0 && this.sql) {
+      const gone = await this.sql<{ id: string }[]>`
+        select s.id from copilot_sessions s join profiles p on p.id = s.user_id
+         where s.id = any(${ids}) and (s.state = 'ENDED' or p.blocked_at is not null or p.deleted_at is not null)`;
+      for (const g of gone) {
+        const c = this.sessions.get(g.id);
+        if (!c) continue;
+        this.socketOf(c)?.disconnect(true);
+        this.sessions.delete(g.id);
+      }
+    }
     for (const c of [...this.sessions.values()]) {
       if (now - c.startedAt > MAX_SESSION_MS)
         await this.endSession(c, 'MAX_DURATION').catch(() => undefined);

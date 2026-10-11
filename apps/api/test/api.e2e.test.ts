@@ -204,6 +204,19 @@ describe('sessions', () => {
     ).toBe(201);
   });
 
+  it('parallel creates cannot exceed the concurrent limit', async () => {
+    const http = await boot();
+    const auth = await readyUser();
+    const go = () =>
+      request(http)
+        .post('/v1/sessions')
+        .set('Authorization', auth)
+        .set('Idempotency-Key', randomUUID())
+        .send({});
+    const res = await Promise.all([go(), go(), go(), go()]);
+    expect(res.filter((r) => r.status === 201)).toHaveLength(1);
+  });
+
   it("does not show one user's session to another", async () => {
     const http = await boot();
     const a = await readyUser();

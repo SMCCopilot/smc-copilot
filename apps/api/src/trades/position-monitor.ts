@@ -85,6 +85,7 @@ interface OpenRow {
   stop_price: string | null;
   targets: string[] | null;
   entry_price: string | null;
+  opened_at: Date;
   setup_state: string | null;
 }
 
@@ -126,7 +127,7 @@ export class PositionMonitor implements OnModuleInit, OnModuleDestroy {
   async check(instrumentId: string): Promise<number> {
     if (!this.sql) return 0;
     const rows = await this.sql<OpenRow[]>`
-      select t.id, t.workspace_id, t.user_id, t.direction, t.leverage, t.stop_price, t.targets,
+      select t.id, t.workspace_id, t.user_id, t.opened_at, t.direction, t.leverage, t.stop_price, t.targets,
              (select price from trade_fills f where f.trade_id = t.id and f.side = 'ENTRY' order by f.id limit 1) as entry_price,
              (select s.state from setups s where s.id = t.setup_id) as setup_state
         from trade_records t where t.instrument_id = ${instrumentId} and t.status = 'OPEN'`;
@@ -141,6 +142,16 @@ export class PositionMonitor implements OnModuleInit, OnModuleDestroy {
     let written = 0;
     for (const r of rows) {
       if (r.entry_price === null) continue;
+      // Only bars that opened after the entry count: an earlier wick happened before the user was in.
+      const [since] = await this.sql<{ h: string | null; l: string | null }[]>`
+        select max(h) as h, min(l) as l from candles
+         where instrument_id = ${instrumentId} and tf = '1m' and status = 'CLOSED'
+           and scope_id = '00000000-0000-0000-0000-000000000000' and open_time >= ${r.opened_at}`;
+      const close = Number(bar.c);
+      const range = {
+        h: since?.h == null ? close : Number(since.h),
+        l: since?.l == null ? close : Number(since.l),
+      };
       const found = evaluatePosition(
         {
           direction: r.direction,
@@ -151,7 +162,7 @@ export class PositionMonitor implements OnModuleInit, OnModuleDestroy {
           setupState: r.setup_state,
           feedStale: stale,
         },
-        { h: Number(bar.h), l: Number(bar.l), c: Number(bar.c) },
+        { h: range.h, l: range.l, c: close },
       );
       for (const type of found) {
         const [ins] = await this.sql`

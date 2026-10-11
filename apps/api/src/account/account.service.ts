@@ -134,6 +134,7 @@ export class AccountService {
 
     return (await this.sql.begin(async (tx) => {
       const db = tx as unknown as Sql;
+      await db`select pg_advisory_xact_lock(hashtext(${`wallets:${userId}`}))`;
       const current = await db<WalletRow[]>`
         select id, chain, address_norm, address_display, is_primary, linked_at
           from wallet_identities where user_id = ${userId} and unlinked_at is null
@@ -284,6 +285,11 @@ export class AccountService {
   }
 
   async redeemInvite(userId: string, code: string): Promise<boolean> {
+    // One invite per account: a second code must not stack its grants.
+    const [p] = await this.sql<
+      { done: boolean }[]
+    >`select invite_redeemed_at is not null as done from profiles where id = ${userId}`;
+    if (p?.done) return true;
     const [row] = await this.sql<
       { ok: boolean }[]
     >`select redeem_invite(${code.trim().toUpperCase()}, ${userId}) as ok`;

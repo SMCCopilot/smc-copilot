@@ -34,5 +34,7 @@ export function configureApp(app: NestExpressApplication, env: Env): void {
       maxAge: 600,
     });
   }
+  // One trusted hop (the platform proxy): req.ip is the real client for rate limits, abuse flags and audit.
+  if (env.NODE_ENV === 'production') app.set('trust proxy', 1);
   app.enableShutdownHooks();
 }

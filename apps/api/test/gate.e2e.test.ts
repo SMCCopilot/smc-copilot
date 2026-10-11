@@ -273,6 +273,70 @@ describe('trades', () => {
   });
 });
 
+describe('review regressions', () => {
+  it('two concurrent trades on one confirmed gate: exactly one succeeds', async () => {
+    const http = await boot();
+    const u = await readyUser();
+    const { planId, instrumentId } = await armedPlan();
+    const i = await issue(http, u.auth, planId);
+    await request(http)
+      .post(`/v1/gate/${i.body.gateId}/confirm`)
+      .set('Authorization', u.auth)
+      .send({ token: i.body.token, planHash: i.body.planHash });
+    const go = () =>
+      request(http)
+        .post('/v1/trades')
+        .set('Authorization', u.auth)
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          instrumentId,
+          direction: 'LONG',
+          entryPrice: 100,
+          stopPrice: 99,
+          planId,
+          gateId: i.body.gateId,
+        });
+    const res = await Promise.all([go(), go(), go()]);
+    expect(res.filter((r) => r.status === 201)).toHaveLength(1);
+    expect((await sql`select 1 from trade_records`).length).toBe(1);
+  });
+
+  it('concurrent issues leave one open gate', async () => {
+    const http = await boot();
+    const u = await readyUser();
+    const { planId } = await armedPlan();
+    await Promise.all([
+      issue(http, u.auth, planId),
+      issue(http, u.auth, planId),
+      issue(http, u.auth, planId),
+    ]);
+    const [n] = await sql<
+      { n: number }[]
+    >`select count(*)::int as n from gate_decisions where action = 'ISSUED'`;
+    expect(n?.n).toBe(1);
+  });
+
+  it('R is measured against the stop the trade opened with, even if the stop moves to breakeven', async () => {
+    const http = await boot();
+    const u = await readyUser();
+    const { instrumentId } = await armedPlan();
+    const t = await request(http)
+      .post('/v1/trades')
+      .set('Authorization', u.auth)
+      .set('Idempotency-Key', randomUUID())
+      .send({ instrumentId, direction: 'LONG', entryPrice: 100, stopPrice: 99 });
+    await request(http)
+      .patch(`/v1/trades/${t.body.id}`)
+      .set('Authorization', u.auth)
+      .send({ stopPrice: 100 });
+    const c = await request(http)
+      .post(`/v1/trades/${t.body.id}/close`)
+      .set('Authorization', u.auth)
+      .send({ exitPrice: 102 });
+    expect(c.body.realizedR).toBeGreaterThan(1.8);
+  });
+});
+
 describe('realizedR', () => {
   it('is net of fees, signed by direction, and null without a stop', () => {
     expect(realizedR('LONG', 100, 102, 99, 0, null, undefined)).toBe(2);

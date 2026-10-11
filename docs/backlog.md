@@ -43,3 +43,10 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | Realtime session registry is in memory; ended sessions are dropped only on `session.end` or the 4 h reaper | single process | M6 |
 | Position events use 1m closes and fire once per type per trade | simplest monitor that satisfies the spec | refine from live use |
 | Gate token expiry is checked against the database clock; stale-feed check uses the in-process feed monitor | the worker split needs the feed state through the bus | M6 |
+| Gate: dwell time between issue and confirm, or a per-gate nonce shown only in the UI, to separate a tap from a script | D-029; a product decision | with the owner |
+| Idempotency rows left by a crash (`status` null) block retries until the 24 h purge; trade create does audit and re-read after commit | stale-row takeover after N seconds | Phase 9 |
+| Cursor pagination uses millisecond timestamps (Postgres keeps microseconds) | rows sharing a millisecond at a page edge can be skipped | encode the raw timestamp text |
+| Journal `PATCH` cannot clear notes/tags; `addNote` with an unknown setup id returns 500 instead of 404 | minor | Phase 9 |
+| Position monitor events fire once per type per trade and are not unique-indexed | acceptable for MVP | refine from live use |
+| Blocklist additions and `blockUser` do not void open gates; a block takes effect at the next reap (up to 60 s) for sockets | minor | Phase 9 |
+| `toDto` loads the risk profile per setup per push | cache per workspace | Phase 9 |
