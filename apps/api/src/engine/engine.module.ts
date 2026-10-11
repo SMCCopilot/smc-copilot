@@ -13,14 +13,18 @@ import { ENGINE_RUNNER, ENV, EVENT_BUS, SQL } from '../config/tokens.js';
 import { ReadinessService } from '../health/readiness.js';
 import { CandleStore } from '../ingest/candle-store.js';
 import type { EventBus } from '../ingest/event-bus.js';
+import { AnalyticsJobs } from './analytics.jobs.js';
 import { EngineRunner } from './engine.runner.js';
+import { EngineStore } from './engine.store.js';
 
 @Injectable()
 class EngineLifecycle implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly log = new Logger('Engine');
+  private timers: NodeJS.Timeout[] = [];
 
   constructor(
     @Inject(ENGINE_RUNNER) private readonly runner: EngineRunner | null,
+    @Inject(SQL) private readonly sql: Sql | null,
     @Inject(ReadinessService) private readonly readiness: ReadinessService,
   ) {}
 
@@ -28,6 +32,29 @@ class EngineLifecycle implements OnApplicationBootstrap, OnApplicationShutdown {
     if (!this.runner) return;
     try {
       const running = await this.runner.start();
+      if (running && this.sql) {
+        const jobs = new AnalyticsJobs(this.sql);
+        const strategy = await new EngineStore(this.sql).activeStrategy();
+        if (strategy) {
+          const safely = (name: string, work: () => Promise<unknown>) => () => {
+            work().catch((e: unknown) =>
+              this.log.warn(`${name} failed: ${(e as Error)?.constructor?.name}`),
+            );
+          };
+          // Cohort base rates hourly, calibration daily. Both are idempotent, so a missed run is harmless.
+          this.timers.push(
+            setInterval(
+              safely('cohort refresh', () => jobs.refreshCohorts(strategy.id)),
+              3_600_000,
+            ),
+            setInterval(
+              safely('calibration', () => jobs.calibrate(strategy.id)),
+              86_400_000,
+            ),
+          );
+          for (const t of this.timers) t.unref();
+        }
+      }
       if (running) {
         this.readiness.register({
           name: 'engine',
@@ -43,6 +70,8 @@ class EngineLifecycle implements OnApplicationBootstrap, OnApplicationShutdown {
   }
 
   async onApplicationShutdown(): Promise<void> {
+    for (const t of this.timers) clearInterval(t);
+    this.timers = [];
     await this.runner?.stop();
   }
 }

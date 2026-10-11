@@ -6,6 +6,7 @@ import {
   type EngineState,
   orderByClose,
   STATE_VERSION,
+  type StepOptions,
   step,
 } from '@smc/smc-engine';
 import type { CandleStore } from '../ingest/candle-store.js';
@@ -32,6 +33,8 @@ export interface EngineRunnerOptions {
   coldStartBars?: number;
   /** Safety bound on catch-up passes per drain. */
   maxPasses?: number;
+  /** Wall clock in ms. Feed health only applies to candles at the live edge, never to history being replayed. */
+  now?: () => number;
 }
 
 interface Advance {
@@ -65,6 +68,10 @@ export class EngineRunner {
   private readonly batch: number;
   private readonly coldStart: number;
   private readonly maxPasses: number;
+  private readonly now: () => number;
+  private readonly tickSizes = new Map<string, number>();
+  /** Feed health per instrument, from `feed.status` events. */
+  private readonly feedState = new Map<string, string>();
   /** Total failed jobs since start (diagnostics). */
   failures = 0;
   /** Instruments whose most recent job failed; empty means healthy. Cleared by the next success. */
@@ -82,6 +89,7 @@ export class EngineRunner {
     this.batch = options.batch ?? 3000;
     this.coldStart = options.coldStartBars ?? 3000;
     this.maxPasses = options.maxPasses ?? 50;
+    this.now = options.now ?? (() => Date.now());
   }
 
   /** Returns false (and stays idle) when there is no ACTIVE strategy version. */
@@ -98,6 +106,9 @@ export class EngineRunner {
       this.bus.subscribe('candle.closed', (e) => {
         if (!this.cfg.timeframes.analysis.includes(e.tf)) return;
         this.enqueueDrain(e.instrumentId, e.canonical);
+      }),
+      this.bus.subscribe('feed.status', (e) => {
+        this.feedState.set(e.instrumentId, e.state);
       }),
       this.bus.subscribe('candle.backfilled', (e) => {
         const earlier = this.pendingRebuild.get(e.instrumentId);
@@ -175,7 +186,35 @@ export class EngineRunner {
   }
 
   /** Reads what is new for each analysis timeframe and runs the engine over it in canonical order. */
+  private async tickSize(instrumentId: string): Promise<number> {
+    const cached = this.tickSizes.get(instrumentId);
+    if (cached !== undefined) return cached;
+    const [row] = await this.sql<
+      { tick_size: string }[]
+    >`select tick_size from instruments where id = ${instrumentId}`;
+    const tick = row ? Number(row.tick_size) : 0;
+    this.tickSizes.set(instrumentId, tick);
+    return tick;
+  }
+
+  /** Step options for a candle: feed health only counts at the live edge, never for history. */
+  private stepOptions(
+    instrumentId: string,
+    tickSize: number,
+    closeTime: number,
+    tfMs: number,
+  ): StepOptions {
+    const live = this.now() - closeTime <= 3 * tfMs;
+    const state = this.feedState.get(instrumentId);
+    const dataQuality =
+      live && (state === 'DEGRADED' || state === 'STALE')
+        ? (state as 'DEGRADED' | 'STALE')
+        : undefined;
+    return { tickSize, ...(dataQuality ? { dataQuality } : {}) };
+  }
+
   private async advance(instrumentId: string, from: EngineState): Promise<Advance> {
+    const tickSize = await this.tickSize(instrumentId);
     let state = from;
     const events: EngineEvent[] = [];
     let snapshot: Snapshot | null = null;
@@ -200,6 +239,7 @@ export class EngineRunner {
             v: r.v,
             closed: true,
             providerId: r.providerId,
+            ...(r.flags ? { flags: r.flags } : {}),
           });
         }
         const last = rows[rows.length - 1];
@@ -217,7 +257,17 @@ export class EngineRunner {
         if (from.lastCandleOpenTime[c.tf] === undefined && cold[c.tf] === undefined) {
           cold[c.tf] = c.openTime + TIMEFRAME_MS[c.tf];
         }
-        const r = step(state, c, this.cfg);
+        const r = step(
+          state,
+          c,
+          this.cfg,
+          this.stepOptions(
+            instrumentId,
+            tickSize,
+            c.openTime + TIMEFRAME_MS[c.tf],
+            TIMEFRAME_MS[c.tf],
+          ),
+        );
         state = r.state;
         events.push(...r.events);
         total++;

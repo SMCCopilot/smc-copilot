@@ -2,6 +2,7 @@ import type { StrategyConfig, Timeframe } from '@smc/contracts';
 import { parseStrategyConfig } from '@smc/contracts';
 import type { Sql } from '@smc/db';
 import { type EngineEvent, type EngineState, sha1 } from '@smc/smc-engine';
+import { applySetupEvents, flagRevisedSetups, SETUP_EVENT_TYPES } from './setup.store.js';
 
 export interface ActiveStrategy {
   id: string;
@@ -70,6 +71,8 @@ export class EngineStore {
   ): Promise<{ written: number; retracted: number }> {
     return this.sql.begin(async (tx) => {
       let written = 0;
+      const insertedIds = new Set<string>();
+      const revisedIds = new Set<string>();
       const cols = [
         'event_id',
         'instrument_id',
@@ -99,15 +102,17 @@ export class EngineStore {
               on conflict (event_id) do update
                  set payload = excluded.payload, retracted = false, revision = engine_events.revision + 1
                where engine_events.payload is distinct from excluded.payload or engine_events.retracted
-              returning event_id`
+              returning event_id, (xmax = 0) as inserted`
           : await tx`
               insert into engine_events ${tx(rows, ...cols)}
               on conflict (event_id) do nothing
-              returning event_id`;
+              returning event_id, true as inserted`;
         written += res.length;
+        for (const r of res) (r.inserted ? insertedIds : revisedIds).add(r.event_id as string);
       }
 
       let retracted = 0;
+      const retractedCandidateKeys: string[] = [];
       if (rebuild) {
         const keep = events.map((e) => e.id);
         const coldTfs = Object.keys(rebuild.cold);
@@ -118,8 +123,10 @@ export class EngineStore {
              and event_time > ${new Date(rebuild.afterMs)} and not retracted
              and tf <> all(${coldTfs}::text[])
              and event_id <> all(${keep}::text[])
-          returning event_id`;
+          returning event_id, type, payload #>> '{data,setupKey}' as setup_key`;
         retracted += base.length;
+        for (const r of base)
+          if (r.type === 'SETUP_CANDIDATE') retractedCandidateKeys.push(r.setup_key as string);
         for (const [tf, firstClose] of Object.entries(rebuild.cold)) {
           const res = await tx`
             update engine_events
@@ -127,13 +134,37 @@ export class EngineStore {
              where instrument_id = ${instrumentId} and strategy_version_id = ${strategyId}
                and tf = ${tf} and event_time >= ${new Date(firstClose as number)} and not retracted
                and event_id <> all(${keep}::text[])
-            returning event_id`;
+            returning event_id, type, payload #>> '{data,setupKey}' as setup_key`;
           retracted += res.length;
+          for (const r of res)
+            if (r.type === 'SETUP_CANDIDATE') retractedCandidateKeys.push(r.setup_key as string);
         }
         await tx`
           delete from engine_snapshots
            where instrument_id = ${instrumentId} and strategy_version_id = ${strategyId}
              and as_of > ${new Date(rebuild.staleAfterMs)}`;
+      }
+
+      // Setups, plans and outcomes: only for events that are NEW in this write, so a replay of stored events
+      // (restart, retry) never duplicates a transition.
+      await applySetupEvents(
+        tx as unknown as Sql,
+        instrumentId,
+        strategyId,
+        events.filter((e) => insertedIds.has(e.id)),
+      );
+      if (rebuild) {
+        const revisedKeys = events
+          .filter((e) => revisedIds.has(e.id) && SETUP_EVENT_TYPES.has(e.type))
+          .map((e) => String(e.data.setupKey));
+        const at = new Date(Math.max(rebuild.afterMs, ...events.map((e) => e.time)));
+        await flagRevisedSetups(
+          tx as unknown as Sql,
+          strategyId,
+          revisedKeys,
+          retractedCandidateKeys,
+          at,
+        );
       }
 
       if (snapshot) {
