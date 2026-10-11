@@ -92,7 +92,9 @@ export class FeedMonitor {
     after: FeedState,
     reasons: readonly string[],
   ): Promise<void> {
-    if (after === 'STALE' && before !== 'STALE') {
+    // Waiting for the first candle after a start is warm-up, not an outage worth an incident.
+    const real = reasons.some((r) => r === 'CANDLE_OVERDUE' || r === 'FLAT_CANDLES');
+    if (after === 'STALE' && before !== 'STALE' && real) {
       if (
         await this.store.openIncident(instrument.id, instrument.venue, 'FEED_STALE', { reasons })
       ) {

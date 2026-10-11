@@ -305,6 +305,15 @@ describe('IngestService', () => {
       expect(minute2?.flags).toBe(FLAG.BACKFILLED);
     });
 
+    it('does not report a gap while a backfill is already filling that instrument', async () => {
+      await h.feed('binance', raw('BTCUSDT', 'PERP', 0));
+      await h.ingest.withBackfillActive(btcPerp()?.id ?? '', async () => {
+        await h.feed('binance', raw('BTCUSDT', 'PERP', 5));
+      });
+      expect(await count('candle_gaps')).toBe(0);
+      expect(h.queue.enqueued).toEqual([]);
+    });
+
     it('an out-of-order live minute completes the bucket without a gap or a pending timer', async () => {
       for (const m of [0, 1, 2, 3, 5, 4]) await h.feed('binance', raw('BTCUSDT', 'PERP', m));
       expect(await count('candle_gaps')).toBe(1); // minute 4 was skipped when 5 arrived: that is a real gap at that moment

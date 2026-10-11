@@ -6,10 +6,12 @@
   "scripts": {
     "lint": "biome check .",
     "test": "vitest run",
-    "s2": "node src/s2-venue-probe.mjs"
+    "s2": "node src/s2-venue-probe.mjs",
+    "verify": "node src/verify-frames-vs-rest.mjs"
   },
   "dependencies": {
-    "undici": "^8.11.2"
+    "undici": "^8.11.2",
+    "@smc/market-data": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

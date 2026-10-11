@@ -198,6 +198,63 @@ describe('BackfillService and seeding', () => {
     expect(gap?.status).toBe('UNRESOLVABLE');
   });
 
+  describe('reconcile', () => {
+    const HOUR = 3_600_000;
+    const lastHours = (n: number) => {
+      const top = Math.floor(clock.now() / HOUR) * HOUR;
+      return Array.from({ length: n }, (_, i) => top - (i + 1) * HOUR);
+    };
+    const insertOurs = async (open: number, price: number) => {
+      await store.ensurePartitions(open, open);
+      await store.insertCandle({
+        instrumentId: id(),
+        tf: '1h',
+        openTime: open,
+        o: price,
+        h: price + 1,
+        l: price - 1,
+        c: price,
+        v: 1,
+        closed: true,
+        providerId: 'binance',
+        flags: 0,
+        status: 'CLOSED',
+      });
+    };
+
+    it('is quiet when our aggregated candles match the venue', async () => {
+      for (const open of lastHours(5)) {
+        await insertOurs(open, 100);
+        venue.data.push(candleAt('1h', open, 100));
+      }
+      const report = await backfill.reconcile(
+        instrument() as NonNullable<ReturnType<typeof instrument>>,
+      );
+      expect(report).toMatchObject({ compared: 5, differences: [] });
+      expect(await sql`select 1 from dq_incidents where rule = 'RECONCILE'`).toHaveLength(0);
+    });
+
+    it('opens a RECONCILE incident for a real difference and changes nothing', async () => {
+      const [a, b] = lastHours(2) as [number, number];
+      await insertOurs(a, 100);
+      await insertOurs(b, 100);
+      venue.data.push(candleAt('1h', a, 100), candleAt('1h', b, 105)); // the venue disagrees on b
+      const report = await backfill.reconcile(
+        instrument() as NonNullable<ReturnType<typeof instrument>>,
+      );
+      expect(report.differences.length).toBeGreaterThan(0);
+      expect(report.differences[0]).toMatchObject({ tf: '1h', ours: 100, venue: 105 });
+      expect(
+        await sql`select 1 from dq_incidents where rule = 'RECONCILE' and closed_at is null`,
+      ).toHaveLength(1);
+      expect((await store.range(id(), '1h', b, b + HOUR))[0]?.c).toBe(100); // never overwritten
+    });
+
+    it('is scheduled nightly at 03:00 UTC', () => {
+      expect(queue.schedules).toEqual([{ name: 'md.reconcile', cron: '0 3 * * *' }]);
+    });
+  });
+
   describe('seed', () => {
     const history = () => {
       const out: RawCandle[] = [];

@@ -77,6 +77,7 @@ type PublishedEvent = {
 export class IngestService {
   private readonly states = new Map<string, InstrumentState>();
   private readonly chains = new Map<string, Promise<unknown>>();
+  private readonly backfillActive = new Map<string, number>();
   private readonly config: Required<Omit<IngestOptions, 'validation'>> & {
     validation: ValidationConfig;
   };
@@ -135,6 +136,18 @@ export class IngestService {
   /** Waits for everything queued so far (shutdown and tests). */
   async idle(): Promise<void> {
     await Promise.all([...this.chains.values()].map((p) => p.catch(() => {})));
+  }
+
+  /** While a backfill is filling an instrument, a live candle must not be reported as a gap in the range being filled. */
+  async withBackfillActive<T>(instrumentId: string, work: () => Promise<T>): Promise<T> {
+    this.backfillActive.set(instrumentId, (this.backfillActive.get(instrumentId) ?? 0) + 1);
+    try {
+      return await work();
+    } finally {
+      const left = (this.backfillActive.get(instrumentId) ?? 1) - 1;
+      if (left <= 0) this.backfillActive.delete(instrumentId);
+      else this.backfillActive.set(instrumentId, left);
+    }
   }
 
   stateSnapshot(instrumentId: string): {
@@ -277,7 +290,12 @@ export class IngestService {
       for (const e of events) this.bus.publish(e.name, e.payload as never);
     }
 
-    if (source === 'live' && lastBefore !== null && stored.openTime > lastBefore + MINUTE) {
+    if (
+      source === 'live' &&
+      lastBefore !== null &&
+      stored.openTime > lastBefore + MINUTE &&
+      !this.backfillActive.has(instrument.id)
+    ) {
       await this.onGap(instrument, lastBefore + MINUTE, stored.openTime);
     }
     await this.crosscheck(instrument, state, stored, result.crosscheck);

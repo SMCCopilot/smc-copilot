@@ -11,6 +11,8 @@ export interface JobQueue {
   start(): Promise<void>;
   stop(): Promise<void>;
   enqueue<T extends object>(name: string, data: T, options?: EnqueueOptions): Promise<void>;
+  /** Recurring job (cron, UTC). Re-registering the same name replaces the schedule. */
+  schedule(name: string, cron: string, data?: object): Promise<void>;
   process<T extends object>(
     name: string,
     handler: (data: T) => Promise<void>,
@@ -61,6 +63,11 @@ export class PgBossJobQueue implements JobQueue {
     });
   }
 
+  async schedule(name: string, cron: string, data: object = {}): Promise<void> {
+    await this.ensureQueue(name);
+    await this.boss.schedule(name, cron, data, { tz: 'UTC' });
+  }
+
   async process<T extends object>(
     name: string,
     handler: (data: T) => Promise<void>,
@@ -87,6 +94,12 @@ export class InMemoryJobQueue implements JobQueue {
     if (key && this.seen.has(key)) return;
     if (key) this.seen.add(key);
     this.enqueued.push({ name, data, ...(options ? { options } : {}) });
+  }
+
+  readonly schedules: { name: string; cron: string }[] = [];
+
+  async schedule(name: string, cron: string): Promise<void> {
+    this.schedules.push({ name, cron });
   }
 
   async process<T extends object>(

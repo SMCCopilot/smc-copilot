@@ -143,6 +143,16 @@ export class IngestRuntime {
       );
     }
 
+    this.bus.subscribe('feed.status', (e) =>
+      this.log.info(
+        `feed ${e.canonical}: ${e.state}${e.reasons.length ? ` (${e.reasons.join(', ')})` : ''}`,
+      ),
+    );
+    this.bus.subscribe('dq.incident', (e) =>
+      this.log.warn(
+        `data-quality incident ${e.opened ? 'opened' : 'closed'}: ${e.rule} on ${e.instrumentId}`,
+      ),
+    );
     this.monitor.start();
     this.started = true;
     // Warm-up runs in the background; live candles are already flowing and gap detection covers the join.

@@ -1,0 +1,15 @@
+{
+  "name": "@smc/tool-dev",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "lint": "biome check .",
+    "db": "node src/dev-db.mjs"
+  },
+  "dependencies": {
+    "@smc/db": "workspace:*",
+    "embedded-postgres": "17.10.0-beta.17",
+    "postgres": "^3.4.9"
+  }
+}

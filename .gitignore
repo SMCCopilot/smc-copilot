@@ -45,3 +45,5 @@ service-account*.json
 
 # Repo-local tool binaries (tools/hooks/install-gitleaks.mjs)
 /tools/bin/
+
+/.dev-pg/

@@ -177,8 +177,23 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2))
 
+  tools/dev:
+    dependencies:
+      '@smc/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      embedded-postgres:
+        specifier: 17.10.0-beta.17
+        version: 17.10.0-beta.17
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
+
   tools/spikes:
     dependencies:
+      '@smc/market-data':
+        specifier: workspace:*
+        version: link:../../packages/market-data
       undici:
         specifier: ^8.11.2
         version: 8.11.2

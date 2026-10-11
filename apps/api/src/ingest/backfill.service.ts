@@ -34,6 +34,22 @@ export interface BackfillJob {
   readonly toMs: number;
 }
 
+export interface ReconcileReport {
+  readonly instrument: string;
+  readonly compared: number;
+  readonly missingNative: number;
+  readonly differences: {
+    tf: Timeframe;
+    openTime: string;
+    field: string;
+    ours: number;
+    venue: number;
+  }[];
+}
+
+/** Relative tolerance for comparing our aggregated OHLC with the venue's own higher-timeframe candle. */
+const RECONCILE_TOLERANCE = 1e-5;
+
 export class BackfillIncompleteError extends Error {
   constructor(readonly missing: number) {
     super(`backfill left ${missing} minute(s) missing`);
@@ -61,6 +77,93 @@ export class BackfillService {
     await this.queue.process<BackfillJob>('md.backfill', (job) => this.run(job), {
       concurrency: 2,
     });
+    await this.queue.process<object>('md.reconcile', async () => {
+      for (const instrument of this.registry.all()) {
+        if (this.providers.has(instrument.providerId)) await this.reconcile(instrument);
+      }
+    });
+    await this.queue.schedule('md.reconcile', '0 3 * * *'); // quiet window, UTC (A03 section 8.2)
+  }
+
+  /**
+   * Nightly check (A03 section 5.3): fetch the venue's own 1h/4h/1d candles for the last 7 days and compare them with
+   * the ones we aggregated. A difference opens a RECONCILE incident for an operator; nothing is overwritten silently.
+   */
+  async reconcile(instrument: InstrumentRow, days = 7): Promise<ReconcileReport> {
+    const provider = this.providerFor(instrument);
+    const now = this.clock.now();
+    const report: {
+      compared: number;
+      missingNative: number;
+      differences: ReconcileReport['differences'];
+    } = { compared: 0, missingNative: 0, differences: [] };
+
+    for (const tf of ['1h', '4h', '1d'] as const) {
+      const toMs = bucketStart(now, tf);
+      const fromMs = toMs - days * 86_400_000;
+      const ours = new Map(
+        (await this.store.range(instrument.id, tf, fromMs, toMs)).map((c) => [c.openTime, c]),
+      );
+      const venue = new Map<number, number[]>();
+      for await (const page of provider.fetchCandles({
+        venueSymbol: instrument.venueSymbol,
+        marketType: instrument.marketType,
+        tf,
+        fromMs,
+        toMs,
+      })) {
+        for (const r of page) {
+          if (r.closed)
+            venue.set(r.openTimeMs, [Number(r.o), Number(r.h), Number(r.l), Number(r.c)]);
+        }
+      }
+      for (const [openTime, mine] of ours) {
+        if (mine.status !== 'CLOSED') continue;
+        const theirs = venue.get(openTime);
+        if (!theirs) {
+          report.missingNative += 1;
+          continue;
+        }
+        report.compared += 1;
+        const fields = [
+          ['o', mine.o],
+          ['h', mine.h],
+          ['l', mine.l],
+          ['c', mine.c],
+        ] as const;
+        fields.forEach(([field, value], i) => {
+          const other = theirs[i] as number;
+          if (Math.abs(value - other) / other > RECONCILE_TOLERANCE) {
+            report.differences.push({
+              tf,
+              openTime: new Date(openTime).toISOString(),
+              field,
+              ours: value,
+              venue: other,
+            });
+          }
+        });
+      }
+    }
+
+    if (report.differences.length > 0) {
+      this.log.warn(
+        `reconcile: ${report.differences.length} difference(s) on ${instrument.canonical}`,
+      );
+      const opened = await this.store.openIncident(instrument.id, instrument.venue, 'RECONCILE', {
+        differences: report.differences.slice(0, 20),
+      });
+      if (opened) {
+        this.bus.publish('dq.incident', {
+          instrumentId: instrument.id,
+          rule: 'RECONCILE',
+          opened: true,
+        });
+      }
+    } else {
+      await this.store.closeIncident(instrument.id, 'RECONCILE');
+    }
+    return { instrument: instrument.canonical, ...report };
   }
 
   private providerFor(instrument: InstrumentRow): MarketDataProvider {
@@ -71,6 +174,10 @@ export class BackfillService {
 
   /** Re-fetches [fromMs, toMs) of 1m candles for one instrument. Throws when minutes are still missing so the queue retries. */
   async run(job: BackfillJob): Promise<void> {
+    return this.ingest.withBackfillActive(job.instrumentId, () => this.runInner(job));
+  }
+
+  private async runInner(job: BackfillJob): Promise<void> {
     const instrument = this.registry.get(job.instrumentId);
     if (!instrument) throw new Error(`unknown instrument ${job.instrumentId}`);
     const provider = this.providerFor(instrument);
