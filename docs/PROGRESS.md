@@ -134,7 +134,7 @@ Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 
 
 ## Phase 7: hardening and beta preparation (all on `main`)
 
-**Status: built; independent review pending.**
+**Status: built; independent review done (D-043).**
 
 - [x] Account deletion with grace period, cancel and a purge proven by a residue scan; retention purge now actually scheduled.
 - [x] Metrics endpoint, alert rules, request counters; proxy hop handling for the admin allow-list.

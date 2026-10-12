@@ -7,10 +7,11 @@ import { spawn } from 'node:child_process';
 //   node tools/ops/src/backup.mjs key                       prints a fresh key (store it in your password manager, not in the repo)
 //
 // Needs pg_dump / pg_restore on the PATH (PostgreSQL client tools). Reads DATABASE_URL_SESSION (or DATABASE_URL) for backup.
-// The file is AES-256-GCM encrypted in chunks, so a wrong key or a damaged file fails loudly and nothing is restored.
-// Restore refuses a target that looks like the production database unless --i-know-this-is-not-production is given.
+// The file is AES-256-GCM encrypted in chunks, so a wrong key or a damaged file fails loudly. A damaged file may already
+// have been partly applied by then, which is why the target must be a scratch database. Restore refuses a target that has
+// the same host or project and database name as DATABASE_URL / DATABASE_URL_SESSION unless --i-know-this-is-not-production is given.
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream, rmSync } from 'node:fs';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
@@ -133,6 +134,13 @@ export function decryptStream(key) {
 
 function run(cmd, args, opts) {
   const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'inherit'], ...opts });
+  child.done = new Promise((resolve, reject) => {
+    child.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${code}`)),
+    );
+    child.on('error', reject);
+  });
+  child.done.catch(() => {});
   child.on('error', (e) => {
     console.error(
       `could not run ${cmd}: ${e.code === 'ENOENT' ? 'install the PostgreSQL client tools and put them on the PATH' : e.message}`,
@@ -140,6 +148,18 @@ function run(cmd, args, opts) {
     process.exitCode = 2;
   });
   return child;
+}
+
+/** Same host (ignoring the port, which differs between pooler and direct) and same database name. */
+function sameDatabase(a, b) {
+  try {
+    const x = new URL(a);
+    const y = new URL(b);
+    const hostOf = (u) => u.hostname.replace(/^db./, '').replace(/^aws-d+-/, '');
+    return x.pathname === y.pathname && (x.hostname === y.hostname || hostOf(x) === hostOf(y));
+  } catch {
+    return false;
+  }
 }
 
 async function main() {
@@ -164,18 +184,25 @@ async function main() {
       '--dbname',
       url,
     ]);
-    await pipeline(dump.stdout, chunker(CHUNK), encryptStream(key), createWriteStream(out));
+    try {
+      await pipeline(dump.stdout, chunker(CHUNK), encryptStream(key), createWriteStream(out));
+      await dump.done;
+    } catch (e) {
+      rmSync(out, { force: true });
+      throw e;
+    }
     console.log(`backup written to ${out}`);
   } else if (cmd === 'restore') {
     const inp = arg('--in');
     const to = arg('--to');
     if (!inp || !to) throw new Error('--in <file> and --to <database url> are required');
-    if (
-      !rest.includes('--i-know-this-is-not-production') &&
-      process.env.DATABASE_URL &&
-      to === process.env.DATABASE_URL
-    ) {
-      throw new Error('refusing to restore over DATABASE_URL; restore into a scratch database');
+    if (!rest.includes('--i-know-this-is-not-production')) {
+      for (const live of [process.env.DATABASE_URL, process.env.DATABASE_URL_SESSION]) {
+        if (live && sameDatabase(to, live))
+          throw new Error(
+            'refusing to restore over the live database; restore into a scratch database',
+          );
+      }
     }
     const restore = run('pg_restore', [
       '--no-owner',
@@ -187,6 +214,7 @@ async function main() {
       to,
     ]);
     await pipeline(createReadStream(inp), decryptStream(key), restore.stdin);
+    await restore.done;
     console.log('restore finished');
   } else {
     console.log(

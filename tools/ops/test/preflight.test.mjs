@@ -12,7 +12,7 @@ const base = {
   TURNSTILE_SECRET: 't'.repeat(16),
   CORS_ORIGINS: 'https://app.example.test',
   ADMIN_IP_ALLOWLIST: '203.0.113.7',
-  METRICS_TOKEN: 'm'.repeat(24),
+  METRICS_TOKEN: 'm'.repeat(40),
   SENTRY_DSN: 'https://abc@o1.ingest.sentry.io/1',
   INGEST_ENABLED: 'true',
 };
@@ -40,6 +40,11 @@ describe('preflight', () => {
         1,
       ),
     );
+  });
+
+  it('a short metrics token fails', () => {
+    const r = evaluate({ ...base, METRICS_TOKEN: 'short' }, db);
+    expect(by(r, 'Metrics endpoint is protected and on').level).toBe('FAIL');
   });
 
   it('missing production secrets fail, naming the variable and never a value', () => {

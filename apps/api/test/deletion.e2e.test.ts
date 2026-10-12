@@ -209,12 +209,14 @@ describe('purge', () => {
       .delete('/v1/me')
       .set('Authorization', gone.auth)
       .send({ confirm: 'DELETE MY ACCOUNT' });
+    await sql`update audit_log set ip = '203.0.113.7' where actor_id = ${gone.id}`;
     const admin = `Bearer ${await keys.sign({ sub: randomUUID(), claims: { app_metadata: { role: 'admin' } } })}`;
     const run = await request(http)
       .post('/v1/admin/deletions/run')
       .set('Authorization', admin)
       .set('X-Admin-Confirm', 'yes');
     expect(run.body.purged).toBe(1);
+    expect((await sql`select 1 from audit_log where ip = '203.0.113.7'`).length).toBe(0);
 
     expect(await residue([gone.id, gone.workspaceId])).toEqual([]);
     expect((await sql`select 1 from auth.users where id = ${gone.id}`).length).toBe(0);

@@ -48,19 +48,27 @@ export function evaluate(rawEnv, db = null) {
         'TURNSTILE_DISABLED=true: sign-up relies on the invite code alone',
       )
     : add(LEVEL.PASS, 'Bot check (Turnstile) is on');
-  parsed.METRICS_TOKEN
-    ? add(LEVEL.PASS, 'Metrics endpoint is protected and on')
-    : add(
-        LEVEL.WARN,
+  parsed.METRICS_TOKEN && String(parsed.METRICS_TOKEN).length < 32
+    ? add(
+        LEVEL.FAIL,
         'Metrics endpoint is protected and on',
-        'METRICS_TOKEN is empty: no alerts can be driven from metrics',
-      );
+        'METRICS_TOKEN is shorter than 32 characters',
+      )
+    : parsed.METRICS_TOKEN
+      ? add(LEVEL.PASS, 'Metrics endpoint is protected and on')
+      : add(
+          LEVEL.WARN,
+          'Metrics endpoint is protected and on',
+          'METRICS_TOKEN is empty: no alerts can be driven from metrics',
+        );
   parsed.SENTRY_DSN
     ? add(LEVEL.PASS, 'Error reporting (Sentry) is set')
     : add(LEVEL.WARN, 'Error reporting (Sentry) is set', 'SENTRY_DSN is empty');
   parsed.TRUST_PROXY_HEADERS
     ? add(
-        LEVEL.WARN,
+        process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME
+          ? LEVEL.FAIL
+          : LEVEL.WARN,
         'Proxy header trust is deliberate',
         'TRUST_PROXY_HEADERS=true is only safe when the API is reachable solely through the tunnel',
       )
@@ -128,7 +136,7 @@ export function evaluate(rawEnv, db = null) {
       );
 
   if (db) {
-    db.migrations >= 11
+    db.migrations >= Math.max(11, db.migrationsShipped ?? 0)
       ? add(LEVEL.PASS, 'Migrations are applied', `${db.migrations} applied`)
       : add(LEVEL.FAIL, 'Migrations are applied', `${db.migrations} applied`);
     db.devInvite
@@ -186,6 +194,16 @@ export async function readDb(url) {
     const migrations = Number(
       (await one('select count(*)::int as n from smc_meta.migrations').catch(() => ({ n: 0 }))).n,
     );
+    const { readdirSync } = await import('node:fs');
+    const shipped = (() => {
+      try {
+        return readdirSync(new URL('../../../packages/db/migrations/', import.meta.url)).filter(
+          (f) => /^d{4}_.*.sql$/.test(f) && !f.includes('dev_shims'),
+        ).length;
+      } catch {
+        return undefined;
+      }
+    })();
     const devInvite =
       Number(
         (await one("select count(*)::int as n from invite_codes where code = 'DEV-BETA-0001'")).n,
@@ -218,6 +236,7 @@ export async function readDb(url) {
     );
     return {
       migrations,
+      migrationsShipped: shipped,
       devInvite,
       invites,
       blocklist,
