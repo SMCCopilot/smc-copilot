@@ -128,3 +128,7 @@ export const StrategyVersionCreateSchema = z.strictObject({
   config: z.record(z.string(), z.unknown()),
   notes: z.string().max(500).optional(),
 });
+
+/** Deleting an account is deliberate: the exact phrase must be sent, together with a fresh wallet signature. */
+export const DELETE_CONFIRMATION = 'DELETE MY ACCOUNT';
+export const DeleteMeSchema = z.strictObject({ confirm: z.literal(DELETE_CONFIRMATION) });

@@ -96,6 +96,9 @@ const EnvSchema = z
     AI_GLOBAL_DAILY_CAP_USD: z.coerce.number().nonnegative().default(10),
     // Rate limits on AI routes. The per-IP and per-device counters span accounts, so a scripted farm of free accounts
     // behind one address or browser shares one allowance.
+    // Account deletion: how long a requested deletion can still be cancelled, and how often the purge looks for due ones (0 = never).
+    ACCOUNT_DELETION_GRACE_HOURS: z.coerce.number().int().min(0).max(720).default(72),
+    ACCOUNT_PURGE_INTERVAL_MIN: z.coerce.number().int().min(0).default(60),
     AI_USER_MESSAGES_PER_MINUTE: z.coerce.number().int().positive().default(10),
     AI_USER_MESSAGES_PER_DAY: z.coerce.number().int().positive().default(200),
     AI_IP_REQUESTS_PER_DAY: z.coerce.number().int().positive().default(150),
