@@ -79,6 +79,14 @@ export class LlmRouter {
     return b;
   }
 
+  /** Breaker state per provider and model, for monitoring. */
+  breakerStates(): { provider: string; model: string; state: 'CLOSED' | 'OPEN' | 'HALF_OPEN' }[] {
+    return [...this.breakers].map(([key, b]) => {
+      const [provider = '', ...rest] = key.split(':');
+      return { provider, model: rest.join(':'), state: b.current };
+    });
+  }
+
   async markOutcome(callId: string, outcome: CallOutcome): Promise<void> {
     await this.o.onOutcome?.(callId, outcome);
   }
@@ -174,14 +182,19 @@ export class LlmRouter {
                 : new LlmError('SERVER', 'unexpected provider failure');
           breaker.failure();
           attempts.push({ provider: p.id, kind: err.kind });
+          // A call that timed out may still have been read (and billed) by the vendor: count the input we sent.
+          const failedUsage: LlmUsage =
+            err.kind === 'TIMEOUT'
+              ? { ...ZERO, tokensIn: Math.ceil((req.system.length + req.user.length) / 4) }
+              : ZERO;
           await this.record({
             id: randomUUID(),
             job,
             dataClass: opts.dataClass,
             provider: p.id,
             model,
-            usage: ZERO,
-            costUsd: 0,
+            usage: failedUsage,
+            costUsd: this.o.prices.cost(model, failedUsage),
             latencyMs: this.now() - started,
             outcome: OUTCOME_OF[err.kind],
             errorCode: err.kind,

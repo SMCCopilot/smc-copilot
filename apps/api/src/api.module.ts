@@ -30,6 +30,7 @@ import { GateService } from './gate/gate.service.js';
 import { JournalController } from './journal/journal.controller.js';
 import { JournalService } from './journal/journal.service.js';
 import { NotificationsService } from './journal/notifications.service.js';
+import { MetricsController } from './ops/metrics.controller.js';
 import { RealtimeService } from './realtime/realtime.service.js';
 import { RiskController } from './risk/risk.controller.js';
 import { RiskService } from './risk/risk.service.js';
@@ -59,6 +60,7 @@ import { VoiceService } from './voice/voice.service.js';
     ChatController,
     ExplainController,
     VoiceController,
+    MetricsController,
   ],
   providers: [
     AnalysisService,

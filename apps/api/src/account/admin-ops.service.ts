@@ -158,6 +158,13 @@ export class AdminOpsService {
       update profiles set blocked_at = ${blocked ? this.sql`now()` : null}, block_reason = ${blocked ? (reason ?? 'ADMIN') : null}
        where id = ${userId} returning id`;
     if (res.length === 0) throw new ApiProblemError('NOT_FOUND');
+    if (blocked) {
+      // A blocked user keeps nothing open: gates are voided and sessions ended at once.
+      await this
+        .sql`update gate_decisions set action = 'VOIDED', decided_at = now(), void_reason = 'USER_BLOCKED' where user_id = ${userId} and action in ('ISSUED','CONFIRMED') and decided_at is null or (user_id = ${userId} and action = 'ISSUED')`;
+      await this
+        .sql`update copilot_sessions set state = 'ENDED', ended_at = coalesce(ended_at, now()), end_reason = coalesce(end_reason, 'USER_BLOCKED') where user_id = ${userId} and state <> 'ENDED'`;
+    }
     await this.audit(a, blocked ? 'admin.user.block' : 'admin.user.unblock', userId, {
       reason: reason ?? null,
     });

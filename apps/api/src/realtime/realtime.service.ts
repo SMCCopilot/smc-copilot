@@ -168,6 +168,19 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     this.reaper.unref();
   }
 
+  private connects = 0;
+  private reconnects = 0;
+
+  /** Counters for monitoring. */
+  stats(): { sockets: number; sessions: number; connects: number; reconnects: number } {
+    return {
+      sockets: this.io?.sockets.sockets.size ?? 0,
+      sessions: this.sessions.size,
+      connects: this.connects,
+      reconnects: this.reconnects,
+    };
+  }
+
   async onApplicationShutdown(): Promise<void> {
     for (const u of this.unsub) u();
     if (this.reaper) clearInterval(this.reaper);
@@ -243,6 +256,8 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     }
     // Everything up to registering the handlers is synchronous: a client may emit the moment it connects.
     const isNew = !existing;
+    this.connects++;
+    if (existing) this.reconnects++;
     const ctx: Ctx = existing ?? {
       ...base,
       seq: 0,

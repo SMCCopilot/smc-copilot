@@ -222,3 +222,30 @@ describe('price table', () => {
     ).toBeCloseTo((600 * 3 + 400 * 3 + 100 * 15) / 1e6, 6);
   });
 });
+
+describe('timeouts are not free', () => {
+  it('a call that times out is recorded with the input cost the vendor may have billed', async () => {
+    const slow = {
+      id: 'anthropic' as const,
+      async call({ signal }: { signal: AbortSignal }) {
+        await new Promise((_, rej) =>
+          signal.addEventListener('abort', () => rej(new LlmError('TIMEOUT', 't'))),
+        );
+        return { text: '', usage: { tokensIn: 0, tokensOut: 0, cachedIn: 0, cacheWrite: 0 } };
+      },
+    };
+    const { router, records } = makeRouter([state('anthropic')], [slow], {
+      timeoutMs: { J6_ROUTER: 10 },
+    });
+    await expect(
+      router.call(
+        'J6_ROUTER',
+        { system: 'x'.repeat(4000), user: 'y'.repeat(4000), maxTokens: 10 },
+        { dataClass: 'D2' },
+      ),
+    ).rejects.toBeInstanceOf(AiUnavailableError);
+    const t = records.find((r) => r.outcome === 'TIMEOUT');
+    expect(t?.usage.tokensIn).toBe(2000);
+    expect(t?.costUsd).toBeGreaterThan(0);
+  });
+});

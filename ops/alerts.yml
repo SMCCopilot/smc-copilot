@@ -1,0 +1,71 @@
+# Prometheus alert rules (A08 section 5.3), written against the metrics served at /metrics.
+# Load into any Prometheus-compatible service (Grafana Cloud free tier, a self-hosted Prometheus, ...).
+# Thresholds are the plan's starting values; adjust after the first beta week.
+groups:
+  - name: smc-feed
+    rules:
+      - alert: FeedStale
+        expr: smc_feed_stale == 1
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "Feed for {{ $labels.instrument }} has been STALE for 2 minutes" }
+      - alert: CandleLagHigh
+        expr: smc_feed_candle_lag_seconds > 120
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "No closed 1m candle for {{ $labels.instrument }} for over 2 minutes" }
+  - name: smc-api
+    rules:
+      - alert: ApiDown
+        expr: absent(smc_up) or smc_up == 0
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "The API is not answering the metrics scrape" }
+      - alert: Http5xxHigh
+        expr: sum(rate(smc_http_requests_total{class="5xx"}[5m])) / sum(rate(smc_http_requests_total[5m])) > 0.01
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "More than 1% of responses are 5xx for 5 minutes" }
+      - alert: ReconnectRateHigh
+        expr: increase(smc_realtime_reconnects_total[15m]) / clamp_min(increase(smc_realtime_connects_total[15m]), 1) > 0.10
+        for: 10m
+        labels: { severity: warn }
+        annotations: { summary: "More than 10% of socket connections are reconnects" }
+  - name: smc-ai
+    rules:
+      - alert: AiSpendNearCap
+        expr: smc_ai_spend_usd_today / smc_ai_cap_usd > 0.8
+        for: 1m
+        labels: { severity: warn }
+        annotations: { summary: "AI spend today is over 80% of the global cap" }
+      - alert: AiCapTripped
+        expr: smc_ai_cap_tripped == 1
+        labels: { severity: page }
+        annotations: { summary: "The global AI cap tripped: AI is off until the next UTC day" }
+      - alert: AiBreakerOpen
+        expr: smc_ai_breaker_open == 1
+        for: 10m
+        labels: { severity: warn }
+        annotations: { summary: "Circuit breaker for {{ $labels.provider }} has been open for 10 minutes" }
+  - name: smc-data
+    rules:
+      - alert: CandlePartitionsRunningOut
+        expr: smc_candle_partitions_ahead < 2
+        for: 1h
+        labels: { severity: warn }
+        annotations: { summary: "Fewer than 2 candle partitions exist ahead of next month" }
+      - alert: DbSizeHigh
+        expr: smc_db_size_bytes > 0.7 * 8 * 1024 * 1024 * 1024
+        for: 1h
+        labels: { severity: warn }
+        annotations: { summary: "Database is over 70% of an 8 GB plan (change the number to your plan)" }
+      - alert: AbuseSpike
+        expr: smc_abuse_flags_active > 50
+        for: 10m
+        labels: { severity: warn }
+        annotations: { summary: "Many temporary blocks are active at once" }
+      - alert: DataQualityIncidentsOpen
+        expr: smc_dq_incidents_open > 0
+        for: 30m
+        labels: { severity: warn }
+        annotations: { summary: "Data-quality incidents have been open for 30 minutes" }

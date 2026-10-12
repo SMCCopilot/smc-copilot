@@ -3,6 +3,7 @@ import type { Env } from '@smc/config';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { generateRequestId } from './common/correlation.js';
+import { requestStatsMiddleware } from './ops/request-stats.js';
 
 /** Largest JSON body any route accepts. Explain's image arrives as multipart on its own route (A08 section 2.2). */
 export const JSON_BODY_LIMIT = '64kb';
@@ -15,6 +16,7 @@ export function configureApp(app: NestExpressApplication, env: Env): void {
     req.id = req.id ?? generateRequestId(req as never, res as never);
     next();
   });
+  app.use(requestStatsMiddleware);
   app.use(helmet());
   app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
   app.useBodyParser('urlencoded', { limit: JSON_BODY_LIMIT, extended: false });

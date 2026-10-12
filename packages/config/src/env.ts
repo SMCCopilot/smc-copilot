@@ -115,6 +115,8 @@ const EnvSchema = z
     DNS_SERVERS: csv.pipe(z.array(z.ipv4())),
 
     SENTRY_DSN: optionalUrl,
+    // Bearer token for GET /metrics (Prometheus). Without it the endpoint does not exist.
+    METRICS_TOKEN: optionalString,
     OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
     ADMIN_IP_ALLOWLIST: csv.pipe(z.array(ipOrCidr)),
     CORS_ORIGINS: csv.pipe(z.array(origin)),
@@ -174,6 +176,7 @@ const SECRET_KEYS = [
   'OPENAI_API_KEY',
   'GEMINI_API_KEY',
   'SENTRY_DSN',
+  'METRICS_TOKEN',
 ] as const satisfies readonly (keyof Env)[];
 
 /** Thrown for invalid configuration. The message lists keys and failure kinds only, never values. */

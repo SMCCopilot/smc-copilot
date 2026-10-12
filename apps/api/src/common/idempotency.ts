@@ -17,6 +17,7 @@ import { ApiProblemError } from './problem.js';
 
 const KEY = /^[A-Za-z0-9_-]{8,128}$/;
 const WAIT_MS = 3000;
+const STALE_SECONDS = 60;
 
 /** JSON with sorted keys, so the same body always hashes the same whatever order the client wrote it in. */
 export function stableStringify(v: unknown): string {
@@ -106,8 +107,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const sql = this.sql as Sql;
     const deadline = Date.now() + WAIT_MS;
     for (;;) {
-      const [row] = await sql<{ request_hash: string; status: number | null; response: unknown }[]>`
-        select request_hash, status, response from idempotency_keys where workspace_id = ${workspaceId} and key = ${key}`;
+      const [row] = await sql<
+        { request_hash: string; status: number | null; response: unknown; age: number }[]
+      >`
+        select request_hash, status, response, extract(epoch from now() - created_at)::int as age
+          from idempotency_keys where workspace_id = ${workspaceId} and key = ${key}`;
       if (!row) throw new ApiProblemError('CONFLICT', 'Please retry the request.');
       if (row.request_hash !== hash) {
         throw new ApiProblemError(
@@ -119,6 +123,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
         res.status(row.status);
         res.setHeader('Idempotent-Replayed', 'true');
         return row.response;
+      }
+      // A first attempt that never finished (the process died) must not block this key for a whole day.
+      if (row.age > STALE_SECONDS) {
+        await sql`delete from idempotency_keys where workspace_id = ${workspaceId} and key = ${key} and status is null`;
+        throw new ApiProblemError('CONFLICT', 'The earlier attempt did not finish. Please retry.');
       }
       if (Date.now() > deadline)
         throw new ApiProblemError('CONFLICT', 'The first request is still running.');

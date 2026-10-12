@@ -346,3 +346,57 @@ describe('realizedR', () => {
     expect(realizedR('LONG', 100, 102, null, 5, null, undefined)).toBeNull();
   });
 });
+
+describe('hardening', () => {
+  it('blocking a user voids their open gate and ends their sessions', async () => {
+    const http = await boot();
+    const u = await readyUser();
+    const { planId } = await armedPlan();
+    const i = await issue(http, u.auth, planId);
+    await sql`insert into copilot_sessions (workspace_id, user_id, state) select w.id, ${u.id}, 'ACTIVE' from workspaces w where w.owner_id = ${u.id}`;
+    const admin = `Bearer ${await keys.sign({ sub: randomUUID(), claims: { app_metadata: { role: 'admin' } } })}`;
+    const res = await request(http)
+      .post(`/v1/admin/users/${u.id}/block`)
+      .set('Authorization', admin)
+      .set('X-Admin-Confirm', 'yes')
+      .send({ blocked: true, reason: 'test' });
+    expect(res.status).toBeLessThan(300);
+    const [g] = await sql<
+      { action: string }[]
+    >`select action from gate_decisions where id = ${i.body.gateId}`;
+    expect(g?.action).toBe('VOIDED');
+    expect(
+      (await sql`select 1 from copilot_sessions where user_id = ${u.id} and state <> 'ENDED'`)
+        .length,
+    ).toBe(0);
+  });
+
+  it('an idempotency key left behind by a crashed request does not block retries for a day', async () => {
+    const http = await boot();
+    const u = await readyUser();
+    const [ws] = await sql<{ id: string }[]>`select id from workspaces where owner_id = ${u.id}`;
+    const { instrumentId } = await armedPlan();
+    const body = { instrumentId, direction: 'LONG', entryPrice: 100, stopPrice: 99 };
+    const key = `stale-${randomUUID()}`;
+    // The first attempt "crashed": a row with no stored response, from two minutes ago.
+    const first = await request(http)
+      .post('/v1/trades')
+      .set('Authorization', u.auth)
+      .set('Idempotency-Key', key)
+      .send(body);
+    expect(first.status).toBe(201);
+    await sql`update idempotency_keys set status = null, response = null, created_at = now() - interval '2 minutes' where workspace_id = ${ws?.id as string} and key = ${key}`;
+    const stuck = await request(http)
+      .post('/v1/trades')
+      .set('Authorization', u.auth)
+      .set('Idempotency-Key', key)
+      .send(body);
+    expect(stuck.status).toBe(409);
+    const retry = await request(http)
+      .post('/v1/trades')
+      .set('Authorization', u.auth)
+      .set('Idempotency-Key', key)
+      .send(body);
+    expect(retry.status).toBe(201);
+  });
+});
