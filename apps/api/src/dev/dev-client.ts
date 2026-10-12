@@ -126,9 +126,9 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   </section>
 
   <section><h2>9. Explain a chart image</h2>
-    <div class="help"><b>What to do:</b> choose a chart screenshot (PNG, JPEG or WebP), then press the explain button. A short written read streams in below. Needs an enabled AI provider with a key.</div>
+    <div class="help"><b>What to do:</b> choose a chart screenshot (PNG, JPEG or WebP), <b>pick the market and timeframe it shows</b> (otherwise the AI must read them from the picture, and that needs an AI provider allowed to see images, see section 10), then press <b>Explain</b>. A short written read streams in below. Needs an enabled AI provider with a key.</div>
     <div class="muted">The picture is read once and not kept. Only your market and a short written answer are stored.</div>
-    <div class="row"><input type="file" id="img" accept="image/png,image/jpeg,image/webp"><select id="exsrc"><option value="UPLOAD">Upload (old screenshot allowed)</option><option value="SHARE">Live capture</option></select><button id="explain">Explain</button></div>
+    <div class="row"><input type="file" id="img" accept="image/png,image/jpeg,image/webp"><select id="exinst"><option value="">Market: detect from picture</option></select><select id="extf"><option value="">Timeframe: detect</option><option>5m</option><option>15m</option><option>1h</option><option>4h</option></select><select id="exsrc"><option value="UPLOAD">Upload (old screenshot allowed)</option><option value="SHARE">Live capture</option></select><button id="explain">Explain</button></div>
     <div id="exstage" class="muted"></div>
     <pre id="exout"></pre>
   </section>
@@ -280,6 +280,7 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   function loadInstruments() {
     return api('GET', '/v1/instruments').then(function (r) {
       $('inst').innerHTML = r.items.map(function (i) { return '<option value="' + esc(i.id) + '" data-c="' + esc(i.canonical) + '">' + esc(i.display) + '</option>'; }).join('');
+      $('exinst').innerHTML = '<option value="">Market: detect from picture</option>' + r.items.map(function (i) { return '<option value="' + esc(i.canonical) + '">' + esc(i.display) + '</option>'; }).join('');
     }).catch(function () {});
   }
 
@@ -422,6 +423,8 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
     var fd = new FormData();
     fd.append('image', file);
     fd.append('source', $('exsrc').value);
+    if ($('exinst').value) fd.append('instrumentHint', $('exinst').value);
+    if ($('extf').value) fd.append('tfHint', $('extf').value);
     if (session) fd.append('sessionId', session.sessionId);
     $('exout').textContent = '';
     $('exstage').textContent = 'sending...';
