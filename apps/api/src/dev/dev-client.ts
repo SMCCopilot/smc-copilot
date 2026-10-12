@@ -45,11 +45,11 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   </section>
 
   <section id="auth"><h2>1. Sign in with a wallet</h2>
-    <div class="help"><b>What to do:</b> press the button for the wallet you have installed (MetaMask = Ethereum, Phantom = Solana). Your wallet pops up and asks you to sign a message. Signing costs nothing and sends no money.<br>
+    <div class="help"><b>What to do:</b> choose the type of wallet you want to sign in with. Neither is pre-selected: <b>Solana wallet</b> uses Phantom (or another Solana wallet), <b>Ethereum wallet</b> uses MetaMask (or another Ethereum wallet). Your wallet pops up and asks you to sign a message. Signing costs nothing and sends no money.<br>
     <b>What you should see:</b> the grey text on the right changes to your wallet address, and section 2 fills in.<br>
     <b>If nothing happens:</b> the red message above says why. The usual causes are no wallet extension in this browser, or Web3 Wallet sign-in not switched on in Supabase (Authentication, then Sign In / Providers, then Web3 Wallet).</div>
     <div class="row">
-      <button id="eth" class="primary">Ethereum wallet</button>
+      <button id="eth">Ethereum wallet</button>
       <button id="sol">Solana wallet</button>
       <button id="out" disabled>Sign out</button>
       <span id="who" class="muted">signed out</span>
@@ -241,12 +241,14 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
       if (r && r.error) {
         log('sign-in error', { message: r.error.message });
         var m = String(r.error.message || '');
-        banner('Wallet sign-in failed: ' + m + (/provider|disabled|not enabled|unsupported/i.test(m) ? '\nFix: in Supabase open Authentication, then Sign In / Providers, and switch on Web3 Wallet (Ethereum and/or Solana).' : ''));
+        banner('Wallet sign-in failed: ' + m + (/domain/i.test(m) ? '
+Fix: Supabase does not allow this page address (' + location.host + ') yet. In Supabase open Authentication, then URL Configuration. Add ' + location.origin + ' to Redirect URLs (and, if you like, set it as the Site URL), save, then reload this page and try again.' : /provider|disabled|not enabled|unsupported/i.test(m) ? '\nFix: in Supabase open Authentication, then Sign In / Providers, and switch on Web3 Wallet (Ethereum and/or Solana).' : ''));
         say('authmsg', '');
       } else say('authmsg', 'Signed. Loading your account...');
     };
     try {
-      Promise.resolve(sb.auth.signInWithWeb3({ chain: chain, statement: 'Sign in to SMC Copilot' })).then(done, function (e) { done({ error: { message: e && e.message ? e.message : String(e) } }); });
+      var wallet = chain === 'solana' ? ((window.phantom && window.phantom.solana) || window.solana) : window.ethereum;
+      Promise.resolve(sb.auth.signInWithWeb3({ chain: chain, statement: 'Sign in to SMC Copilot', wallet: wallet })).then(done, function (e) { done({ error: { message: e && e.message ? e.message : String(e) } }); });
     } catch (e) { done({ error: { message: e.message } }); }
   }
   $('eth').onclick = function () { web3('ethereum'); };
