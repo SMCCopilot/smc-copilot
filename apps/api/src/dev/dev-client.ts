@@ -152,6 +152,8 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
 <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.4/dist/socket.io.min.js"></script>
 <script>
 (function () {
+  // Supabase accepts wallet sign-in messages for localhost but not for 127.0.0.1, so move to localhost.
+  if (location.hostname === '127.0.0.1') { location.replace('http://localhost:' + location.port + location.pathname + location.search); return; }
   var $ = function (id) { return document.getElementById(id); };
   var sb = null, token = null, session = null, socket = null, activeGate = null, countdown = null, lastSeq = 0, setups = {};
   function log(t, o) {

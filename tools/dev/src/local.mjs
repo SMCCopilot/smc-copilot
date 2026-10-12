@@ -141,7 +141,7 @@ async function main() {
     if (!flag('--no-build') && !existsSync(resolve(root, 'apps/api/dist/main.js'))) build();
     const port = process.env.PORT || '3000';
     console.log(
-      `\nStarting. Open  http://127.0.0.1:${port}/dev  in your browser. Stop with Ctrl+C.\n`,
+      `\nStarting. Open  http://localhost:${port}/dev  in your browser. Stop with Ctrl+C.\n`,
     );
     const child = spawn('node', ['apps/api/dist/main.js'], {
       cwd: root,
