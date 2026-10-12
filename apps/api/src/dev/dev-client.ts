@@ -241,8 +241,7 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
       if (r && r.error) {
         log('sign-in error', { message: r.error.message });
         var m = String(r.error.message || '');
-        banner('Wallet sign-in failed: ' + m + (/domain/i.test(m) ? '
-Fix: Supabase does not allow this page address (' + location.host + ') yet. In Supabase open Authentication, then URL Configuration. Add ' + location.origin + ' to Redirect URLs (and, if you like, set it as the Site URL), save, then reload this page and try again.' : /provider|disabled|not enabled|unsupported/i.test(m) ? '\nFix: in Supabase open Authentication, then Sign In / Providers, and switch on Web3 Wallet (Ethereum and/or Solana).' : ''));
+        banner('Wallet sign-in failed: ' + m + (/domain/i.test(m) ? '\nFix: Supabase does not allow this page address (' + location.host + ') yet. In Supabase open Authentication, then URL Configuration. Add ' + location.origin + ' to Redirect URLs (and, if you like, set it as the Site URL), save, then reload this page and try again.' : /provider|disabled|not enabled|unsupported/i.test(m) ? '\nFix: in Supabase open Authentication, then Sign In / Providers, and switch on Web3 Wallet (Ethereum and/or Solana).' : ''));
         say('authmsg', '');
       } else say('authmsg', 'Signed. Loading your account...');
     };
