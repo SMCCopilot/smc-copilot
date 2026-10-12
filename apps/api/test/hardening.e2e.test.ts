@@ -294,3 +294,35 @@ describe('proxy handling', () => {
     ).toBe('198.51.100.7');
   });
 });
+
+describe('retention', () => {
+  it('removes data past its retention period and keeps the rest', async () => {
+    const app = await boot();
+    const u = await readyUser();
+    const inst = (
+      await sql<
+        { id: string }[]
+      >`select id from instruments where canonical = 'BINANCE:PERP:BTCUSDT'`
+    )[0]?.id as string;
+    const [s] = await sql<
+      { id: string }[]
+    >`insert into copilot_sessions (workspace_id, user_id, instrument_id) values (${u.workspaceId}, ${u.id}, ${inst}) returning id`;
+    const sid = s?.id as string;
+    await sql`insert into session_events (session_id, seq, type, payload, created_at) values (${sid}, 1, 't', '{}'::jsonb, now() - interval '8 days'), (${sid}, 2, 't', '{}'::jsonb, now() - interval '1 day')`;
+    await sql`insert into voice_events (workspace_id, user_id, engine, outcome, at) values (${u.workspaceId}, ${u.id}, 'typed', 'OK', now() - interval '31 days'), (${u.workspaceId}, ${u.id}, 'typed', 'OK', now() - interval '2 days')`;
+    const [t] = await sql<
+      { id: string }[]
+    >`insert into chat_threads (workspace_id, user_id, session_id, created_at) values (${u.workspaceId}, ${u.id}, ${sid}, now() - interval '100 days') returning id`;
+    await sql`insert into chat_messages (thread_id, role, content, created_at) values (${t?.id as string}, 'user', 'old', now() - interval '91 days'), (${t?.id as string}, 'user', 'new', now() - interval '1 day')`;
+    await sql`insert into audit_log (action, at) values ('old.thing', now() - interval '400 days'), ('new.thing', now())`;
+    const { RetentionService } = await import('../src/ops/retention.service.js');
+    const r = await app.get(RetentionService).run();
+    expect(r).toMatchObject({ session_events: 1, voice_events: 1, chat_messages: 1, audit_log: 1 });
+    expect((await sql`select 1 from session_events where session_id = ${sid}`).length).toBe(1);
+    expect((await sql`select 1 from voice_events where user_id = ${u.id}`).length).toBe(1);
+    expect(
+      (await sql`select 1 from chat_messages where thread_id = ${t?.id as string}`).length,
+    ).toBe(1);
+    expect((await sql`select 1 from audit_log where action = 'new.thing'`).length).toBe(1);
+  });
+});

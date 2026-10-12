@@ -1,0 +1,18 @@
+{
+  "name": "@smc/tool-ops",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@smc/config": "workspace:*",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11",
+    "@smc/db": "workspace:*"
+  }
+}

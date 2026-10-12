@@ -271,6 +271,22 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2))
 
+  tools/ops:
+    dependencies:
+      '@smc/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
+    devDependencies:
+      '@smc/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2))
+
   tools/spikes:
     dependencies:
       '@smc/market-data':

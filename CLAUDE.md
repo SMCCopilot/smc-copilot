@@ -35,6 +35,8 @@ pnpm ai:eval                                   # AI guardrail harness check (fre
 pnpm ai:session-hour --provider anthropic      # measure the cost of a replayed session hour (estimate first, needs --yes)
 pnpm voice:eval                                # voice correction + grammar on the 200-phrase set (offline); --print-script to read aloud, --results file.json to score an engine
 pnpm voice:pin-models                          # pin speech model files by revision and SHA-256 (--check, --verify)
+pnpm ops:preflight [--db]                      # is this environment fit to open to testers? (config + read-only database checks)
+pnpm ops:backup key|backup|restore             # encrypted logical backup of the public schema (needs pg_dump)
 ```
 
 ## Layout and dependency rules (A01 section 6)

@@ -31,6 +31,7 @@ import { JournalController } from './journal/journal.controller.js';
 import { JournalService } from './journal/journal.service.js';
 import { NotificationsService } from './journal/notifications.service.js';
 import { MetricsController } from './ops/metrics.controller.js';
+import { RetentionService } from './ops/retention.service.js';
 import { RealtimeService } from './realtime/realtime.service.js';
 import { RiskController } from './risk/risk.controller.js';
 import { RiskService } from './risk/risk.service.js';
@@ -75,6 +76,7 @@ import { VoiceService } from './voice/voice.service.js';
     RealtimeService,
     IdempotencyInterceptor,
     ProviderConfigService,
+    RetentionService,
     AiMeterService,
     AiGateService,
     AiAllowanceService,

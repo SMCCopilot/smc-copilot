@@ -71,3 +71,8 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | Sign the speech model manifest (the server currently supplies addresses and hashes) | a compromised server could point the browser at its own files | before public launch |
 | Catch letter-spelled forbidden words and negations ("don't confirm") in the voice rules | harmless today: the grammar cannot express any action | Phase 9 |
 | Review step before a voice journal note is saved | notes are saved at once | when the real client exists |
+| Cursor timestamps keep milliseconds (Postgres keeps microseconds); order by millisecond-truncated time | rows sharing a millisecond at a page edge could be skipped | when lists get long |
+| Grafana dashboards on the metrics | alerts exist; dashboards are for looking, not paging | with the first scraper |
+| ZAP baseline scan and a k6 run against a deployed target | needs a target | at deploy |
+| Build and scan the container image in CI | no Docker here; the bundle boots | when CI exists |
+| Move the in-process timers (retention, deletion purge, cohort and calibration jobs) to pg-boss with the worker split | idempotent, single replica | M6 |

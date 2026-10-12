@@ -131,3 +131,16 @@ Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 
 - [x] Dev client: typed voice section.
 - Tests: contracts 97, capture-kit 46, voice-eval 11, api 275 (all 23 turbo tasks green).
 - [ ] **Not measured (needs the owner's voice and browser)**: real word error rate, command accuracy and latency of Whisper/Moonshine, the browser network capture, the recogniser wiring (spike S3, docs/how-to-test-voice.md).
+
+## Phase 7: hardening and beta preparation (all on `main`)
+
+**Status: built; independent review pending.**
+
+- [x] Account deletion with grace period, cancel and a purge proven by a residue scan; retention purge now actually scheduled.
+- [x] Metrics endpoint, alert rules, request counters; proxy hop handling for the admin allow-list.
+- [x] Security tests: log redaction, tenant isolation matrix, admin-guard scan, 20-session smoke; dependency audit clean.
+- [x] Hardening fixes: idempotency takeover, block voids gates and sessions, timeout cost.
+- [x] Dockerfile, Railway settings, standalone bundle boot check, readiness checker, encrypted backup tool.
+- [x] Runbooks (8), beta pack (brief, interview script, exit criteria, weekly queries, G3 checklist, legal prerequisites).
+- Tests: api 276, ops tool 15, plus all earlier suites.
+- [ ] **Needs you or a deployed system**: deploying, Supabase Pro, Sentry, a metrics scraper and the staged alert drill, the backup restore drill, a ZAP scan, the 72-hour soak, CI's first run (no remote), counsel items, a real wallet sign-in, G3 decision. See `docs/beta/g3-checklist.md`.
