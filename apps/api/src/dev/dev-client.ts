@@ -148,7 +148,7 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
 
   <section><h2>Event log</h2><pre id="log2"></pre></section>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.3/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.4/dist/socket.io.min.js"></script>
 <script>
 (function () {
