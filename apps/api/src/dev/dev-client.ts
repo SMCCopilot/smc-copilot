@@ -25,6 +25,10 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:6px 0; }
   pre { margin:0; max-height:260px; overflow:auto; font:12px/1.4 ui-monospace,monospace; white-space:pre-wrap; word-break:break-word; }
   .ok { color:var(--ok); } .bad { color:var(--bad); }
+  .help { color:var(--muted); font-size:13px; margin:4px 0 8px; } .help b { color:var(--fg); }
+  .banner { display:none; margin:12px 0; padding:10px 12px; border-radius:8px; border:1px solid var(--bad); color:var(--bad); background:var(--card); font-weight:600; white-space:pre-wrap; }
+  .chk { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; } .chk b.ok, .chk b.bad, .chk b.wait { font-family:ui-monospace,monospace; }
+  .wait { color:var(--muted); } .inline { margin:4px 0; min-height:1.2em; font-size:13px; }
   table { border-collapse:collapse; width:100%; } td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
 </style>
 </head>
@@ -33,16 +37,29 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   <h1>SMC Copilot - dev client</h1>
   <div class="muted">Analysis only. No orders are ever placed; the gate records a human decision.</div>
 
+  <div id="banner" class="banner"></div>
+
+  <section><h2>0. Is everything ready? (updates by itself)</h2>
+    <div id="chk" class="chk"></div>
+    <div class="help">Anything marked <b>problem</b> says what to do. Work through the numbered sections below in order; each one says what should happen when it works.</div>
+  </section>
+
   <section id="auth"><h2>1. Sign in with a wallet</h2>
+    <div class="help"><b>What to do:</b> press the button for the wallet you have installed (MetaMask = Ethereum, Phantom = Solana). Your wallet pops up and asks you to sign a message. Signing costs nothing and sends no money.<br>
+    <b>What you should see:</b> the grey text on the right changes to your wallet address, and section 2 fills in.<br>
+    <b>If nothing happens:</b> the red message above says why. The usual causes are no wallet extension in this browser, or Web3 Wallet sign-in not switched on in Supabase (Authentication, then Sign In / Providers, then Web3 Wallet).</div>
     <div class="row">
       <button id="eth" class="primary">Ethereum wallet</button>
       <button id="sol">Solana wallet</button>
       <button id="out" disabled>Sign out</button>
       <span id="who" class="muted">signed out</span>
     </div>
+    <div id="authmsg" class="inline muted"></div>
   </section>
 
   <section id="gates"><h2>2. Access gates</h2>
+    <div class="help"><b>What to do:</b> paste your invite code, press <b>Redeem invite</b>, then press <b>Accept disclaimer</b> and <b>I am 18 or older</b>.<br>
+    <b>What you should see:</b> the line below shows <b>ok</b> three times. You cannot start a session until it does.</div>
     <div id="gatestate" class="muted">sign in first</div>
     <div class="row">
       <input id="invite" placeholder="invite code">
@@ -50,9 +67,12 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
       <button id="disc">Accept disclaimer</button>
       <button id="age">I am 18 or older</button>
     </div>
+    <div id="gatemsg" class="inline muted"></div>
   </section>
 
   <section><h2>3. Session</h2>
+    <div class="help"><b>What to do:</b> pick a market (for example BTC USDT perpetual) and a timeframe, then press <b>Start session</b>.<br>
+    <b>What you should see:</b> the grey text says <b>connected</b>, then section 4 starts filling in within a minute or two. The market list is empty until you have signed in.</div>
     <div class="row">
       <select id="inst"></select>
       <select id="tf"><option>15m</option><option>1h</option><option>5m</option><option>4h</option></select>
@@ -60,15 +80,18 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
       <button id="stop" disabled>End session</button>
       <span id="sock" class="muted">not connected</span>
     </div>
+    <div id="sessmsg" class="inline muted"></div>
   </section>
 
   <section><h2>4. Live analysis</h2>
+    <div class="help">This is what the engine sees on the market you picked: the higher-timeframe bias, and the setups it is watching, each with a plan (where it would enter, where it would be wrong, targets) and how often similar setups worked before, or "not enough history". It shows no prices or candles. <b>Data</b> should say OK. If it says STALE or DOWN the exchange feed is behind. "No active setups" is normal: setups only appear when the market forms one.</div>
     <div id="dq" class="muted">-</div>
     <div id="bias"></div>
     <table id="setups"><thead><tr><th>Setup</th><th>State</th><th>Grade</th><th>Plan</th><th></th></tr></thead><tbody></tbody></table>
   </section>
 
   <section><h2>5. Execution gate and trade log</h2>
+    <div class="help"><b>What to do:</b> when a setup shows a plan, press <b>Review</b>. A 60-second window opens. Press <b>Confirm (tap)</b> to record that you decided to take it (or <b>Decline</b>). Nothing is ever sent to an exchange. After confirming, place the trade yourself, then enter the price you got and press <b>Log my trade</b>. Close it later from the table.</div>
     <div id="gate" class="muted">pick a setup with a plan, then Review</div>
     <div class="row">
       <button id="confirm" disabled>Confirm (tap)</button>
@@ -84,23 +107,26 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   </section>
 
   <section><h2>6. Journal and notifications</h2>
+    <div class="help">Your notes, logged trades and results in order. Type a note and press <b>Add note</b>. The line under it shows totals.</div>
     <div class="row"><input id="note" size="40" placeholder="note"><button id="addnote">Add note</button><button id="refresh">Refresh</button></div>
     <div id="summary" class="muted"></div>
     <pre id="journal"></pre>
   </section>
 
   <section><h2>7. Explanation of the analysis</h2>
+    <div class="help">A short written explanation of the current analysis, pushed to you when a session is running. It says "Template text" when no AI is used and "AI-written" when a model wrote it. Every number in it comes from the engine.</div>
     <div id="narr-src" class="muted">-</div>
     <div id="narr"></div>
   </section>
 
   <section><h2>8. Chat</h2>
-    <div class="muted">Ask about the chart or about Smart Money Concepts. It will not tell you to trade.</div>
+    <div class="help"><b>What to do:</b> start a session first (section 3), then type a question such as "why is the bias bearish?" or "what is an order block?" and press <b>Send</b>. It explains; it will never tell you to trade. Answers use your enabled AI provider (section 10); with none, you get fixed template answers.</div>
     <pre id="chatlog"></pre>
     <div class="row"><input id="chatin" size="50" placeholder="ask a question"><button id="chatsend">Send</button><span id="budget" class="muted"></span></div>
   </section>
 
   <section><h2>9. Explain a chart image</h2>
+    <div class="help"><b>What to do:</b> choose a chart screenshot (PNG, JPEG or WebP), then press the explain button. A short written read streams in below. Needs an enabled AI provider with a key.</div>
     <div class="muted">The picture is read once and not kept. Only your market and a short written answer are stored.</div>
     <div class="row"><input type="file" id="img" accept="image/png,image/jpeg,image/webp"><select id="exsrc"><option value="UPLOAD">Upload (old screenshot allowed)</option><option value="SHARE">Live capture</option></select><button id="explain">Explain</button></div>
     <div id="exstage" class="muted"></div>
@@ -108,7 +134,7 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
   </section>
 
   <section><h2>10. AI providers (admin only)</h2>
-    <div class="muted">Turn each provider on or off. Needs your account to have the admin role. Changes apply within seconds.</div>
+    <div class="help">Turn each AI provider on or off. A provider needs its key in <b>.env.local</b> (shown as "set" below) <b>and</b> to be switched on. This needs the admin role: run <b>pnpm local admin</b> in the project folder, then <b>pnpm local admin YOUR-ID</b>, add <b>ADMIN_IP_ALLOWLIST=127.0.0.1,::1</b> to .env.local, restart the server, sign out and in again. Press <b>Load</b> to see the providers.</div>
     <div class="row"><button id="aiload">Load</button><button id="aispend">Show spend</button></div>
     <table id="aiprov"><thead><tr><th>Provider</th><th>On</th><th>Key</th><th>Order</th><th>Data it may see</th><th></th></tr></thead><tbody></tbody></table>
     <pre id="aispendout"></pre>
@@ -132,6 +158,51 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
     var el = $('log2');
     el.textContent = new Date().toISOString().slice(11, 19) + ' ' + t + (o ? ' ' + JSON.stringify(o).slice(0, 300) : '') + '\n' + el.textContent.slice(0, 6000);
   }
+  function banner(msg) {
+    var b = $('banner');
+    if (!msg) { b.style.display = 'none'; b.textContent = ''; return; }
+    b.style.display = 'block'; b.textContent = msg;
+  }
+  function say(id, msg, bad) { var el = $(id); if (!el) return; el.textContent = msg || ''; el.className = 'inline ' + (bad ? 'bad' : 'muted'); }
+  function explainError(j) {
+    var code = j && (j.code || j.title) || 'error';
+    var detail = j && (j.detail || j.message) || '';
+    var hints = {
+      UNAUTHENTICATED: ' Sign in again (section 1).',
+      INVITE_REQUIRED: ' Redeem an invite code (section 2).',
+      DISCLAIMER_REQUIRED: ' Accept the disclaimer (section 2).',
+      AGE_REQUIRED: ' Confirm you are 18 or older (section 2).',
+      FORBIDDEN: ' This needs the admin role (see section 10).',
+      NOT_READY: ' The server is missing something it needs; see the checklist at the top.'
+    };
+    return code + ': ' + detail + (hints[code] || '');
+  }
+  function check(name, state, text) {
+    var id = 'chk-' + name.replace(/\W/g, '');
+    var row = $(id);
+    if (!row) {
+      var l = document.createElement('b'); l.id = id; var r = document.createElement('span'); r.id = id + 'r';
+      $('chk').appendChild(l); $('chk').appendChild(r); row = l;
+    }
+    row.className = state; row.textContent = state === 'ok' ? 'ok' : state === 'bad' ? 'problem' : '...';
+    $(id + 'r').textContent = name + ' - ' + text;
+  }
+  function runChecks() {
+    check('Browser libraries', typeof supabase !== 'undefined' && typeof io !== 'undefined' ? 'ok' : 'bad',
+      typeof supabase !== 'undefined' && typeof io !== 'undefined' ? 'loaded' : 'did not load from the internet (check your connection, turn off ad blockers for this page, reload)');
+    var eth = typeof window.ethereum !== 'undefined', sol = !!(window.solana || (window.phantom && window.phantom.solana));
+    check('Wallet in this browser', eth || sol ? 'ok' : 'bad', eth || sol ? (eth ? 'Ethereum wallet found' : '') + (eth && sol ? ' and ' : '') + (sol ? 'Solana wallet found' : '') : 'none found. Install MetaMask or Phantom as a browser extension, then reload this page');
+    check('Supabase settings', window.__cfgOk ? 'ok' : 'bad', window.__cfgOk ? 'URL and public key present' : 'SUPABASE_URL or SUPABASE_ANON_KEY missing in .env.local (restart the server after adding)');
+    fetch('/readyz').then(function (r) { return r.json(); }).then(function (j) {
+      var c = j.checks || {};
+      check('Server database', c.database === 'ok' ? 'ok' : 'bad', c.database === 'ok' ? 'connected' : 'not connected: ' + (c.database || 'unknown'));
+      check('Market engine', c.engine === 'ok' ? 'ok' : 'bad', c.engine === 'ok' ? 'running' : 'not running');
+    }).catch(function () { check('Server database', 'bad', 'the server did not answer'); });
+    fetch('/v1/status').then(function (r) { return r.json(); }).then(function (j) {
+      var f = j.feeds || {};
+      check('Exchange data', f.ok > 0 ? 'ok' : 'bad', f.ok + ' of ' + f.total + ' feeds working' + (f.ok > 0 ? '' : '. Add DNS_SERVERS=1.1.1.1 to .env.local if your network blocks Binance/Bybit, then restart'));
+    }).catch(function () { check('Exchange data', 'bad', 'status unavailable'); });
+  }
   function api(method, path, body, extra) {
     var h = { 'Content-Type': 'application/json' };
     if (token) h['Authorization'] = 'Bearer ' + token;
@@ -139,25 +210,44 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
     if (extra) for (var k in extra) h[k] = extra[k];
     return fetch(path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }).then(function (r) {
       if (r.status === 204) return null;
-      return r.json().then(function (j) { if (!r.ok) { log('HTTP ' + r.status + ' ' + path, j); throw j; } return j; });
+      return r.json().then(function (j) { if (!r.ok) { log('HTTP ' + r.status + ' ' + path, j); banner(explainError(j)); throw j; } return j; });
     });
   }
   function setAuthed(on) { $('out').disabled = !on; $('eth').disabled = on; $('sol').disabled = on; }
 
   fetch('/dev/config').then(function (r) { return r.json(); }).then(function (cfg) {
+    window.__cfgOk = !!(cfg.supabaseUrl && cfg.anonKey);
+    runChecks(); setInterval(runChecks, 20000);
+    if (typeof supabase === 'undefined') { banner('The sign-in library did not load from the internet. Check your connection or ad blocker and reload the page.'); return; }
+    if (!window.__cfgOk) { banner('Sign-in is not configured: SUPABASE_URL or SUPABASE_ANON_KEY is missing in .env.local. Add it and restart the server.'); return; }
     sb = supabase.createClient(cfg.supabaseUrl, cfg.anonKey);
     sb.auth.onAuthStateChange(function (_e, s) {
       token = s ? s.access_token : null;
       setAuthed(!!token);
       $('who').textContent = token ? 'signed in' : 'signed out';
       if (token) { refreshMe(); loadInstruments(); loadTrades(); }
+      else { runChecks(); }
     });
     sb.auth.getSession().then(function (r) { if (r.data.session) { token = r.data.session.access_token; setAuthed(true); refreshMe(); loadInstruments(); loadTrades(); } });
   });
 
   function web3(chain) {
-    var statement = 'Sign in to SMC Copilot';
-    sb.auth.signInWithWeb3({ chain: chain, statement: statement }).then(function (r) { if (r.error) { log('sign-in error', { message: r.error.message }); } });
+    banner('');
+    if (!sb) { banner('Sign-in is not ready; see the checklist at the top of the page.'); return; }
+    var has = chain === 'ethereum' ? typeof window.ethereum !== 'undefined' : !!(window.solana || (window.phantom && window.phantom.solana));
+    if (!has) { banner('No ' + (chain === 'ethereum' ? 'Ethereum (MetaMask)' : 'Solana (Phantom)') + ' wallet was found in this browser. Install the extension, reload this page, and try again. Or try the other button.'); return; }
+    say('authmsg', 'Waiting for you to approve in your wallet...');
+    var done = function (r) {
+      if (r && r.error) {
+        log('sign-in error', { message: r.error.message });
+        var m = String(r.error.message || '');
+        banner('Wallet sign-in failed: ' + m + (/provider|disabled|not enabled|unsupported/i.test(m) ? '\nFix: in Supabase open Authentication, then Sign In / Providers, and switch on Web3 Wallet (Ethereum and/or Solana).' : ''));
+        say('authmsg', '');
+      } else say('authmsg', 'Signed. Loading your account...');
+    };
+    try {
+      Promise.resolve(sb.auth.signInWithWeb3({ chain: chain, statement: 'Sign in to SMC Copilot' })).then(done, function (e) { done({ error: { message: e && e.message ? e.message : String(e) } }); });
+    } catch (e) { done({ error: { message: e.message } }); }
   }
   $('eth').onclick = function () { web3('ethereum'); };
   $('sol').onclick = function () { web3('solana'); };
@@ -173,9 +263,16 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
       window.__disc = me.disclaimer.currentVersion;
     });
   }
-  $('redeem').onclick = function () { api('POST', '/v1/me/invite', { code: $('invite').value.trim() }).then(refreshMe); };
-  $('disc').onclick = function () { api('POST', '/v1/me/disclaimer', { version: window.__disc }).then(refreshMe); };
-  $('age').onclick = function () { api('POST', '/v1/me/age-confirmation', { confirmed: true }).then(refreshMe); };
+  function gateCall(method, path, body, okMsg) {
+    banner(''); say('gatemsg', 'Working...');
+    return api(method, path, body).then(function () { say('gatemsg', okMsg); return refreshMe(); }, function (j) { say('gatemsg', explainError(j), true); });
+  }
+  $('redeem').onclick = function () {
+    if (!$('invite').value.trim()) { say('gatemsg', 'Paste your invite code first.', true); return; }
+    gateCall('POST', '/v1/me/invite', { code: $('invite').value.trim() }, 'Invite accepted.');
+  };
+  $('disc').onclick = function () { gateCall('POST', '/v1/me/disclaimer', { version: window.__disc }, 'Disclaimer accepted.'); };
+  $('age').onclick = function () { gateCall('POST', '/v1/me/age-confirmation', { confirmed: true }, 'Age confirmed.'); };
 
   function loadInstruments() {
     return api('GET', '/v1/instruments').then(function (r) {
@@ -185,10 +282,14 @@ export const DEV_CLIENT_HTML = String.raw`<!doctype html>
 
   $('start').onclick = function () {
     var opt = $('inst').selectedOptions[0];
+    if (!token) { say('sessmsg', 'Sign in first (section 1).', true); return; }
+    if (!opt) { say('sessmsg', 'No market to pick. Finish section 2 and reload, or check the server log.', true); return; }
+    say('sessmsg', 'Starting...');
     api('POST', '/v1/sessions', { instrumentId: opt.value, tf: $('tf').value, mode: 'FEED' }).then(function (s) {
       session = s; $('stop').disabled = false; $('start').disabled = true;
+      say('sessmsg', 'Session started. Waiting for the first analysis, which can take a minute or two.');
       connect(s.sessionId, s.wsToken, opt.getAttribute('data-c'));
-    });
+    }, function (j) { say('sessmsg', explainError(j), true); });
   };
   $('stop').onclick = function () { if (session) api('POST', '/v1/sessions/' + session.sessionId + '/end').then(function () { if (socket) socket.disconnect(); $('stop').disabled = true; $('start').disabled = false; $('sock').textContent = 'ended'; }); };
 
