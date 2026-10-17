@@ -57,6 +57,7 @@ class OverlayPrimitive implements ISeriesPrimitive<Time> {
               ctx.font = '11px Inter, system-ui, sans-serif';
               ctx.textBaseline = 'middle';
               ctx.textAlign = 'right';
+              const labels: { y: number; text: string; color: string }[] = [];
               for (const o of self.items) {
                 if (o.kind === 'zone') {
                   const y1 = s.priceToCoordinate(o.top);
@@ -73,12 +74,11 @@ class OverlayPrimitive implements ISeriesPrimitive<Time> {
                     ctx.lineWidth = 1;
                     ctx.strokeRect(0.5, top + 0.5, mediaSize.width - 1, Math.max(0, h - 1));
                   }
-                  ctx.fillStyle = self.palette.text;
-                  ctx.fillText(
-                    labelOf(o, st.glyph, ''),
-                    mediaSize.width - 70,
-                    top + Math.min(h / 2, 9),
-                  );
+                  labels.push({
+                    y: top + Math.min(h / 2, 9),
+                    text: labelOf(o, st.glyph, ''),
+                    color: self.palette.text,
+                  });
                 } else {
                   const y = s.priceToCoordinate(o.price);
                   if (y === null) continue;
@@ -90,15 +90,28 @@ class OverlayPrimitive implements ISeriesPrimitive<Time> {
                   ctx.moveTo(0, y);
                   ctx.lineTo(mediaSize.width, y);
                   ctx.stroke();
-                  ctx.fillStyle = st.color;
-                  ctx.fillText(
-                    labelOf(o, st.glyph, formatPrice(o.price, self.precision)),
-                    mediaSize.width - 70,
-                    y - 7,
-                  );
+                  labels.push({
+                    y: y - 7,
+                    text: labelOf(o, st.glyph, formatPrice(o.price, self.precision)),
+                    color: st.color,
+                  });
                 }
               }
               ctx.setLineDash([]);
+              // Labels never overlap: walk from the top and push each one down to a free row.
+              labels.sort((a, b) => a.y - b.y);
+              let floor = Number.NEGATIVE_INFINITY;
+              for (const l of labels) {
+                const y = Math.max(l.y, floor);
+                floor = y + 14;
+                const w = ctx.measureText(l.text).width;
+                ctx.fillStyle = self.palette.surface;
+                ctx.globalAlpha = 0.8;
+                ctx.fillRect(mediaSize.width - 70 - w - 3, y - 7, w + 6, 14);
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = l.color;
+                ctx.fillText(l.text, mediaSize.width - 70, y);
+              }
             });
           },
         }),
@@ -132,6 +145,7 @@ export default function ChartFull({
   const series = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const prim = useRef<OverlayPrimitive>(new OverlayPrimitive());
   const markers = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const framed = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: created once per mount; the data effects below update it
   useEffect(() => {
@@ -189,6 +203,18 @@ export default function ChartFull({
     s.setData(
       candles.map((k) => ({ time: sec(k.openTime), open: k.o, high: k.h, low: k.l, close: k.c })),
     );
+    // Frame the latest bars once per chart, so the candles fill the pane; later updates keep the user's scroll.
+    if (!framed.current && candles.length > 0) {
+      framed.current = true;
+      const n = candles.length;
+      // After the first layout pass, so the chart's own resize does not undo it.
+      requestAnimationFrame(() => {
+        const ts = chart.current?.timeScale();
+        if (!ts) return;
+        if (n <= 120) ts.fitContent();
+        else ts.setVisibleLogicalRange({ from: n - 120, to: n + 6 });
+      });
+    }
   }, [candles, precision]);
 
   useEffect(() => {

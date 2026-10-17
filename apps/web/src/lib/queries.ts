@@ -19,6 +19,7 @@ export interface InstrumentDto {
   tickSize: number;
   licenseClass: LicenseClass;
   rawDataAllowed: boolean;
+  devRawPrices?: boolean;
 }
 
 export const useFeedStatus = () =>

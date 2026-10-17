@@ -16,6 +16,8 @@ const pick = (...keys) => {
 
 /** @type {import('next').NextConfig} */
 export default {
+  // Tests build into their own folder so they can run beside a developer's running server.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   agentRules: false,
   poweredByHeader: false,

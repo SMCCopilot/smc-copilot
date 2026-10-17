@@ -11,6 +11,7 @@ export interface Palette {
   warn: string;
   muted: string;
   text: string;
+  surface: string;
 }
 export const OB_VIOLET = '#A78BFA';
 
@@ -82,5 +83,6 @@ export function readPalette(): Palette {
     warn: v('--warn'),
     muted: v('--text-muted'),
     text: v('--text'),
+    surface: v('--surface-1'),
   };
 }

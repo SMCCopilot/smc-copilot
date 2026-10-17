@@ -180,7 +180,7 @@ export function main(argv) {
   const args = Object.fromEntries(
     argv
       .filter((a) => a.startsWith('--'))
-      .map((a, i, all) => {
+      .map((a) => {
         const idx = argv.indexOf(a);
         const next = argv[idx + 1];
         return [a.slice(2), next && !next.startsWith('--') ? next : true];

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { Env } from '@smc/config';
 import type { LicenseClass, MarketType, Timeframe, Venue } from '@smc/contracts';
 import type { Sql } from '@smc/db';
 import {
@@ -8,7 +9,7 @@ import {
   resolveInstrument,
   type SearchKey,
 } from '@smc/market-data';
-import { SQL } from '../config/tokens.js';
+import { ENV, SQL } from '../config/tokens.js';
 
 export interface InstrumentDto {
   id: string;
@@ -24,6 +25,8 @@ export interface InstrumentDto {
   /** What this deployment may show for the instrument. Anything but DISPLAY_OK means analysis only, no raw prices. */
   licenseClass: LicenseClass;
   rawDataAllowed: boolean;
+  /** True only when the local development override DEV_RAW_PRICES is on (never in production). */
+  devRawPrices: boolean;
 }
 
 interface InstrumentRowDb {
@@ -39,7 +42,7 @@ interface InstrumentRowDb {
   effective_class: LicenseClass;
 }
 
-const toDto = (r: InstrumentRowDb): InstrumentDto => ({
+const toDto = (r: InstrumentRowDb, dev: boolean): InstrumentDto => ({
   id: r.id,
   canonical: r.canonical,
   venue: r.venue_id,
@@ -50,8 +53,9 @@ const toDto = (r: InstrumentRowDb): InstrumentDto => ({
   quote: r.quote,
   pricePrecision: r.price_precision,
   tickSize: Number(r.tick_size),
-  licenseClass: r.effective_class,
-  rawDataAllowed: r.effective_class === 'DISPLAY_OK',
+  licenseClass: dev ? 'DISPLAY_OK' : r.effective_class,
+  rawDataAllowed: dev || r.effective_class === 'DISPLAY_OK',
+  devRawPrices: dev && r.effective_class !== 'DISPLAY_OK',
 });
 
 export interface CandleDto {
@@ -67,7 +71,10 @@ export interface CandleDto {
 /** Read side of the market-data layer. Licence decisions always come from the `instrument_license` view (invariant 6). */
 @Injectable()
 export class MarketsService {
-  constructor(@Inject(SQL) private readonly sql: Sql | null) {}
+  constructor(
+    @Inject(SQL) private readonly sql: Sql | null,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
 
   private db(): Sql {
     if (!this.sql) throw new Error('database is not configured');
@@ -84,7 +91,7 @@ export class MarketsService {
         join instrument_license l on l.instrument_id = i.id
        where i.active and v.enabled and v.analysis_enabled and i.asset_class = 'CRYPTO'
        order by i.canonical`;
-    return rows.map(toDto);
+    return rows.map((r) => toDto(r, this.env.DEV_RAW_PRICES));
   }
 
   async get(id: string): Promise<InstrumentDto | undefined> {
@@ -95,7 +102,7 @@ export class MarketsService {
         join venues v on v.id = i.venue_id
         join instrument_license l on l.instrument_id = i.id
        where i.id = ${id} and i.active and v.enabled and v.analysis_enabled and i.asset_class = 'CRYPTO'`;
-    return row ? toDto(row) : undefined;
+    return row ? toDto(row, this.env.DEV_RAW_PRICES) : undefined;
   }
 
   async venues(): Promise<{ id: string; name: string; analysis: boolean }[]> {
@@ -111,6 +118,7 @@ export class MarketsService {
         join instruments i on i.id = l.instrument_id
         join venues v on v.id = i.venue_id
        where l.instrument_id = ${id} and i.active and v.enabled and v.analysis_enabled`;
+    if (row && this.env.DEV_RAW_PRICES) return 'DISPLAY_OK';
     return row?.effective_class;
   }
 

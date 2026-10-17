@@ -68,7 +68,7 @@ describe('command grammar', () => {
       'place an order',
     ]) {
       const c = parseVoiceCommand(t);
-      expect(c === null || c.command === 'SWITCH_INSTRUMENT').toBe(c === null ? true : false);
+      expect(c === null || c.command === 'SWITCH_INSTRUMENT').toBe(c === null);
     }
     expect(parseVoiceCommand('confirm the trade')).toBeNull();
     expect(parseVoiceCommand('buy bitcoin')).toBeNull();

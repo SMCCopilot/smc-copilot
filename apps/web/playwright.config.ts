@@ -15,6 +15,7 @@ export default defineConfig({
     timeout: 180_000,
     reuseExistingServer: false,
     env: {
+      NEXT_DIST_DIR: '.next-e2e',
       NEXT_PUBLIC_API_URL: 'http://api.test',
       NEXT_PUBLIC_SUPABASE_URL: 'http://supabase.test',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',

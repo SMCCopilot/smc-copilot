@@ -87,3 +87,8 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 - Frontend: speech engines report no confidence (fixed 0.8 used); measure real accuracy and latency with the voice eval (spike S3) and the OCR with real charts (spike S1).
 - Frontend: first-load JS is about 279 KB gzipped; the chart, wallet, speech, OCR and socket libraries are lazy, so the rest is Next, React, Query, Radix and the app. Splitting the canvas and dock further is the next saving.
 - Frontend: add a risk-profile screen (balance, risk per trade) so plan sizing appears; the plan shows sizing only when the profile exists.
+
+- Move the dev invite code `DEV-BETA-0001` out of migration 0009 (audit A7).
+- Decide Docker vs Railpack for deploy; add image-content check (audit A8).
+- Check `packages/market-data/src/replay.ts` is unreachable from the production API path (audit A9).
+- First-load JavaScript is over the 200 KB target (already noted in PROGRESS F1).

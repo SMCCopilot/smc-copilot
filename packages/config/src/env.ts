@@ -111,6 +111,8 @@ const EnvSchema = z
     // Trust the Cloudflare-supplied client address for the admin allow-list. Only true when the API is reachable
     // solely through the tunnel (production); anywhere else the header could be forged.
     TRUST_PROXY_HEADERS: z.stringbool().default(false),
+    // Dev only: show raw candles for every instrument regardless of the licence view. Refused in production.
+    DEV_RAW_PRICES: z.stringbool().default(false),
     // Dev only: resolve names through these DNS servers when the local network blocks venue hosts.
     DNS_SERVERS: csv.pipe(z.array(z.ipv4())),
 
@@ -123,6 +125,20 @@ const EnvSchema = z
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;
+    if (env.DEV_RAW_PRICES) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DEV_RAW_PRICES'],
+        message: 'must be off in production (raw prices need a venue_terms evidence row)',
+      });
+    }
+    if (env.DNS_SERVERS.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DNS_SERVERS'],
+        message: 'is a development setting and must be empty in production',
+      });
+    }
     const required = [
       'DATABASE_URL',
       'DATABASE_URL_SESSION',

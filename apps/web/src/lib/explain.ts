@@ -101,12 +101,20 @@ interface ShareStore {
   active: boolean;
   starting: boolean;
   readSome: boolean;
+  /** The shared stream, for the self-view tile only. It is never recorded or sent anywhere. */
+  stream: MediaStream | null;
+  /** The last text read from the shared chart (text only). */
+  ctx: OcrContext | null;
+  error: string | null;
   set: (p: Partial<Omit<ShareStore, 'set'>>) => void;
 }
 export const useShare = create<ShareStore>((set) => ({
   active: false,
   starting: false,
   readSome: false,
+  stream: null,
+  ctx: null,
+  error: null,
   set: (p) => set(p),
 }));
 
@@ -117,7 +125,7 @@ let lastCtx: OcrContext | null = null;
 export async function startShare(): Promise<void> {
   const st = useShare.getState();
   if (st.active || st.starting) return;
-  st.set({ starting: true });
+  st.set({ starting: true, error: null });
   try {
     const [{ CaptureLoop }, { TesseractEngine, ScreenSource }] = await Promise.all([
       import('@smc/capture-kit'),
@@ -148,16 +156,21 @@ export async function startShare(): Promise<void> {
       },
       onContext: (ctx) => {
         lastCtx = ctx;
-        useShare.getState().set({ readSome: true });
+        useShare.getState().set({ readSome: true, ctx });
         emitEvent('context.hint', ctx);
       },
     });
     source.onEnded = () => void stopShare();
     loop.start();
-    st.set({ active: true, starting: false });
-  } catch {
+    st.set({ active: true, starting: false, stream });
+  } catch (e) {
     await stopShare();
-    say('Screen sharing did not start. You can upload an image instead.');
+    const denied = e instanceof DOMException && e.name === 'NotAllowedError';
+    useShare.getState().set({
+      error: denied
+        ? 'Screen sharing was not allowed. Choose a tab, window or screen when your browser asks.'
+        : 'Screen sharing did not start. You can upload an image instead.',
+    });
   }
 }
 
@@ -167,7 +180,9 @@ export async function stopShare(): Promise<void> {
   lastCtx = null;
   await engineRef?.dispose().catch(() => {});
   engineRef = null;
-  useShare.getState().set({ active: false, starting: false, readSome: false });
+  useShare
+    .getState()
+    .set({ active: false, starting: false, readSome: false, stream: null, ctx: null });
 }
 
 /** Reads the shared chart once more and asks for an explanation from text only. */

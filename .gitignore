@@ -35,6 +35,7 @@ docs/*
 !docs/backtest-report.md
 !docs/backtest-report-run1.md
 !docs/how-to-get-gate-g1.md
+!docs/AUDIT.md
 
 # More secret-bearing files
 .envrc

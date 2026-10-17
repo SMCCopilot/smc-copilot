@@ -23,7 +23,9 @@ node tools/hooks/install-gitleaks.mjs        # pinned, checksum-verified local g
 pnpm --filter @smc/db db:migrate -- --shims  # local plain Postgres only; never --shims on Supabase
 node tools/spikes/src/s2-venue-probe.mjs --minutes 4 --dns 1.1.1.1   # venue reachability + lag
 node apps/api/dist/main.js                    # after build; NODE_ENV=development for local
-node tools/dev/src/dev-db.mjs                 # persistent local Postgres (no Docker), prints DATABASE_URL
+pnpm --filter @smc/web dev                    # the web app on http://localhost:3000 (API on PORT, default 3002; CORS_ORIGINS must list the web origin)
+pnpm --filter @smc/web e2e                    # Playwright flows against a fake API and a fake Supabase session (no wallet needed)
+node tools/dev/src/dev-db.mjs                 # persistent local Postgres, prints DATABASE_URL
 # live ingest locally: INGEST_ENABLED=true DNS_SERVERS=1.1.1.1 DATABASE_URL=... node apps/api/dist/main.js
 node tools/spikes/src/verify-frames-vs-rest.mjs --dns 1.1.1.1   # recorded frames vs venue REST
 pnpm engine:replay --candles c.json [--config cfg.json] [--facts]      # run the pure engine, print counts + stream hash (or --db ...)
@@ -44,6 +46,7 @@ pnpm ops:backup key|backup|restore             # encrypted logical backup of the
 
 ```
 apps/api, apps/worker          NestJS (worker is an entry stub until M6)
+apps/web                       Next.js frontend (browser only; depends on contracts and capture-kit)
 packages/contracts             Zod schemas: the single source of truth for every boundary
 packages/smc-engine            PURE: no I/O, no Nest, no clock, no randomness, no node: imports
 packages/market-data, ai, db   depend on contracts only
@@ -74,6 +77,6 @@ Rules are enforced by `tools/boundaries` + `.dependency-cruiser.cjs` and have ne
 
 - Tests first; conventional commits; one logical change per commit. Everything lives on the single branch `main` until the owner asks for separate branches.
 - Secrets live in `.env.local` (git-ignored) or SOPS files; only `.env.example` is committed. Never print secret values.
-- Supabase is hosted (no Docker for it). Local SQL smoke tests use plain Postgres with `0000_dev_shims.sql`.
+- Supabase is hosted; no Docker anywhere in this project. Local SQL smoke tests use plain Postgres with `0000_dev_shims.sql`.
 - Verify library APIs against current official docs, not memory.
 - Windows host, Linux CI/VM: LF line endings (`.gitattributes`), Node scripts over shell where practical.

@@ -105,7 +105,10 @@ describe('model files are verified before use', () => {
       fetched: 0,
       m: cache.m,
       cache: cache.cache,
-      fetchBytes: async () => (o.fetched++, served),
+      fetchBytes: async () => {
+        o.fetched++;
+        return served;
+      },
       sha256: async (b: Uint8Array) => sha(b),
     };
     return o;

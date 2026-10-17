@@ -34,12 +34,15 @@ export function Canvas() {
         onValueChange={(v) => ui.setTab(v as CanvasTab)}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <Tabs.List aria-label="Canvas" className="flex gap-1 border-b border-line px-3 pt-3 pr-10">
+        <Tabs.List
+          aria-label="Canvas"
+          className="flex gap-1 overflow-x-auto border-b border-line px-3 pt-3 pr-10"
+        >
           {TABS.map((t) => (
             <Tabs.Trigger
               key={t}
               value={t}
-              className="rounded-t-md px-3 py-2 text-muted data-[state=active]:accent-soft data-[state=active]:text-accent-text"
+              className="shrink-0 whitespace-nowrap rounded-t-md px-2.5 py-2 text-muted data-[state=active]:accent-soft data-[state=active]:text-accent-text"
             >
               {t}
             </Tabs.Trigger>

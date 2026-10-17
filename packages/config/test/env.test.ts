@@ -106,6 +106,12 @@ describe('parseEnv', () => {
     expect(parseEnv(prod).NODE_ENV).toBe('production');
   });
 
+  it('fails closed in production when a development switch is on', () => {
+    expect(() => parseEnv({ ...prod, DEV_RAW_PRICES: 'true' })).toThrow(/DEV_RAW_PRICES/);
+    expect(() => parseEnv({ ...prod, DNS_SERVERS: '1.1.1.1' })).toThrow(/DNS_SERVERS/);
+    expect(parseEnv({ ...dev, DEV_RAW_PRICES: 'true' }).DEV_RAW_PRICES).toBe(true);
+  });
+
   it('does not apply production requirements in test or development', () => {
     expect(parseEnv({ NODE_ENV: 'test' }).NODE_ENV).toBe('test');
   });

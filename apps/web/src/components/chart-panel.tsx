@@ -8,6 +8,7 @@ import { buildOverlays, LAYER_LABEL, LAYERS, structureMarks, visible } from '../
 import { useInstruments } from '../lib/queries';
 import { useSelection } from '../lib/sessions';
 import { pickSetup, useUi } from '../lib/ui';
+import { ShareButton, SharePanel } from './share-panel';
 
 // Chart code loads only when needed, so the first load stays small.
 const ChartFull = dynamic(() => import('./chart-full'), { ssr: false });
@@ -64,7 +65,13 @@ export function ChartPanel() {
     );
   } else if (rawMode) {
     body = candles.data ? (
-      <ChartFull candles={candles.data} overlays={overlays} marks={marks} precision={precision} />
+      <ChartFull
+        key={`${sel.instrumentId}:${sel.tf}`}
+        candles={candles.data}
+        overlays={overlays}
+        marks={marks}
+        precision={precision}
+      />
     ) : (
       <Message text={candles.isError ? 'Could not load candles.' : 'Loading candles…'} />
     );
@@ -91,12 +98,24 @@ export function ChartPanel() {
             {LAYER_LABEL[l]}
           </button>
         ))}
-        {analysis.data && analysis.data.dataQuality !== 'OK' && (
-          <span className="ml-auto text-xs text-warn-text">
-            Data {analysis.data.dataQuality.toLowerCase()}
-          </span>
-        )}
+        <span className="ml-auto flex items-center gap-2">
+          {analysis.data && analysis.data.dataQuality !== 'OK' && (
+            <span className="text-xs text-warn-text">
+              Data {analysis.data.dataQuality.toLowerCase()}
+            </span>
+          )}
+          <ShareButton />
+        </span>
       </div>
+      <SharePanel />
+      {instrument?.devRawPrices && (
+        <p
+          role="status"
+          className="border-b border-line bg-s2 px-3 py-1 text-xs font-medium text-warn-text"
+        >
+          DEV: raw prices enabled (local development only)
+        </p>
+      )}
       {instrument && !rawMode && (
         <p role="status" className="border-b border-line bg-s2 px-3 py-1.5 text-xs text-warn-text">
           {NO_RAW}
