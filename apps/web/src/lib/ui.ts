@@ -5,6 +5,8 @@ import { DEFAULT_LAYERS, type LayerId } from './overlays';
 
 type Setup = NonNullable<AnalysisResponse['setups']>[number];
 
+export type CanvasTab = 'Plan' | 'Evidence' | 'Changes' | 'Stats';
+
 interface Ui {
   layers: Record<LayerId, boolean>;
   toggleLayer: (l: LayerId) => void;
@@ -16,6 +18,13 @@ interface Ui {
   /** True while the confirm dialog is open. The microphone is disabled for as long as this is true. */
   confirmOpen: boolean;
   setConfirmOpen: (open: boolean) => void;
+  tab: CanvasTab;
+  setTab: (t: CanvasTab) => void;
+  /** The right panel as a drawer on small screens. */
+  drawer: boolean;
+  setDrawer: (open: boolean) => void;
+  explainOpen: boolean;
+  setExplainOpen: (open: boolean) => void;
 }
 
 export const useUi = create<Ui>((set) => ({
@@ -27,6 +36,12 @@ export const useUi = create<Ui>((set) => ({
   dismiss: (id) => set((s) => ({ dismissed: [...s.dismissed, id], setupId: null })),
   confirmOpen: false,
   setConfirmOpen: (confirmOpen) => set({ confirmOpen }),
+  tab: 'Plan',
+  setTab: (tab) => set({ tab }),
+  drawer: false,
+  setDrawer: (drawer) => set({ drawer }),
+  explainOpen: false,
+  setExplainOpen: (explainOpen) => set({ explainOpen }),
 }));
 
 /** The setup to show: the chosen one if still live, else the first live setup that has a plan. */

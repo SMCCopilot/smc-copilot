@@ -18,14 +18,17 @@ import {
 } from 'lucide-react';
 import { type PointerEvent, useCallback, useEffect, useState } from 'react';
 import { signOut, useMe } from '@/lib/auth';
+import { useChat } from '@/lib/chat';
 import { ApiError } from '@/lib/errors';
 import { shortAddress } from '@/lib/gate';
 import { useLive, useLiveSession } from '@/lib/live';
 import { useFeedStatus, useInstruments } from '@/lib/queries';
 import { useCreateSession, useEndSession, useSelection, useSessions } from '@/lib/sessions';
 import { useTheme } from '@/lib/theme';
+import { useUi } from '@/lib/ui';
 import { Canvas } from './canvas';
 import { ChartPanel } from './chart-panel';
+import { Dock } from './dock';
 
 const NAV = [
   { label: 'Session room', icon: CandlestickChart },
@@ -87,6 +90,39 @@ function useSessionTimer(startedAt: string | null): string {
   const sec = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(Math.floor(sec / 3600))}:${p(Math.floor((sec % 3600) / 60))}:${p(sec % 60)}`;
+}
+
+function BudgetMeter() {
+  const b = useChat((s) => s.budget);
+  const pct = b && b.limitUsd > 0 ? Math.min(100, Math.round((b.spentUsd / b.limitUsd) * 100)) : 0;
+  const warn = b?.state === 'SOFT' || b?.state === 'HARD';
+  return (
+    <div className="rounded-card border border-line bg-s2 p-3">
+      <div className="flex justify-between text-xs">
+        <span>AI budget today</span>
+        <span className={`num ${warn ? 'text-warn' : 'text-muted'}`}>
+          {b ? `${b.spentUsd.toFixed(2)} of ${b.limitUsd.toFixed(2)}` : 'no AI use yet'}
+        </span>
+      </div>
+      <div
+        className="mt-2 h-1.5 rounded-full bg-s3"
+        role="progressbar"
+        aria-label="AI budget used"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <div
+          className={`h-full rounded-full ${warn ? 'bg-warn' : 'bg-accent'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {b?.state === 'HARD' && (
+        <p className="mt-1 text-xs text-warn">Limit reached. Analysis still works.</p>
+      )}
+      {b?.state === 'SOFT' && <p className="mt-1 text-xs text-warn">Close to today's limit.</p>}
+    </div>
+  );
 }
 
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
@@ -183,12 +219,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
         )}
       </div>
       <div className="mt-auto flex flex-col gap-2">
-        <div className="rounded-card border border-line bg-s2 p-3">
-          <div className="flex justify-between text-xs">
-            <span>AI budget today</span>
-            <span className="text-muted">not measured yet</span>
-          </div>
-        </div>
+        <BudgetMeter />
         <div className="flex items-center gap-2 rounded-ctl px-2 py-1.5">
           <Wallet className="size-4 shrink-0 text-muted" aria-hidden />
           <span className="num min-w-0 flex-1 truncate" title={wallet?.address}>
@@ -322,29 +353,7 @@ function Centre() {
         </p>
       )}
       <ChartPanel />
-      <section aria-label="Conversation" className="flex min-h-0 flex-[4] flex-col p-3">
-        <div className="min-h-0 flex-1 overflow-auto text-muted">
-          Narrative updates and chat appear here (F3).
-        </div>
-        <form onSubmit={(e) => e.preventDefault()} className="mt-2 flex gap-2">
-          <label className="sr-only" htmlFor="chat">
-            Message
-          </label>
-          <input
-            id="chat"
-            disabled
-            placeholder="Ask about the current scenario"
-            className="min-w-0 flex-1 rounded-ctl border border-line bg-s3 px-3 py-2 disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled
-            className="rounded-ctl bg-accent px-3 py-2 text-white disabled:opacity-50"
-          >
-            Send
-          </button>
-        </form>
-      </section>
+      <Dock />
     </main>
   );
 }
@@ -352,7 +361,8 @@ function Centre() {
 export function Shell() {
   useLiveSession(useSelection((s) => s.sessionId));
   const [menu, setMenu] = useState(false);
-  const [drawer, setDrawer] = useState(false);
+  const drawer = useUi((s) => s.drawer);
+  const setDrawer = useUi((s) => s.setDrawer);
   const [open, setOpen] = useState(true);
   const [width, setWidth] = useState(380);
   const drag = useCallback((e: PointerEvent<HTMLDivElement>) => {

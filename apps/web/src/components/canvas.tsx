@@ -5,7 +5,7 @@ import { useLive } from '@/lib/live';
 import { useAnalysis } from '@/lib/market';
 import { useInstruments } from '@/lib/queries';
 import { useSelection } from '@/lib/sessions';
-import { pickSetup, useUi } from '@/lib/ui';
+import { type CanvasTab, pickSetup, useUi } from '@/lib/ui';
 import { ChangesTab, EvidenceTab, PlanTab, SetupPicker, StatsTab } from './canvas-tabs';
 import { GateDialog } from './gate-dialog';
 
@@ -28,7 +28,11 @@ export function Canvas() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-s1">
-      <Tabs.Root defaultValue="Plan" className="flex min-h-0 flex-1 flex-col">
+      <Tabs.Root
+        value={ui.tab}
+        onValueChange={(v) => ui.setTab(v as CanvasTab)}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <Tabs.List aria-label="Canvas" className="flex gap-1 border-b border-line px-3 pt-3 pr-10">
           {TABS.map((t) => (
             <Tabs.Trigger

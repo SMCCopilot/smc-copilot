@@ -1,12 +1,17 @@
 'use client';
+import type { ClientEventType } from '@smc/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import type { Socket } from 'socket.io-client';
 import { create } from 'zustand';
 import { api } from './api';
+import { applyChatEvent, applyNarrative, say, useChat } from './chat';
 import { API_URL } from './env';
 import { ApiError, FRIENDLY } from './errors';
+import type { InstrumentDto } from './queries';
 import { createFrameBatcher, createSeqFilter, type LiveState } from './seq';
 import { useSelection } from './sessions';
+import { useUi } from './ui';
 
 export interface ChangeEntry {
   at: number;
@@ -17,7 +22,7 @@ interface Live {
   warnings: string[];
   changes: ChangeEntry[];
   error: string | null;
-  /** Set when another tab took the session; the user can take it back. */
+  /** Bumped when the user takes the session back from another tab. */
   takeover: number;
   set: (p: Partial<Live>) => void;
 }
@@ -30,6 +35,14 @@ export const useLive = create<Live>((set) => ({
   takeover: 0,
   set: (p) => set(p),
 }));
+
+let current: Socket | null = null;
+/** Sends a client event over the live socket. False when there is no open connection. */
+export function emitEvent(type: ClientEventType, payload: unknown): boolean {
+  if (!current?.connected) return false;
+  current.emit(type, payload);
+  return true;
+}
 
 const REFRESH_EVENTS = new Set([
   'analysis.update',
@@ -46,6 +59,15 @@ const EVENTS = [
   'feed.status',
   'warning',
   'error',
+  'context.updated',
+  'voice.final',
+  'chat.chunk',
+  'chat.done',
+  'chat.retract',
+  'budget.update',
+  'explain.stage',
+  'explain.chunk',
+  'explain.done',
 ] as const;
 
 interface Envelope {
@@ -53,6 +75,18 @@ interface Envelope {
   type: string;
   payload: Record<string, unknown>;
 }
+
+const WARNING_TEXT: Record<string, string> = {
+  FEED_MISMATCH:
+    'The chart you shared does not match this market’s live data. Pick the right market from the list.',
+  LOW_OCR_CONFIDENCE: 'The chart text was hard to read. Try a larger or clearer chart.',
+  VENUE_CHANGED: 'The venue on your chart changed.',
+  APPROX_MODE: 'No live data for this chart, so the explanation is approximate.',
+  STALE_IMAGE: 'That image looks old.',
+  AI_DEGRADED: 'AI is running in a reduced mode.',
+  BUDGET_SOFT_LIMIT: 'You are close to today’s AI budget.',
+  CAPTURE_LOST: 'Screen sharing stopped.',
+};
 
 const seqKey = (id: string) => `smc-seq:${id}`;
 const loadSeq = (id: string): number => {
@@ -70,6 +104,7 @@ export function useLiveSession(sessionId: string | null): void {
 
   useEffect(() => {
     const { set } = useLive.getState();
+    useChat.getState().reset();
     if (!sessionId) {
       set({ state: 'IDLE', warnings: [], changes: [], error: null });
       return;
@@ -104,7 +139,11 @@ export function useLiveSession(sessionId: string | null): void {
           );
         },
       });
-      stop = () => socket.disconnect();
+      current = socket;
+      stop = () => {
+        socket.disconnect();
+        if (current === socket) current = null;
+      };
 
       socket.on('connect', () => {
         set({ state: filter.last() > 0 ? 'RESYNCING' : 'CONNECTING', error: null });
@@ -145,7 +184,10 @@ export function useLiveSession(sessionId: string | null): void {
           } else if (type === 'warning') {
             const code = String(p.code ?? '');
             const w = useLive.getState().warnings;
-            if (code && !w.includes(code)) set({ warnings: [...w, code] });
+            if (code && !w.includes(code)) {
+              set({ warnings: [...w, code] });
+              if (WARNING_TEXT[code]) say(WARNING_TEXT[code]);
+            }
             if (code === 'FEED_STALE') set({ state: 'STALE' });
           } else if (type === 'error') {
             const code = String(p.code ?? '');
@@ -158,6 +200,7 @@ export function useLiveSession(sessionId: string | null): void {
                   ? FRIENDLY[code as keyof typeof FRIENDLY].message
                   : 'Something went wrong.';
               set({ error: friendly });
+              say(friendly);
             }
           } else if (type === 'setup.event') {
             const s = p.setup as
@@ -168,6 +211,19 @@ export function useLiveSession(sessionId: string | null): void {
             set({
               changes: [{ at: Date.now(), text: line }, ...useLive.getState().changes].slice(0, 30),
             });
+          } else if (type === 'narrative.done') {
+            applyNarrative(p as never);
+          } else if (type === 'context.updated') {
+            const items = qc.getQueryData<{ items: InstrumentDto[] }>(['instruments'])?.items;
+            const inst = items?.find((i) => i.canonical === p.instrumentId);
+            const tf = p.tf as never;
+            useSelection
+              .getState()
+              .set({ ...(inst ? { instrumentId: inst.id } : {}), ...(tf ? { tf } : {}) });
+          } else if (type === 'voice.final') {
+            handleVoice(p);
+          } else {
+            applyChatEvent(type, p);
           }
           if (REFRESH_EVENTS.has(type)) flush(type);
         });
@@ -181,4 +237,13 @@ export function useLiveSession(sessionId: string | null): void {
       stop?.();
     };
   }, [sessionId, takeover, qc]);
+}
+
+/** Carries out the parts of a spoken command that belong to the browser. Voice never confirms or logs anything. */
+function handleVoice(p: Record<string, unknown>): void {
+  const ui = useUi.getState();
+  if (p.needsPick) say('I was not sure which market you meant. Pick it from the list at the top.');
+  if (typeof p.setupId === 'string') ui.chooseSetup(p.setupId);
+  if (p.command === 'EXPLAIN_CHART') ui.setExplainOpen(true);
+  if (p.command === 'PAUSE_RESUME') say('Session paused or resumed by voice.');
 }
