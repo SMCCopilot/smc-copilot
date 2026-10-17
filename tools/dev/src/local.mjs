@@ -150,6 +150,8 @@ async function main() {
         ...process.env,
         NODE_ENV: 'development',
         TURNSTILE_DISABLED: 'true',
+        // Home networks often block or break exchange and Supabase lookups; 1.1.1.1 fixes it. Development only.
+        DNS_SERVERS: process.env.DNS_SERVERS || '1.1.1.1',
         ENGINE_ENABLED: 'true',
         INGEST_ENABLED: flag('--no-ingest') ? 'false' : 'true',
       },
