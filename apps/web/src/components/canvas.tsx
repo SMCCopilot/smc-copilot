@@ -1,19 +1,31 @@
 'use client';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Info } from 'lucide-react';
+import { useState } from 'react';
+import { useLive } from '@/lib/live';
+import { useAnalysis } from '@/lib/market';
+import { useInstruments } from '@/lib/queries';
+import { useSelection } from '@/lib/sessions';
+import { pickSetup, useUi } from '@/lib/ui';
+import { ChangesTab, EvidenceTab, PlanTab, SetupPicker, StatsTab } from './canvas-tabs';
+import { GateDialog } from './gate-dialog';
 
-const TABS = ['Plan', 'Evidence', 'Changes', 'Stats', 'Journal'] as const;
-
-const EMPTY: Record<(typeof TABS)[number], string> = {
-  Plan: 'No setup selected. Entry, stop, targets and invalidation appear here when the analysis has a setup.',
-  Evidence:
-    'Structure events and the reasons behind a setup, including why a setup was rejected, appear here.',
-  Changes: 'What changed since the last candle close appears here.',
-  Stats: 'Not enough history. A base rate is shown only when the API reports at least 30 samples.',
-  Journal: 'A quick note and tags for the current setup.',
-};
+const TABS = ['Plan', 'Evidence', 'Changes', 'Stats'] as const;
 
 export function Canvas() {
+  const sel = useSelection();
+  const ui = useUi();
+  const live = useLive((s) => s.state);
+  const inst = useInstruments(false);
+  const analysis = useAnalysis(sel.instrumentId, sel.tf);
+  const a = analysis.data;
+  const liveSetups = (a?.setups ?? []).filter(
+    (s) => !ui.dismissed.includes(s.id) && (s.state === 'ARMED' || s.state === 'TRIGGERED'),
+  );
+  const setup = pickSetup(a, ui.setupId, ui.dismissed);
+  const [open, setOpen] = useState(false);
+  const precision = inst.data?.items.find((i) => i.id === sel.instrumentId)?.pricePrecision ?? 2;
+  const canLog = Boolean(setup?.plan) && live !== 'STALE' && live !== 'ENDED';
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-s1">
       <Tabs.Root defaultValue="Plan" className="flex min-h-0 flex-1 flex-col">
@@ -28,39 +40,59 @@ export function Canvas() {
             </Tabs.Trigger>
           ))}
         </Tabs.List>
-        {TABS.map((t) => (
-          <Tabs.Content key={t} value={t} className="min-h-0 flex-1 overflow-auto p-4">
-            <p className="text-muted">{EMPTY[t]}</p>
-            {t === 'Stats' && (
-              <p className="mt-3 flex gap-2 rounded-card border border-line bg-s2 p-3">
-                <Info className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
-                No proven edge yet. This notice will come from the API result once Stats is wired
-                (F2).
-              </p>
-            )}
-          </Tabs.Content>
-        ))}
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {!sel.instrumentId ? (
+            <p className="text-muted">Pick an instrument to see its analysis.</p>
+          ) : (
+            <>
+              <SetupPicker setups={liveSetups} current={setup} />
+              <Tabs.Content value="Plan">
+                <PlanTab setup={setup} />
+              </Tabs.Content>
+              <Tabs.Content value="Evidence">
+                <EvidenceTab setup={setup} analysis={a} />
+              </Tabs.Content>
+              <Tabs.Content value="Changes">
+                <ChangesTab analysis={a} />
+              </Tabs.Content>
+              <Tabs.Content value="Stats">
+                <StatsTab setup={setup} />
+              </Tabs.Content>
+            </>
+          )}
+        </div>
       </Tabs.Root>
       <footer className="flex items-center justify-between gap-3 border-t border-line p-3">
-        <p className="text-xs text-muted">Rules check unavailable: no setup selected.</p>
-        <div className="flex gap-2">
+        <p className="text-xs text-muted">
+          {setup
+            ? 'Rules check: all hard filters passed. This is not a prediction.'
+            : 'Rules check: no scenario selected.'}
+        </p>
+        <div className="flex shrink-0 gap-2">
           <button
             type="button"
-            disabled
-            className="rounded-ctl border border-line px-3 py-1.5 text-muted disabled:opacity-60"
+            disabled={!setup}
+            onClick={() => setup && ui.dismiss(setup.id)}
+            className="rounded-ctl border border-line px-3 py-1.5 text-muted hover:bg-s3 disabled:opacity-60"
           >
             Dismiss
           </button>
           <button
             type="button"
-            disabled
-            title="No plan to log"
+            disabled={!canLog}
+            title={
+              canLog ? undefined : live === 'STALE' ? 'The data feed is stale' : 'No plan to log'
+            }
+            onClick={() => setOpen(true)}
             className="rounded-ctl bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-50"
           >
             Log trade
           </button>
         </div>
       </footer>
+      {open && setup?.plan && (
+        <GateDialog setup={setup} precision={precision} onClose={() => setOpen(false)} />
+      )}
     </div>
   );
 }

@@ -20,10 +20,12 @@ import { type PointerEvent, useCallback, useEffect, useState } from 'react';
 import { signOut, useMe } from '@/lib/auth';
 import { ApiError } from '@/lib/errors';
 import { shortAddress } from '@/lib/gate';
+import { useLive, useLiveSession } from '@/lib/live';
 import { useFeedStatus, useInstruments } from '@/lib/queries';
 import { useCreateSession, useEndSession, useSelection, useSessions } from '@/lib/sessions';
 import { useTheme } from '@/lib/theme';
 import { Canvas } from './canvas';
+import { ChartPanel } from './chart-panel';
 
 const NAV = [
   { label: 'Session room', icon: CandlestickChart },
@@ -38,9 +40,14 @@ const DISCLAIMER =
 
 function FeedChip() {
   const { data, isError, isPending } = useFeedStatus();
+  const live = useLive((s) => s.state);
+  const inSession = live !== 'IDLE';
   let label = 'CONNECTING';
   let tone = 'text-muted';
-  if (isError) {
+  if (inSession) {
+    label = live === 'ENDED' ? 'ENDED' : live === 'TAKEN' ? 'PAUSED' : live;
+    tone = live === 'LIVE' ? 'text-fg' : live === 'ENDED' ? 'text-muted' : 'text-warn';
+  } else if (isError) {
     label = 'NO API';
     tone = 'text-warn';
   } else if (data) {
@@ -291,34 +298,30 @@ function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void
 }
 
 function Centre() {
-  const inst = useInstruments();
-  const sel = useSelection();
-  const picked = inst.data?.items.find((i) => i.id === sel.instrumentId);
-  let note = 'Pick an instrument, then start a session.';
-  if (inst.error) {
-    note = inst.error instanceof ApiError ? inst.error.message : 'The API is not reachable.';
-  } else if (sel.sessionId) {
-    note = 'Session open. The chart and analysis arrive in F2.';
-  } else if (picked) {
-    note = `${picked.canonical} selected. Press New session to start.`;
-  }
+  const live = useLive();
   return (
     <main className="flex min-h-0 flex-1 flex-col">
-      <section
-        aria-label="Chart"
-        className="grid min-h-0 flex-[6] place-items-center border-b border-line p-4 text-center text-muted"
-      >
-        <div>
-          <CandlestickChart className="mx-auto mb-2 size-8" aria-hidden />
-          <p>{note}</p>
-          {picked && !picked.rawDataAllowed && (
-            <p className="mt-2 text-warn">
-              Raw prices unavailable for this venue; use your own chart and share your screen to
-              explain.
-            </p>
-          )}
-        </div>
-      </section>
+      {live.state === 'TAKEN' && (
+        <p
+          role="alert"
+          className="flex items-center gap-3 border-b border-line bg-s2 px-3 py-2 text-warn"
+        >
+          Another tab or device is controlling this session.
+          <button
+            type="button"
+            onClick={() => live.set({ takeover: live.takeover + 1 })}
+            className="rounded-ctl border border-line px-2 py-1 text-fg hover:bg-s3"
+          >
+            Take over here
+          </button>
+        </p>
+      )}
+      {live.error && (
+        <p role="alert" className="border-b border-line bg-s2 px-3 py-2 text-warn">
+          {live.error}
+        </p>
+      )}
+      <ChartPanel />
       <section aria-label="Conversation" className="flex min-h-0 flex-[4] flex-col p-3">
         <div className="min-h-0 flex-1 overflow-auto text-muted">
           Narrative updates and chat appear here (F3).
@@ -347,6 +350,7 @@ function Centre() {
 }
 
 export function Shell() {
+  useLiveSession(useSelection((s) => s.sessionId));
   const [menu, setMenu] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [open, setOpen] = useState(true);

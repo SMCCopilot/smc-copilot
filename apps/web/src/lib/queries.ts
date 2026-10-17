@@ -15,6 +15,8 @@ export interface InstrumentDto {
   venue: Venue;
   marketType: MarketType;
   display: string;
+  pricePrecision: number;
+  tickSize: number;
   licenseClass: LicenseClass;
   rawDataAllowed: boolean;
 }

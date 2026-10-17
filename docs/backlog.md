@@ -78,3 +78,8 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 - Frontend: replace the hand-copied `InstrumentDto` in apps/web with a contracts export; add chart licence-mode switch tests in F2.
 - Frontend: first-load JS is 247 KB gz (framework about 156 KB); consider dropping the Radix tooltip from the shell or splitting the canvas to get under 200 KB.
 - Frontend: wagmi/viem and the Solana wallet adapter were not added in F1; `signInWithWeb3` only needs the wallet provider, and EIP-6963 discovery covers multiple EVM wallets. Revisit if in-app signing (wallet link, step-up) needs them.
+- API gap: add net R after fees to the trade plan DTO (the web Plan tab shows "not supplied by the API yet").
+- API gap: expose a rules checklist (passed and total) per setup so the footer can read "Rules check N/M passed"; today it says all hard filters passed for ARMED or TRIGGERED setups.
+- API gap: expose the latest backtest verdict (for example NO_EDGE_DETECTED) on `/v1/stats/cohorts` or a status route so the Stats notice is API-sourced; today it is a fixed statement.
+- API gap: no live price tick or in-progress candle event over the socket; the chart updates on candle close (analysis.update then a candles refetch).
+- Frontend: component tests for the gate dialog and the chart need jsdom and Playwright (F4).

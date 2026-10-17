@@ -165,3 +165,14 @@ Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 
 - [x] `next.config.mjs` reads only public keys from the repo-root `.env.local` (Supabase URL and anon key, Turnstile site key). No second env file.
 - Unverified until the owner's live test: a real wallet sign-in in the browser, Supabase Web3 providers and the redirect URL for `http://localhost:3000`, the Turnstile widget (needs the site key), resuming a session after reload.
 - First-load JavaScript is about 247 KB gzipped including the Next.js and React runtime (about 156 KB of that); the app's own code is about 90 KB. Over the "about 200 KB" target; trimming is in the backlog.
+
+## Frontend F2: session room
+
+**Status: built; awaiting owner approval ("proceed") for F3.**
+
+- [x] Chart: candles plus overlays through a lightweight-charts series primitive (zones, levels, plan lines, structure markers), layer toggles with defaults, and an overlay-only price ruler for instruments that are not DISPLAY_OK (no candle request is made; a `FEED_LICENSE_RESTRICTED` answer also switches to it). Attribution for Lightweight Charts is shown.
+- [x] Live socket: `/ws` with a fresh token per attempt, exponential backoff (1 s to 30 s), resume from the last sequence (kept per session in sessionStorage), duplicate and old events dropped, RESYNCING while catching up, controller-taken banner with take over, updates batched in one animation frame. Live events refetch the REST snapshot (ETag, 304) rather than trusting partial payloads.
+- [x] Canvas: Plan, Evidence (components, reason codes, structure events, why-not list), Changes (engine events, new since last close, this session's setup changes), Stats (base rate only from the API, "Not enough history" otherwise, cohorts with n >= 30, a permanent "No proven edge yet" notice).
+- [x] Confirm gate: Log trade issues a gate, shows the plan and a 60 s countdown, Confirm (tap) sends `x-input-mode: tap` with the hash shown and then records the trade; token expired, token invalid and plan changed give a clear message and a refresh of the plan. The microphone flag (`confirmOpen`) is set while the dialog is open (used in F3).
+- Gaps found (contract vs product wording), all in `docs/backlog.md`: the API supplies no net R after fees, no rules-checklist count (so no "7/7"; the footer says all hard filters passed for an armed scenario), and no edge verdict field (the no-edge notice is a fixed statement until one exists).
+- Unverified until the owner's live test (needs a signed-in session and live ingest): the chart with real candles, the primitive drawing, the socket resume after a network drop, the gate against a real armed setup. Unit tests cover overlay mapping, sequence filtering, frame batching and the confirm rules.
