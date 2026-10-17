@@ -74,5 +74,5 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | Cursor timestamps keep milliseconds (Postgres keeps microseconds); order by millisecond-truncated time | rows sharing a millisecond at a page edge could be skipped | when lists get long |
 | Grafana dashboards on the metrics | alerts exist; dashboards are for looking, not paging | with the first scraper |
 | ZAP baseline scan and a k6 run against a deployed target | needs a target | at deploy |
-| Build and scan the container image in CI | no Docker here; the bundle boots | when CI exists |
 | Move the in-process timers (retention, deletion purge, cohort and calibration jobs) to pg-boss with the worker split | idempotent, single replica | M6 |
+- Frontend: replace the hand-copied `InstrumentDto` in apps/web with a contracts export; add chart licence-mode switch tests in F2.

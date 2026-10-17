@@ -20,6 +20,7 @@
     "indentWidth": 2,
     "lineWidth": 100
   },
+  "css": { "parser": { "tailwindDirectives": true } },
   "javascript": {
     "formatter": {
       "quoteStyle": "single",
@@ -87,6 +88,10 @@
           }
         }
       }
+    },
+    {
+      "includes": ["apps/web/**/*.css"],
+      "linter": { "rules": { "complexity": { "noImportantStyles": "off" } } }
     }
   ]
 }

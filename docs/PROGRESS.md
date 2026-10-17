@@ -13,7 +13,7 @@ Running state. A fresh session should be able to resume from this file and `CLAU
 | 1 | Monorepo scaffold, tooling, boundaries, env schema, contracts | done (review round 1 fixed) |
 | 2 | `packages/db`: migrations runner, SQL smoke test on real Postgres, CI workflow | done locally; CI UNVERIFIED (no remote) |
 | 3 | `apps/api` skeleton (health, readiness, logging, problem+json, JWT guard) | done (review round 1 fixed) |
-| 4 | Dockerfile + Compose | written; packaging (`pnpm deploy` + boot) proven locally; image UNVERIFIED (no Docker daemon) |
+| 4 | Railway build config | Docker removed; Railway builds with Railpack (`railway.json`); UNVERIFIED until first deploy |
 | 5 | Spike tooling: S2 venue probe (run), S4 browser page (built, needs owner's browsers), S5 sheet | S1/S3 pages NOT built (need owner's screenshots/recordings) |
 
 ## Acceptance criteria (Phase 0)
@@ -140,7 +140,17 @@ Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 
 - [x] Metrics endpoint, alert rules, request counters; proxy hop handling for the admin allow-list.
 - [x] Security tests: log redaction, tenant isolation matrix, admin-guard scan, 20-session smoke; dependency audit clean.
 - [x] Hardening fixes: idempotency takeover, block voids gates and sessions, timeout cost.
-- [x] Dockerfile, Railway settings, standalone bundle boot check, readiness checker, encrypted backup tool.
+- [x] Railway settings, standalone bundle boot check, readiness checker, encrypted backup tool.
 - [x] Runbooks (8), beta pack (brief, interview script, exit criteria, weekly queries, G3 checklist, legal prerequisites).
 - Tests: api 276, ops tool 15, plus all earlier suites.
 - [ ] **Needs you or a deployed system**: deploying, Supabase Pro, Sentry, a metrics scraper and the staged alert drill, the backup restore drill, a ZAP scan, the 72-hour soak, CI's first run (no remote), counsel items, a real wallet sign-in, G3 decision. See `docs/beta/g3-checklist.md`.
+
+## Frontend F0: apps/web shell and design system
+
+**Status: built; awaiting owner approval for F1.**
+
+- [x] `apps/web` (Next.js 16 App Router, Tailwind 4, Radix, TanStack Query): tokens as CSS variables (dark and light, system default, remembered), three-column shell (nav 232 px, centre, resizable and collapsible 380 px canvas with Plan/Evidence/Changes/Stats/Journal and the pinned footer), drawer and menu below 1024 px, persistent disclaimer.
+- [x] Wired to the real API: `/v1/status` drives the feed chip, `/v1/instruments` fills the picker (shows "Sign in" until F1). Every contract error code has a friendly message and recovery (`lib/errors.ts`, compile-time exhaustive).
+- Local ports: web 3000, API 3002 (`PORT` in `.env.local`; 3001 was taken by another app), `CORS_ORIGINS=http://localhost:3000`.
+- Run: `node apps/api/dist/main.js` and `pnpm --filter @smc/web dev`.
+- Contract note: `InstrumentDto` lives in `apps/api/src/markets/markets.service.ts`, not in `@smc/contracts`; the web app mirrors it in `lib/queries.ts`. Move it to contracts when convenient.
