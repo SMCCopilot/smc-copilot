@@ -1,7 +1,7 @@
 'use client';
 import type { LicenseClass, MarketType, Venue } from '@smc/contracts';
 import { useQuery } from '@tanstack/react-query';
-import { apiGet } from './api';
+import { api } from './api';
 
 export interface FeedStatus {
   ingest: 'DISABLED' | 'RUNNING';
@@ -22,12 +22,13 @@ export interface InstrumentDto {
 export const useFeedStatus = () =>
   useQuery({
     queryKey: ['status'],
-    queryFn: () => apiGet<FeedStatus>('/v1/status'),
+    queryFn: () => api<FeedStatus>('/v1/status', { auth: false }),
     refetchInterval: 15_000,
   });
 
-export const useInstruments = () =>
+export const useInstruments = (enabled = true) =>
   useQuery({
     queryKey: ['instruments'],
-    queryFn: () => apiGet<{ items: InstrumentDto[] }>('/v1/instruments'),
+    enabled,
+    queryFn: () => api<{ items: InstrumentDto[] }>('/v1/instruments'),
   });

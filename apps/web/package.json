@@ -15,6 +15,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@smc/contracts": "workspace:*",
+    "@supabase/supabase-js": "2.118.0",
     "@tanstack/react-query": "^5.104.3",
     "lucide-react": "^0.552.0",
     "next": "^16.4.2",

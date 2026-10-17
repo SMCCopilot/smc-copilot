@@ -1,4 +1,4 @@
-import { ApiProblemSchema, type ErrorCode } from '@smc/contracts';
+import type { ErrorCode } from '@smc/contracts';
 
 export type Recovery = 'SIGN_IN' | 'RETRY' | 'REFRESH_PLAN' | 'WAIT' | 'NONE';
 export interface FriendlyError {
@@ -81,6 +81,7 @@ export async function toApiError(res: Response): Promise<ApiError> {
   } catch {
     body = undefined;
   }
+  const { ApiProblemSchema } = await import('@smc/contracts'); // keeps zod out of the first load
   const p = ApiProblemSchema.safeParse(body);
   if (p.success) return new ApiError(res.status, p.data.code, FRIENDLY[p.data.code]);
   return new ApiError(res.status, null, f(`Unexpected response (${res.status}).`, 'RETRY'));

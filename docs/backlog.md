@@ -76,3 +76,5 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 | ZAP baseline scan and a k6 run against a deployed target | needs a target | at deploy |
 | Move the in-process timers (retention, deletion purge, cohort and calibration jobs) to pg-boss with the worker split | idempotent, single replica | M6 |
 - Frontend: replace the hand-copied `InstrumentDto` in apps/web with a contracts export; add chart licence-mode switch tests in F2.
+- Frontend: first-load JS is 247 KB gz (framework about 156 KB); consider dropping the Radix tooltip from the shell or splitting the canvas to get under 200 KB.
+- Frontend: wagmi/viem and the Solana wallet adapter were not added in F1; `signInWithWeb3` only needs the wallet provider, and EIP-6963 discovery covers multiple EVM wallets. Revisit if in-app signing (wallet link, step-up) needs them.

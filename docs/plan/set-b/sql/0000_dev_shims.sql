@@ -1,6 +1,6 @@
 -- 0000_dev_shims.sql
 -- LOCAL / CI ONLY. Do NOT run on Supabase (it already provides auth.users and auth.uid()).
--- Lets the migrations run on a plain PostgreSQL 15+ instance (docker-compose, CI).
+-- Lets the migrations run on a plain PostgreSQL 15+ instance (local Postgres, CI).
 create schema if not exists auth;
 create table if not exists auth.users (
   id uuid primary key default gen_random_uuid(),

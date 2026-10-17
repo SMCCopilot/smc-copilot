@@ -6,6 +6,7 @@ import {
   CandlestickChart,
   ChevronsRight,
   Layers,
+  LogOut,
   Menu,
   Moon,
   PanelRight,
@@ -15,9 +16,12 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { type PointerEvent, useCallback, useState } from 'react';
+import { type PointerEvent, useCallback, useEffect, useState } from 'react';
+import { signOut, useMe } from '@/lib/auth';
 import { ApiError } from '@/lib/errors';
+import { shortAddress } from '@/lib/gate';
 import { useFeedStatus, useInstruments } from '@/lib/queries';
+import { useCreateSession, useEndSession, useSelection, useSessions } from '@/lib/sessions';
 import { useTheme } from '@/lib/theme';
 import { Canvas } from './canvas';
 
@@ -65,9 +69,30 @@ function FeedChip() {
   );
 }
 
+function useSessionTimer(startedAt: string | null): string {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!startedAt) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [startedAt]);
+  if (!startedAt) return '00:00:00';
+  const sec = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(Math.floor(sec / 3600))}:${p(Math.floor((sec % 3600) / 60))}:${p(sec % 60)}`;
+}
+
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
+  const me = useMe(true);
+  const sessions = useSessions(true);
+  const inst = useInstruments();
+  const create = useCreateSession();
+  const sel = useSelection();
+  const wallet = me.data?.wallets.find((w) => w.primary) ?? me.data?.wallets[0];
+  const nameOf = (id: string | null) =>
+    inst.data?.items.find((i) => i.id === id)?.canonical ?? 'Session';
   return (
-    <nav aria-label="Main" className="flex h-full flex-col gap-4 p-3">
+    <nav aria-label="Main" className="flex h-full flex-col gap-4 overflow-auto p-3">
       <div className="flex items-center gap-2 px-1 font-semibold">
         <span
           className="grid size-8 place-items-center rounded-ctl bg-accent text-white"
@@ -79,11 +104,27 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
       </div>
       <button
         type="button"
-        onClick={onNavigate}
-        className="flex items-center gap-2 rounded-ctl border border-line bg-s2 px-3 py-2 hover:bg-s3"
+        disabled={!sel.instrumentId || create.isPending || sel.sessionId !== null}
+        title={
+          sel.sessionId
+            ? 'End the current session first'
+            : sel.instrumentId
+              ? undefined
+              : 'Pick an instrument first'
+        }
+        onClick={() => {
+          create.mutate();
+          onNavigate?.();
+        }}
+        className="flex items-center gap-2 rounded-ctl border border-line bg-s2 px-3 py-2 hover:bg-s3 disabled:opacity-60"
       >
         <Plus className="size-4" aria-hidden /> New session
       </button>
+      {create.error && (
+        <p role="alert" className="px-1 text-xs text-warn">
+          {create.error instanceof ApiError ? create.error.message : 'Could not start a session.'}
+        </p>
+      )}
       <ul className="flex flex-col gap-0.5">
         {NAV.map(({ label, icon: Icon }, i) => (
           <li key={label}>
@@ -100,25 +141,61 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
       </ul>
       <div>
         <h2 className="px-3 pb-1 text-xs uppercase tracking-wide text-muted">Recent sessions</h2>
-        <p className="px-3 text-muted">None yet.</p>
+        {sessions.data?.length ? (
+          <ul className="flex flex-col gap-0.5">
+            {sessions.data.map((s) => {
+              const live = s.state !== 'ENDED';
+              const current = s.id === sel.sessionId;
+              return (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    disabled={!live}
+                    aria-current={current ? 'true' : undefined}
+                    title={live ? 'Resume this session' : 'Ended'}
+                    onClick={() => {
+                      sel.set({
+                        sessionId: s.id,
+                        startedAt: s.startedAt,
+                        instrumentId: s.instrumentId,
+                        tf: s.tf ?? sel.tf,
+                      });
+                      onNavigate?.();
+                    }}
+                    className={`flex w-full items-center justify-between gap-2 rounded-ctl px-3 py-1.5 text-left hover:bg-s3 disabled:text-muted ${current ? 'accent-soft text-accent' : ''}`}
+                  >
+                    <span className="num truncate">{nameOf(s.instrumentId)}</span>
+                    <span className="text-xs text-muted">{live ? s.tf : 'ended'}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="px-3 text-muted">{sessions.isPending ? 'Loading…' : 'None yet.'}</p>
+        )}
       </div>
       <div className="mt-auto flex flex-col gap-2">
         <div className="rounded-card border border-line bg-s2 p-3">
           <div className="flex justify-between text-xs">
             <span>AI budget today</span>
-            <span className="num text-muted">after sign-in</span>
+            <span className="text-muted">not measured yet</span>
           </div>
-          <div
-            className="mt-2 h-1.5 rounded-full bg-s3"
-            role="progressbar"
-            aria-label="AI budget used"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={0}
-          />
         </div>
-        <div className="flex items-center gap-2 rounded-ctl px-2 py-1.5 text-muted">
-          <Wallet className="size-4" aria-hidden /> Not connected
+        <div className="flex items-center gap-2 rounded-ctl px-2 py-1.5">
+          <Wallet className="size-4 shrink-0 text-muted" aria-hidden />
+          <span className="num min-w-0 flex-1 truncate" title={wallet?.address}>
+            {wallet ? shortAddress(wallet.address) : 'No wallet'}
+          </span>
+          <button
+            type="button"
+            aria-label="Sign out"
+            title="Sign out"
+            onClick={() => signOut()}
+            className="rounded-ctl p-1 text-muted hover:bg-s3"
+          >
+            <LogOut className="size-4" aria-hidden />
+          </button>
         </div>
       </div>
     </nav>
@@ -128,6 +205,10 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
 function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void }) {
   const [theme, toggleTheme] = useTheme();
   const inst = useInstruments();
+  const sel = useSelection();
+  const end = useEndSession();
+  const timer = useSessionTimer(sel.startedAt);
+  const locked = sel.sessionId !== null;
   const btn = 'grid size-9 place-items-center rounded-ctl border border-line bg-s2 hover:bg-s3';
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-line bg-s1 px-3 py-2">
@@ -139,25 +220,27 @@ function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void
       </label>
       <select
         id="instrument"
-        disabled={!inst.data?.items.length}
+        value={sel.instrumentId ?? ''}
+        disabled={!inst.data?.items.length || locked}
+        onChange={(e) => sel.set({ instrumentId: e.target.value || null })}
         className="num rounded-ctl border border-line bg-s3 px-2 py-1.5"
       >
-        {inst.data?.items.length ? (
-          inst.data.items.map((i) => (
-            <option key={i.id} value={i.canonical}>
-              {i.canonical}
-            </option>
-          ))
-        ) : (
-          <option>No instrument</option>
-        )}
+        <option value="">{inst.data?.items.length ? 'Pick an instrument' : 'No instrument'}</option>
+        {inst.data?.items.map((i) => (
+          <option key={i.id} value={i.id}>
+            {i.canonical}
+            {i.rawDataAllowed ? '' : ' · analysis only'}
+          </option>
+        ))}
       </select>
       <label className="sr-only" htmlFor="timeframe">
         Timeframe
       </label>
       <select
         id="timeframe"
-        defaultValue="15m"
+        value={sel.tf}
+        disabled={locked}
+        onChange={(e) => sel.set({ tf: e.target.value as typeof sel.tf })}
         className="rounded-ctl border border-line bg-s3 px-2 py-1.5"
       >
         {TIMEFRAMES.map((t) => (
@@ -166,8 +249,18 @@ function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void
       </select>
       <FeedChip />
       <span className="num text-xs text-muted" title="Session timer">
-        00:00:00
+        {timer}
       </span>
+      {locked && (
+        <button
+          type="button"
+          disabled={end.isPending}
+          onClick={() => end.mutate()}
+          className="rounded-ctl border border-line bg-s2 px-2.5 py-1.5 text-xs hover:bg-s3"
+        >
+          End session
+        </button>
+      )}
       <div className="ml-auto flex gap-2">
         <button type="button" aria-label="Notifications" className={btn}>
           <Bell className="size-4" aria-hidden />
@@ -199,14 +292,15 @@ function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void
 
 function Centre() {
   const inst = useInstruments();
-  let note = 'The chart arrives in F2.';
-  if (inst.error instanceof ApiError) {
-    note =
-      inst.error.code === 'AUTH_REQUIRED'
-        ? 'Sign in to load instruments (F1).'
-        : inst.error.message;
-  } else if (inst.isError) {
-    note = 'The API is not reachable.';
+  const sel = useSelection();
+  const picked = inst.data?.items.find((i) => i.id === sel.instrumentId);
+  let note = 'Pick an instrument, then start a session.';
+  if (inst.error) {
+    note = inst.error instanceof ApiError ? inst.error.message : 'The API is not reachable.';
+  } else if (sel.sessionId) {
+    note = 'Session open. The chart and analysis arrive in F2.';
+  } else if (picked) {
+    note = `${picked.canonical} selected. Press New session to start.`;
   }
   return (
     <main className="flex min-h-0 flex-1 flex-col">
@@ -217,6 +311,12 @@ function Centre() {
         <div>
           <CandlestickChart className="mx-auto mb-2 size-8" aria-hidden />
           <p>{note}</p>
+          {picked && !picked.rawDataAllowed && (
+            <p className="mt-2 text-warn">
+              Raw prices unavailable for this venue; use your own chart and share your screen to
+              explain.
+            </p>
+          )}
         </div>
       </section>
       <section aria-label="Conversation" className="flex min-h-0 flex-[4] flex-col p-3">

@@ -154,3 +154,14 @@ Totals after Phase 3 (fresh clone, 51 tasks, lint and boundaries clean): config 
 - Local ports: web 3000, API 3002 (`PORT` in `.env.local`; 3001 was taken by another app), `CORS_ORIGINS=http://localhost:3000`.
 - Run: `node apps/api/dist/main.js` and `pnpm --filter @smc/web dev`.
 - Contract note: `InstrumentDto` lives in `apps/api/src/markets/markets.service.ts`, not in `@smc/contracts`; the web app mirrors it in `lib/queries.ts`. Move it to contracts when convenient.
+
+## Frontend F1: sign-in and sessions
+
+**Status: built; awaiting owner approval ("proceed") for F2.**
+
+- [x] Wallet sign-in through `signInWithWeb3` (EVM wallets found by EIP-6963, Phantom and Solflare for Solana), session kept and refreshed by the Supabase SDK, route protection (signed out sees sign-in, an open gate sees onboarding, then the app), sign-out, wallet chip.
+- [x] Onboarding in API order: invite code (Turnstile token sent as `x-turnstile-token`), disclaimer by `currentVersion`, 18+ confirmation. Friendly errors from the contract catalogue.
+- [x] Instrument picker with licence label ("analysis only"), timeframe, create session with an idempotency key (reused on retry, replaced when the request changes), end session, recent sessions list and resume, session timer, selection remembered locally.
+- [x] `next.config.mjs` reads only public keys from the repo-root `.env.local` (Supabase URL and anon key, Turnstile site key). No second env file.
+- Unverified until the owner's live test: a real wallet sign-in in the browser, Supabase Web3 providers and the redirect URL for `http://localhost:3000`, the Turnstile widget (needs the site key), resuming a session after reload.
+- First-load JavaScript is about 247 KB gzipped including the Next.js and React runtime (about 156 KB of that); the app's own code is about 90 KB. Over the "about 200 KB" target; trimming is in the backlog.
