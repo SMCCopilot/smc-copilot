@@ -28,3 +28,11 @@ Screenshots use a fake API with fixture candles: they prove layout and flow, not
 
 ## Not yet audited (UNVERIFIED)
 Live Binance/Bybit candles vs venue REST in the browser; real wallet sign-in (EVM, Solana); staging Supabase migration and RLS tests; live AI, budgets and fallback; OCR quality on a real chart (the fake screen source cannot read a symbol); jobs and restart behaviour; security scans; backup/restore; deploy and production smoke check.
+
+## Live data check (2026-10-17, local dev database only; the real Supabase was not touched)
+the compare script (`tools/spikes/src/compare-db-vs-rest.mjs`, with the DNS option set for this network) after about 14 minutes of live ingest (API on port 3012, ingest switched on):
+- 1,264 closed candles (1m, 5m, 1h, last 60 each) vs each venue's REST: 0 differences.
+- Second run, 1m only, last 6 candles (written by the live socket, not backfill): 48 candles, 0 differences.
+- `/v1/status`: 8 of 8 feeds OK, no error-level log lines. Covered: Binance spot and perp for BTC, ETH, SOL; Bybit perp for BTC and ETH.
+- Gaps against the release list: Bybit has no SOL perp; Coinbase and Kraken have no candles (cross-check venues, not enabled for analysis).
+- Not measured: the 3-second chart latency and venue lag in the browser, engine event correctness on this data, restart without duplicates.
