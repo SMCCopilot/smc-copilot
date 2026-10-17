@@ -28,9 +28,6 @@ export function evaluate(rawEnv, db = null) {
   }
   if (!parsed) return out;
 
-  parsed.DEV_CLIENT_ENABLED
-    ? add(LEVEL.FAIL, 'Developer client is off', 'DEV_CLIENT_ENABLED must be false in production')
-    : add(LEVEL.PASS, 'Developer client is off');
   parsed.ADMIN_IP_ALLOWLIST.length > 0
     ? add(LEVEL.PASS, 'Admin address allow-list is set')
     : add(

@@ -29,7 +29,7 @@ const dbName = () => `smc_test_${randomBytes(6).toString('hex')}`;
 /**
  * A real Postgres for integration tests (never a mock: SQL behaviour is what we test).
  * - `TEST_DATABASE_URL` set (CI service container): databases are created on that server and dropped on stop.
- * - otherwise: boots an embedded Postgres in a temp directory (no Docker, no installed server, no password to share).
+ * - otherwise: boots an embedded Postgres in a temp directory (no installed server, no password to share).
  */
 export async function startTestServer(): Promise<TestServer> {
   const server = process.env.TEST_DATABASE_URL;

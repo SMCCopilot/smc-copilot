@@ -3,11 +3,11 @@ import type { MeResponse } from '@smc/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
-import { api } from '@/lib/api';
-import { signOut } from '@/lib/auth';
-import { TURNSTILE_SITE_KEY } from '@/lib/env';
-import { ApiError } from '@/lib/errors';
-import { nextStep } from '@/lib/gate';
+import { api } from '../lib/api';
+import { signOut } from '../lib/auth';
+import { TURNSTILE_SITE_KEY } from '../lib/env';
+import { ApiError } from '../lib/errors';
+import { nextStep } from '../lib/gate';
 import { DisclaimerText } from './disclaimer';
 import { Turnstile, type TurnstileHandle } from './turnstile';
 
@@ -78,7 +78,7 @@ export function Onboarding({ me }: { me: MeResponse }) {
               <li
                 key={k}
                 aria-current={k === step ? 'step' : undefined}
-                className={`flex items-center gap-1 rounded-full border border-line px-2.5 py-1 ${k === step ? 'accent-soft text-accent' : 'text-muted'}`}
+                className={`flex items-center gap-1 rounded-full border border-line px-2.5 py-1 ${k === step ? 'accent-soft text-accent-text' : 'text-muted'}`}
               >
                 {done && <Check className="size-3" aria-hidden />} {label}
               </li>
@@ -132,7 +132,7 @@ export function Onboarding({ me }: { me: MeResponse }) {
         )}
 
         {err && (
-          <p role="alert" className="mt-3 text-warn">
+          <p role="alert" className="mt-3 text-warn-text">
             {err}
           </p>
         )}
@@ -143,7 +143,7 @@ export function Onboarding({ me }: { me: MeResponse }) {
           <button
             type="submit"
             disabled={!ready || run.isPending}
-            className="rounded-ctl bg-accent px-4 py-2 font-medium text-white disabled:opacity-50"
+            className="rounded-ctl bg-accent-strong px-4 py-2 font-medium text-white disabled:opacity-50"
           >
             {run.isPending ? 'Saving…' : 'Continue'}
           </button>

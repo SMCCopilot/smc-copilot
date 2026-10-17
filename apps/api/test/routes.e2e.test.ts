@@ -93,27 +93,6 @@ describe('route inventory', () => {
   });
 });
 
-describe('dev client', () => {
-  it('is absent unless enabled, then serves the page and the public config', async () => {
-    const off = await boot();
-    expect((await request(off.getHttpServer()).get('/dev')).status).toBe(404);
-    expect((await request(off.getHttpServer()).get('/dev/config')).status).toBe(404);
-    const on = await boot({
-      DEV_CLIENT_ENABLED: 'true',
-      SUPABASE_URL: 'https://example.supabase.co',
-      SUPABASE_ANON_KEY: 'public-anon',
-    });
-    const page = await request(on.getHttpServer()).get('/dev');
-    expect(page.status).toBe(200);
-    expect(page.headers['content-security-policy']).toContain('cdn.jsdelivr.net');
-    expect(page.text).toContain('SMC Copilot');
-    expect((await request(on.getHttpServer()).get('/dev/config')).body).toEqual({
-      supabaseUrl: 'https://example.supabase.co',
-      anonKey: 'public-anon',
-    });
-  });
-});
-
 describe('journal, notifications and feedback', () => {
   it('keeps notes private to the workspace, edits only the user words, and withholds a small-n win rate', async () => {
     const app = await boot();

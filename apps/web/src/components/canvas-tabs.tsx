@@ -2,13 +2,13 @@
 import type { AnalysisResponse } from '@smc/contracts';
 import { TIMEFRAME_MS } from '@smc/contracts';
 import { Info } from 'lucide-react';
-import { useLive } from '@/lib/live';
-import { useCohorts, useEngineEvents, useRejected } from '@/lib/market';
-import { formatPrice } from '@/lib/overlays';
-import { useInstruments } from '@/lib/queries';
-import { useSelection } from '@/lib/sessions';
-import { useUi } from '@/lib/ui';
-import { CONDITION, directionLabel, percent, reasonText, SCENARIO_KIND } from '@/lib/wording';
+import { useLive } from '../lib/live';
+import { useCohorts, useEngineEvents, useRejected } from '../lib/market';
+import { formatPrice } from '../lib/overlays';
+import { useInstruments } from '../lib/queries';
+import { useSelection } from '../lib/sessions';
+import { useUi } from '../lib/ui';
+import { CONDITION, directionLabel, percent, reasonText, SCENARIO_KIND } from '../lib/wording';
 
 type Setup = NonNullable<AnalysisResponse['setups']>[number];
 
@@ -149,13 +149,15 @@ export function PlanTab({ setup }: { setup: Setup | null }) {
             )}
           </dl>
           {plan.risk.warnings.length > 0 && (
-            <p className="mt-1 text-xs text-warn">
+            <p className="mt-1 text-xs text-warn-text">
               {plan.risk.warnings.map((w) => w.replaceAll('_', ' ').toLowerCase()).join(' · ')}
             </p>
           )}
         </Card>
       )}
-      {plan.warnings.length > 0 && <p className="text-xs text-warn">{plan.warnings.join(' · ')}</p>}
+      {plan.warnings.length > 0 && (
+        <p className="text-xs text-warn-text">{plan.warnings.join(' · ')}</p>
+      )}
     </div>
   );
 }
@@ -263,7 +265,7 @@ export function ChangesTab({ analysis }: { analysis: AnalysisResponse | undefine
                 <li key={e.id} className="flex items-baseline justify-between gap-2 py-0.5">
                   <span>
                     {fresh && (
-                      <span className="mr-1.5 rounded-full accent-soft px-1.5 py-0.5 text-[11px] text-accent">
+                      <span className="mr-1.5 rounded-full accent-soft px-1.5 py-0.5 text-[11px] text-accent-text">
                         new
                       </span>
                     )}
@@ -291,7 +293,7 @@ export function StatsTab({ setup }: { setup: Setup | null }) {
   return (
     <div>
       <p className="mb-3 flex gap-2 rounded-card border border-line bg-s2 p-3">
-        <Info className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
+        <Info className="mt-0.5 size-4 shrink-0 text-warn-text" aria-hidden />
         <span>
           <strong>No proven edge yet.</strong> Rules-based scenarios are shown for study. Past
           frequencies are not forecasts.

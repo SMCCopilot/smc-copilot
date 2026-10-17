@@ -9,11 +9,12 @@ import {
   startShare,
   stopShare,
   useShare,
-} from '@/lib/explain';
-import { canShareScreen } from '@/lib/ocr';
-import { useInstruments } from '@/lib/queries';
-import { useSelection } from '@/lib/sessions';
-import { useUi } from '@/lib/ui';
+} from '../lib/explain';
+import { canShareScreen } from '../lib/ocr';
+import { useInstruments } from '../lib/queries';
+import { usePrefs } from '../lib/records';
+import { useSelection } from '../lib/sessions';
+import { useUi } from '../lib/ui';
 
 /** Explain a chart: upload one image, or share the screen and read it on this device. The image is never kept. */
 export function ExplainDialog() {
@@ -28,6 +29,7 @@ export function ExplainDialog() {
   const [error, setError] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const canShare = canShareScreen();
+  const noImages = usePrefs((s) => s.neverSendImages);
 
   const hints = () => ({
     ...(market ? { instrumentHint: market } : {}),
@@ -98,7 +100,7 @@ export function ExplainDialog() {
             />
           </label>
           {error && (
-            <p role="alert" className="mt-2 text-warn">
+            <p role="alert" className="mt-2 text-warn-text">
               {error}
             </p>
           )}
@@ -113,9 +115,10 @@ export function ExplainDialog() {
             />
             <button
               type="button"
-              disabled={!sel.sessionId}
+              disabled={!sel.sessionId || noImages}
+              title={noImages ? 'Switched off in Settings: never send images to AI' : undefined}
               onClick={() => file.current?.click()}
-              className="rounded-ctl bg-accent px-3 py-2 font-medium text-white disabled:opacity-50"
+              className="rounded-ctl bg-accent-strong px-3 py-2 font-medium text-white disabled:opacity-50"
             >
               Upload an image
             </button>
@@ -128,7 +131,7 @@ export function ExplainDialog() {
                       setOpen(false);
                       void explainShared(hints());
                     }}
-                    className="rounded-ctl bg-accent px-3 py-2 font-medium text-white"
+                    className="rounded-ctl bg-accent-strong px-3 py-2 font-medium text-white"
                   >
                     Explain shared screen
                   </button>

@@ -1,15 +1,16 @@
 'use client';
 import * as Tabs from '@radix-ui/react-tabs';
 import { useState } from 'react';
-import { useLive } from '@/lib/live';
-import { useAnalysis } from '@/lib/market';
-import { useInstruments } from '@/lib/queries';
-import { useSelection } from '@/lib/sessions';
-import { type CanvasTab, pickSetup, useUi } from '@/lib/ui';
+import { useLive } from '../lib/live';
+import { useAnalysis } from '../lib/market';
+import { useInstruments } from '../lib/queries';
+import { useSelection } from '../lib/sessions';
+import { type CanvasTab, pickSetup, useUi } from '../lib/ui';
 import { ChangesTab, EvidenceTab, PlanTab, SetupPicker, StatsTab } from './canvas-tabs';
 import { GateDialog } from './gate-dialog';
+import { NoteForm } from './views';
 
-const TABS = ['Plan', 'Evidence', 'Changes', 'Stats'] as const;
+const TABS = ['Plan', 'Evidence', 'Changes', 'Stats', 'Journal'] as const;
 
 export function Canvas() {
   const sel = useSelection();
@@ -38,7 +39,7 @@ export function Canvas() {
             <Tabs.Trigger
               key={t}
               value={t}
-              className="rounded-t-md px-3 py-2 text-muted data-[state=active]:accent-soft data-[state=active]:text-accent"
+              className="rounded-t-md px-3 py-2 text-muted data-[state=active]:accent-soft data-[state=active]:text-accent-text"
             >
               {t}
             </Tabs.Trigger>
@@ -61,6 +62,9 @@ export function Canvas() {
               </Tabs.Content>
               <Tabs.Content value="Stats">
                 <StatsTab setup={setup} />
+              </Tabs.Content>
+              <Tabs.Content value="Journal">
+                <NoteForm compact {...(setup ? { setupId: setup.id } : {})} />
               </Tabs.Content>
             </>
           )}
@@ -88,7 +92,7 @@ export function Canvas() {
               canLog ? undefined : live === 'STALE' ? 'The data feed is stale' : 'No plan to log'
             }
             onClick={() => setOpen(true)}
-            className="rounded-ctl bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-50"
+            className="rounded-ctl bg-accent-strong px-3 py-1.5 font-medium text-white disabled:opacity-50"
           >
             Log trade
           </button>

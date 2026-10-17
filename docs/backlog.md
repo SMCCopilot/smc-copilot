@@ -83,3 +83,7 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 - API gap: expose the latest backtest verdict (for example NO_EDGE_DETECTED) on `/v1/stats/cohorts` or a status route so the Stats notice is API-sourced; today it is a fixed statement.
 - API gap: no live price tick or in-progress candle event over the socket; the chart updates on candle close (analysis.update then a candles refetch).
 - Frontend: component tests for the gate dialog and the chart need jsdom and Playwright (F4).
+- Frontend: add an admin screen for AI providers if toggling by API becomes tedious.
+- Frontend: speech engines report no confidence (fixed 0.8 used); measure real accuracy and latency with the voice eval (spike S3) and the OCR with real charts (spike S1).
+- Frontend: first-load JS is about 279 KB gzipped; the chart, wallet, speech, OCR and socket libraries are lazy, so the rest is Next, React, Query, Radix and the app. Splitting the canvas and dock further is the next saving.
+- Frontend: add a risk-profile screen (balance, risk per trade) so plan sizing appears; the plan shows sizing only when the profile exists.

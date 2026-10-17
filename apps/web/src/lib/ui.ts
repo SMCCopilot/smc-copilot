@@ -5,7 +5,8 @@ import { DEFAULT_LAYERS, type LayerId } from './overlays';
 
 type Setup = NonNullable<AnalysisResponse['setups']>[number];
 
-export type CanvasTab = 'Plan' | 'Evidence' | 'Changes' | 'Stats';
+export type CanvasTab = 'Plan' | 'Evidence' | 'Changes' | 'Stats' | 'Journal';
+export type View = 'room' | 'instruments' | 'journal' | 'trades' | 'notifications' | 'settings';
 
 interface Ui {
   layers: Record<LayerId, boolean>;
@@ -23,6 +24,8 @@ interface Ui {
   /** The right panel as a drawer on small screens. */
   drawer: boolean;
   setDrawer: (open: boolean) => void;
+  view: View;
+  setView: (v: View) => void;
   explainOpen: boolean;
   setExplainOpen: (open: boolean) => void;
 }
@@ -40,6 +43,8 @@ export const useUi = create<Ui>((set) => ({
   setTab: (tab) => set({ tab }),
   drawer: false,
   setDrawer: (drawer) => set({ drawer }),
+  view: 'room',
+  setView: (view) => set({ view }),
   explainOpen: false,
   setExplainOpen: (explainOpen) => set({ explainOpen }),
 }));

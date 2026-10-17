@@ -17,25 +17,28 @@ import {
   X,
 } from 'lucide-react';
 import { type PointerEvent, useCallback, useEffect, useState } from 'react';
-import { signOut, useMe } from '@/lib/auth';
-import { useChat } from '@/lib/chat';
-import { ApiError } from '@/lib/errors';
-import { shortAddress } from '@/lib/gate';
-import { useLive, useLiveSession } from '@/lib/live';
-import { useFeedStatus, useInstruments } from '@/lib/queries';
-import { useCreateSession, useEndSession, useSelection, useSessions } from '@/lib/sessions';
-import { useTheme } from '@/lib/theme';
-import { useUi } from '@/lib/ui';
+import { signOut, useMe } from '../lib/auth';
+import { useChat } from '../lib/chat';
+import { ApiError } from '../lib/errors';
+import { shortAddress } from '../lib/gate';
+import { useLive, useLiveSession } from '../lib/live';
+import { useFeedStatus, useInstruments } from '../lib/queries';
+import { useNotifications } from '../lib/records';
+import { useCreateSession, useEndSession, useSelection, useSessions } from '../lib/sessions';
+import { useTheme } from '../lib/theme';
+import { useUi } from '../lib/ui';
 import { Canvas } from './canvas';
 import { ChartPanel } from './chart-panel';
 import { Dock } from './dock';
+import { SettingsView } from './settings';
+import { InstrumentsView, JournalView, NotificationsView, TradesView } from './views';
 
 const NAV = [
-  { label: 'Session room', icon: CandlestickChart },
-  { label: 'Instruments', icon: Layers },
-  { label: 'Journal', icon: BookOpen },
-  { label: 'Trades', icon: ChevronsRight },
-  { label: 'Settings', icon: Settings },
+  { label: 'Session room', icon: CandlestickChart, view: 'room' },
+  { label: 'Instruments', icon: Layers, view: 'instruments' },
+  { label: 'Journal', icon: BookOpen, view: 'journal' },
+  { label: 'Trades', icon: ChevronsRight, view: 'trades' },
+  { label: 'Settings', icon: Settings, view: 'settings' },
 ] as const;
 
 const DISCLAIMER =
@@ -49,17 +52,17 @@ function FeedChip() {
   let tone = 'text-muted';
   if (inSession) {
     label = live === 'ENDED' ? 'ENDED' : live === 'TAKEN' ? 'PAUSED' : live;
-    tone = live === 'LIVE' ? 'text-fg' : live === 'ENDED' ? 'text-muted' : 'text-warn';
+    tone = live === 'LIVE' ? 'text-fg' : live === 'ENDED' ? 'text-muted' : 'text-warn-text';
   } else if (isError) {
     label = 'NO API';
-    tone = 'text-warn';
+    tone = 'text-warn-text';
   } else if (data) {
     if (data.ingest === 'DISABLED') {
       label = 'INGEST OFF';
-      tone = 'text-warn';
+      tone = 'text-warn-text';
     } else if (data.feeds.stale > 0) {
       label = 'STALE';
-      tone = 'text-warn';
+      tone = 'text-warn-text';
     } else {
       label = 'LIVE';
       tone = 'text-fg';
@@ -100,7 +103,7 @@ function BudgetMeter() {
     <div className="rounded-card border border-line bg-s2 p-3">
       <div className="flex justify-between text-xs">
         <span>AI budget today</span>
-        <span className={`num ${warn ? 'text-warn' : 'text-muted'}`}>
+        <span className={`num ${warn ? 'text-warn-text' : 'text-muted'}`}>
           {b ? `${b.spentUsd.toFixed(2)} of ${b.limitUsd.toFixed(2)}` : 'no AI use yet'}
         </span>
       </div>
@@ -113,14 +116,16 @@ function BudgetMeter() {
         aria-valuenow={pct}
       >
         <div
-          className={`h-full rounded-full ${warn ? 'bg-warn' : 'bg-accent'}`}
+          className={`h-full rounded-full ${warn ? 'bg-warn' : 'bg-accent-strong'}`}
           style={{ width: `${pct}%` }}
         />
       </div>
       {b?.state === 'HARD' && (
-        <p className="mt-1 text-xs text-warn">Limit reached. Analysis still works.</p>
+        <p className="mt-1 text-xs text-warn-text">Limit reached. Analysis still works.</p>
       )}
-      {b?.state === 'SOFT' && <p className="mt-1 text-xs text-warn">Close to today's limit.</p>}
+      {b?.state === 'SOFT' && (
+        <p className="mt-1 text-xs text-warn-text">Close to today's limit.</p>
+      )}
     </div>
   );
 }
@@ -131,6 +136,8 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const inst = useInstruments();
   const create = useCreateSession();
   const sel = useSelection();
+  const current = useUi((s) => s.view);
+  const setView = useUi((s) => s.setView);
   const wallet = me.data?.wallets.find((w) => w.primary) ?? me.data?.wallets[0];
   const nameOf = (id: string | null) =>
     inst.data?.items.find((i) => i.id === id)?.canonical ?? 'Session';
@@ -138,7 +145,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
     <nav aria-label="Main" className="flex h-full flex-col gap-4 overflow-auto p-3">
       <div className="flex items-center gap-2 px-1 font-semibold">
         <span
-          className="grid size-8 place-items-center rounded-ctl bg-accent text-white"
+          className="grid size-8 place-items-center rounded-ctl bg-accent-strong text-white"
           aria-hidden
         >
           S
@@ -164,18 +171,21 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
         <Plus className="size-4" aria-hidden /> New session
       </button>
       {create.error && (
-        <p role="alert" className="px-1 text-xs text-warn">
+        <p role="alert" className="px-1 text-xs text-warn-text">
           {create.error instanceof ApiError ? create.error.message : 'Could not start a session.'}
         </p>
       )}
       <ul className="flex flex-col gap-0.5">
-        {NAV.map(({ label, icon: Icon }, i) => (
+        {NAV.map(({ label, icon: Icon, view }) => (
           <li key={label}>
             <button
               type="button"
-              onClick={onNavigate}
-              aria-current={i === 0 ? 'page' : undefined}
-              className={`flex w-full items-center gap-2 rounded-ctl px-3 py-2 text-left hover:bg-s3 ${i === 0 ? 'accent-soft text-accent' : ''}`}
+              onClick={() => {
+                setView(view);
+                onNavigate?.();
+              }}
+              aria-current={current === view ? 'page' : undefined}
+              className={`flex w-full items-center gap-2 rounded-ctl px-3 py-2 text-left hover:bg-s3 ${current === view ? 'accent-soft text-accent-text' : ''}`}
             >
               <Icon className="size-4" aria-hidden /> {label}
             </button>
@@ -205,7 +215,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
                       });
                       onNavigate?.();
                     }}
-                    className={`flex w-full items-center justify-between gap-2 rounded-ctl px-3 py-1.5 text-left hover:bg-s3 disabled:text-muted ${current ? 'accent-soft text-accent' : ''}`}
+                    className={`flex w-full items-center justify-between gap-2 rounded-ctl px-3 py-1.5 text-left hover:bg-s3 disabled:text-muted ${current ? 'accent-soft text-accent-text' : ''}`}
                   >
                     <span className="num truncate">{nameOf(s.instrumentId)}</span>
                     <span className="text-xs text-muted">{live ? s.tf : 'ended'}</span>
@@ -246,6 +256,9 @@ function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void
   const sel = useSelection();
   const end = useEndSession();
   const timer = useSessionTimer(sel.startedAt);
+  const notes = useNotifications();
+  const setView = useUi((s) => s.setView);
+  const unread = notes.data?.filter((n) => !n.read).length ?? 0;
   const locked = sel.sessionId !== null;
   const btn = 'grid size-9 place-items-center rounded-ctl border border-line bg-s2 hover:bg-s3';
   return (
@@ -300,8 +313,19 @@ function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void
         </button>
       )}
       <div className="ml-auto flex gap-2">
-        <button type="button" aria-label="Notifications" className={btn}>
+        <button
+          type="button"
+          aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+          onClick={() => setView('notifications')}
+          className={`${btn} relative`}
+        >
           <Bell className="size-4" aria-hidden />
+          {unread > 0 && (
+            <span
+              className="absolute -right-1 -top-1 size-2.5 rounded-full bg-accent-strong"
+              aria-hidden
+            />
+          )}
         </button>
         <button
           type="button"
@@ -330,12 +354,18 @@ function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void
 
 function Centre() {
   const live = useLive();
+  const view = useUi((s) => s.view);
+  if (view === 'journal') return <JournalView />;
+  if (view === 'trades') return <TradesView />;
+  if (view === 'notifications') return <NotificationsView />;
+  if (view === 'settings') return <SettingsView />;
+  if (view === 'instruments') return <InstrumentsView />;
   return (
-    <main className="flex min-h-0 flex-1 flex-col">
+    <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col">
       {live.state === 'TAKEN' && (
         <p
           role="alert"
-          className="flex items-center gap-3 border-b border-line bg-s2 px-3 py-2 text-warn"
+          className="flex items-center gap-3 border-b border-line bg-s2 px-3 py-2 text-warn-text"
         >
           Another tab or device is controlling this session.
           <button
@@ -348,7 +378,7 @@ function Centre() {
         </p>
       )}
       {live.error && (
-        <p role="alert" className="border-b border-line bg-s2 px-3 py-2 text-warn">
+        <p role="alert" className="border-b border-line bg-s2 px-3 py-2 text-warn-text">
           {live.error}
         </p>
       )}

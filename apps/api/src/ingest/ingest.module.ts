@@ -12,11 +12,11 @@ import type { Sql } from '@smc/db';
 import { AdminController } from '../admin/admin.controller.js';
 import { AdminGuard } from '../admin/admin.guard.js';
 import { ENV, EVENT_BUS, INGEST_RUNTIME, SQL } from '../config/tokens.js';
-import { installDnsOverride } from '../dev/dns-override.js';
 import { ReadinessService } from '../health/readiness.js';
 import { LicenseGuard } from '../markets/license.guard.js';
 import { MarketsController } from '../markets/markets.controller.js';
 import { MarketsService } from '../markets/markets.service.js';
+import { installDnsOverride } from './dns-override.js';
 import { type EventBus, InMemoryEventBus } from './event-bus.js';
 import { IngestRuntime } from './ingest.runtime.js';
 

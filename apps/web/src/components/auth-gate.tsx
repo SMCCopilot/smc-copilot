@@ -1,9 +1,10 @@
 'use client';
 import { type ReactNode, useEffect } from 'react';
-import { signOut, useAuthState, useMe } from '@/lib/auth';
-import { ApiError } from '@/lib/errors';
-import { nextStep } from '@/lib/gate';
-import { restoreSelection } from '@/lib/sessions';
+import { signOut, useAuthState, useMe } from '../lib/auth';
+import { ApiError } from '../lib/errors';
+import { nextStep } from '../lib/gate';
+import { restorePrefs } from '../lib/records';
+import { restoreSelection } from '../lib/sessions';
 import { Onboarding } from './onboarding';
 import { SignIn } from './sign-in';
 
@@ -17,7 +18,10 @@ const Splash = ({ text }: { text: string }) => (
 export function AuthGate({ children }: { children: ReactNode }) {
   const auth = useAuthState();
   const me = useMe(auth === 'in');
-  useEffect(() => restoreSelection(), []);
+  useEffect(() => {
+    restoreSelection();
+    restorePrefs();
+  }, []);
 
   if (auth === 'loading') return <Splash text="Loading…" />;
   if (auth === 'out') return <SignIn />;
@@ -32,7 +36,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => me.refetch()}
-              className="rounded-ctl bg-accent px-3 py-2 text-white"
+              className="rounded-ctl bg-accent-strong px-3 py-2 text-white"
             >
               Try again
             </button>

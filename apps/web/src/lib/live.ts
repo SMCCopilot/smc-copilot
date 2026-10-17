@@ -68,6 +68,7 @@ const EVENTS = [
   'explain.stage',
   'explain.chunk',
   'explain.done',
+  'notification',
 ] as const;
 
 interface Envelope {
@@ -220,6 +221,8 @@ export function useLiveSession(sessionId: string | null): void {
             useSelection
               .getState()
               .set({ ...(inst ? { instrumentId: inst.id } : {}), ...(tf ? { tf } : {}) });
+          } else if (type === 'notification') {
+            qc.invalidateQueries({ queryKey: ['notifications'] });
           } else if (type === 'voice.final') {
             handleVoice(p);
           } else {

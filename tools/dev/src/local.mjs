@@ -6,7 +6,7 @@
 //   pnpm local invite [--uses N]  make a real invite code in your database and print it
 //   pnpm local admin [user-id]    give a signed-in user the admin role (no id: lists users, newest first)
 //   pnpm local start [--no-ingest] [--no-build]
-//                                 build if needed, then start the API with the browser page at /dev
+//                                 build if needed, then start the API and the web app (http://localhost:3000)
 //
 // Nothing here writes test data. `invite` and `admin` only change what you ask for.
 import { spawn, spawnSync } from 'node:child_process';
@@ -139,9 +139,9 @@ async function main() {
       return;
     }
     if (!flag('--no-build') && !existsSync(resolve(root, 'apps/api/dist/main.js'))) build();
-    const port = process.env.PORT || '3000';
+    const port = process.env.PORT || '3002';
     console.log(
-      `\nStarting. Open  http://localhost:${port}/dev  in your browser. Stop with Ctrl+C.\n`,
+      `\nStarting the server on port ${port} and the web app. Open  http://localhost:3000  in your browser. Stop with Ctrl+C.\n`,
     );
     const child = spawn('node', ['apps/api/dist/main.js'], {
       cwd: root,
@@ -149,11 +149,20 @@ async function main() {
       env: {
         ...process.env,
         NODE_ENV: 'development',
-        DEV_CLIENT_ENABLED: 'true',
         TURNSTILE_DISABLED: 'true',
         ENGINE_ENABLED: 'true',
         INGEST_ENABLED: flag('--no-ingest') ? 'false' : 'true',
       },
+    });
+    const web = spawn('pnpm', ['--filter', '@smc/web', 'dev'], {
+      cwd: root,
+      stdio: 'inherit',
+      shell: true,
+    });
+    child.on('exit', () => web.kill());
+    process.on('exit', () => {
+      child.kill();
+      web.kill();
     });
     child.on('exit', (code) => process.exit(code ?? 0));
   } else {

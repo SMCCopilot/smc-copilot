@@ -279,3 +279,7 @@ Not changed, documented: `abuse_flags` rows keyed by a salted hash of the user s
 ## D-044 Web wallet sign-in without wagmi or the Solana adapter (F1)
 
 `supabase.auth.signInWithWeb3` takes the wallet provider object directly, and EIP-6963 gives provider discovery for several EVM wallets, so wagmi/viem and the Solana wallet adapter would add bundle weight without adding a capability for sign-in. Decision: use the injected providers directly. Revisit for wallet linking and step-up if they need richer connectors. `@smc/contracts` is marked `sideEffects: false` so web bundles can drop unused schemas.
+
+## D-045 HTML dev client retired (F4)
+
+The web app replaces it. Removed: `/dev` and `/dev/config`, `DEV_CLIENT_ENABLED` (schema, preflight, local runner) and the dev client's admin panel for AI providers (use `PUT /v1/admin/ai/providers/:id`). `dns-override.ts` moved to `apps/api/src/ingest/` because ingest still uses it. Web imports are relative so the dependency checker resolves them.

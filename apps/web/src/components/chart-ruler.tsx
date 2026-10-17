@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { lineStyle, OB_VIOLET, type Palette, readPalette, zoneStyle } from '@/lib/overlay-style';
-import { formatPrice, type Overlay, overlayPrices, type StructureMark } from '@/lib/overlays';
+import { lineStyle, OB_VIOLET, type Palette, readPalette, zoneStyle } from '../lib/overlay-style';
+import { formatPrice, type Overlay, overlayPrices, type StructureMark } from '../lib/overlays';
 
 /**
  * Overlay-only mode for instruments whose raw prices may not reach the browser: levels, zones and structure

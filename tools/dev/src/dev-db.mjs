@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A persistent local Postgres for development: no Docker, no installed server, no password to share.
+// A persistent local Postgres for development: no installed server, no password to share.
 //   node tools/dev/src/dev-db.mjs            # starts it, applies the schema (with the auth shims) and stays running
 // Data lives in .dev-pg/ at the repository root (git-ignored). Stop with Ctrl+C. Connection URL is printed.
 // This is NOT Supabase: it uses the dev shims for auth.users, so it is for local work and tests only.

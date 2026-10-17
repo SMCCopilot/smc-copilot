@@ -2,12 +2,12 @@
 import { CandlestickChart } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useMemo } from 'react';
-import { ApiError } from '@/lib/errors';
-import { useAnalysis, useCandles } from '@/lib/market';
-import { buildOverlays, LAYER_LABEL, LAYERS, structureMarks, visible } from '@/lib/overlays';
-import { useInstruments } from '@/lib/queries';
-import { useSelection } from '@/lib/sessions';
-import { pickSetup, useUi } from '@/lib/ui';
+import { ApiError } from '../lib/errors';
+import { useAnalysis, useCandles } from '../lib/market';
+import { buildOverlays, LAYER_LABEL, LAYERS, structureMarks, visible } from '../lib/overlays';
+import { useInstruments } from '../lib/queries';
+import { useSelection } from '../lib/sessions';
+import { pickSetup, useUi } from '../lib/ui';
 
 // Chart code loads only when needed, so the first load stays small.
 const ChartFull = dynamic(() => import('./chart-full'), { ssr: false });
@@ -21,7 +21,7 @@ function Message({ text, tone }: { text: string; tone?: 'warn' }) {
     <div className="grid size-full place-items-center p-4 text-center text-muted">
       <div>
         <CandlestickChart className="mx-auto mb-2 size-8" aria-hidden />
-        <p className={tone === 'warn' ? 'text-warn' : undefined}>{text}</p>
+        <p className={tone === 'warn' ? 'text-warn-text' : undefined}>{text}</p>
       </div>
     </div>
   );
@@ -86,19 +86,19 @@ export function ChartPanel() {
             type="button"
             aria-pressed={ui.layers[l]}
             onClick={() => ui.toggleLayer(l)}
-            className={`rounded-full border px-2.5 py-1 text-xs ${ui.layers[l] ? 'accent-soft border-transparent text-accent' : 'border-line text-muted hover:bg-s3'}`}
+            className={`rounded-full border px-2.5 py-1 text-xs ${ui.layers[l] ? 'accent-soft border-transparent text-accent-text' : 'border-line text-muted hover:bg-s3'}`}
           >
             {LAYER_LABEL[l]}
           </button>
         ))}
         {analysis.data && analysis.data.dataQuality !== 'OK' && (
-          <span className="ml-auto text-xs text-warn">
+          <span className="ml-auto text-xs text-warn-text">
             Data {analysis.data.dataQuality.toLowerCase()}
           </span>
         )}
       </div>
       {instrument && !rawMode && (
-        <p role="status" className="border-b border-line bg-s2 px-3 py-1.5 text-xs text-warn">
+        <p role="status" className="border-b border-line bg-s2 px-3 py-1.5 text-xs text-warn-text">
           {NO_RAW}
         </p>
       )}

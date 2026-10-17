@@ -24,7 +24,6 @@ import { AnalysisService } from './analysis/analysis.service.js';
 import { IdempotencyInterceptor } from './common/idempotency.js';
 import { ENV, LLM_ROUTER } from './config/tokens.js';
 import { ContextService } from './context/context.service.js';
-import { DevController } from './dev/dev.controller.js';
 import { GateController } from './gate/gate.controller.js';
 import { GateService } from './gate/gate.service.js';
 import { JournalController } from './journal/journal.controller.js';
@@ -55,7 +54,6 @@ import { VoiceService } from './voice/voice.service.js';
     GateController,
     TradesController,
     JournalController,
-    DevController,
     NarrativeController,
     AiAdminController,
     ChatController,

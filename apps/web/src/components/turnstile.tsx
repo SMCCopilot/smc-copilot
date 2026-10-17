@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { TURNSTILE_SITE_KEY } from '@/lib/env';
+import { TURNSTILE_SITE_KEY } from '../lib/env';
 
 interface TurnstileApi {
   render: (el: HTMLElement, o: Record<string, unknown>) => string;

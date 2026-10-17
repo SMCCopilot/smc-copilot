@@ -14,6 +14,12 @@
   --warn: #b7791f;
   --grade: #475a7a;
   --grade-bg: #e4e9f3;
+  --accent-text: #2a5bd7;
+  --bull-text: #0b7a55;
+  --bear-text: #c42537;
+  --warn-text: #8a5a10;
+  --accent-strong: #2f66e8;
+  --bear-strong: #d92d3f;
 }
 :root[data-theme="dark"] {
   --bg: #0a0d14;
@@ -29,6 +35,12 @@
   --warn: #f5b544;
   --grade: #aab6cf;
   --grade-bg: #26304a;
+  --accent-text: #6b9bff;
+  --bull-text: #2ebd85;
+  --bear-text: #f0616d;
+  --warn-text: #f5b544;
+  --accent-strong: #2f66e8;
+  --bear-strong: #c4313f;
 }
 
 @theme inline {
@@ -43,6 +55,12 @@
   --color-bull: var(--bull);
   --color-bear: var(--bear);
   --color-warn: var(--warn);
+  --color-accent-text: var(--accent-text);
+  --color-bull-text: var(--bull-text);
+  --color-bear-text: var(--bear-text);
+  --color-warn-text: var(--warn-text);
+  --color-accent-strong: var(--accent-strong);
+  --color-bear-strong: var(--bear-strong);
   --color-grade: var(--grade);
   --color-grade-bg: var(--grade-bg);
   --radius-card: 12px;

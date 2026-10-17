@@ -63,8 +63,6 @@ const EnvSchema = z
     SUPABASE_ANON_KEY: optionalString,
     // Version string of the disclaimer text users must accept (A09). Changing it asks everyone to accept again.
     DISCLAIMER_VERSION: z.string().min(1).max(32).default('2026-10-01'),
-    // Serve the minimal HTML dev client at /dev (wallet sign-in, session, analysis, gate, trades, journal).
-    DEV_CLIENT_ENABLED: z.stringbool().default(false),
 
     BINANCE_WS_URL: z.url().default('wss://data-stream.binance.vision'),
     BINANCE_REST_URL: z.url().default('https://data-api.binance.vision'),
@@ -111,7 +109,7 @@ const EnvSchema = z
     // Run the SMC engine over closed candles (worker role, needs INGEST_ENABLED and a database).
     ENGINE_ENABLED: z.stringbool().default(true),
     // Trust the Cloudflare-supplied client address for the admin allow-list. Only true when the API is reachable
-    // solely through the tunnel (production compose); anywhere else the header could be forged.
+    // solely through the tunnel (production); anywhere else the header could be forged.
     TRUST_PROXY_HEADERS: z.stringbool().default(false),
     // Dev only: resolve names through these DNS servers when the local network blocks venue hosts.
     DNS_SERVERS: csv.pipe(z.array(z.ipv4())),

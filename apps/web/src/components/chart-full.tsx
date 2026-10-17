@@ -14,9 +14,9 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { useEffect, useRef } from 'react';
-import type { CandleRow } from '@/lib/market';
-import { labelOf, lineStyle, type Palette, readPalette, zoneStyle } from '@/lib/overlay-style';
-import { formatPrice, type Overlay, type StructureMark } from '@/lib/overlays';
+import type { CandleRow } from '../lib/market';
+import { labelOf, lineStyle, type Palette, readPalette, zoneStyle } from '../lib/overlay-style';
+import { formatPrice, type Overlay, type StructureMark } from '../lib/overlays';
 
 type Target = Parameters<IPrimitivePaneRenderer['draw']>[0];
 
@@ -222,12 +222,5 @@ export default function ChartFull({
     markers.current?.setMarkers(m);
   }, [marks]);
 
-  return (
-    <div
-      ref={box}
-      className="size-full"
-      role="img"
-      aria-label="Price chart with Smart Money Concepts overlays"
-    />
-  );
+  return <div ref={box} className="size-full" />;
 }

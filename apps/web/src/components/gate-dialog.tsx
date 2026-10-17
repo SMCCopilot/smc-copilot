@@ -3,14 +3,14 @@ import * as Dialog from '@radix-ui/react-dialog';
 import type { AnalysisResponse } from '@smc/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
-import type { GateInfo } from '@/lib/confirm';
-import { confirmRequest, gateMatchesPlan, remainingMs, tradeBody } from '@/lib/confirm';
-import { ApiError, type FriendlyError } from '@/lib/errors';
-import { createKeyHolder } from '@/lib/gate';
-import { formatPrice } from '@/lib/overlays';
-import { useUi } from '@/lib/ui';
-import { directionLabel } from '@/lib/wording';
+import { api } from '../lib/api';
+import type { GateInfo } from '../lib/confirm';
+import { confirmRequest, gateMatchesPlan, remainingMs, tradeBody } from '../lib/confirm';
+import { ApiError, type FriendlyError } from '../lib/errors';
+import { createKeyHolder } from '../lib/gate';
+import { formatPrice } from '../lib/overlays';
+import { useUi } from '../lib/ui';
+import { directionLabel } from '../lib/wording';
 
 type Setup = NonNullable<AnalysisResponse['setups']>[number];
 type Gate = GateInfo;
@@ -168,13 +168,15 @@ export function GateDialog({
               </>
             )}
             {expired && (
-              <span className="text-warn">The 60 second window ended. Review the plan again.</span>
+              <span className="text-warn-text">
+                The 60 second window ended. Review the plan again.
+              </span>
             )}
             {phase === 'confirming' && 'Recording…'}
             {phase === 'done' && 'Trade logged in your journal.'}
           </p>
           {err && (
-            <p role="alert" className="mt-2 text-warn">
+            <p role="alert" className="mt-2 text-warn-text">
               {err.message}
             </p>
           )}
@@ -183,7 +185,7 @@ export function GateDialog({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-ctl bg-accent px-3 py-2 font-medium text-white"
+                className="rounded-ctl bg-accent-strong px-3 py-2 font-medium text-white"
               >
                 Close
               </button>
@@ -209,7 +211,7 @@ export function GateDialog({
                   type="button"
                   onClick={confirm}
                   disabled={phase !== 'ready' || expired}
-                  className="rounded-ctl bg-accent px-3 py-2 font-medium text-white disabled:opacity-50"
+                  className="rounded-ctl bg-accent-strong px-3 py-2 font-medium text-white disabled:opacity-50"
                 >
                   Confirm (tap)
                 </button>

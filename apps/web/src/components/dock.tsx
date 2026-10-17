@@ -2,14 +2,14 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Mic, ScanSearch, SendHorizontal } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { type Msg, useChat } from '@/lib/chat';
-import { useLive } from '@/lib/live';
-import { useAnalysis } from '@/lib/market';
-import { sendChat, sendVoiceCommand } from '@/lib/send';
-import { useSelection } from '@/lib/sessions';
-import { pickSetup, useUi } from '@/lib/ui';
-import { useTranscript, useVoice } from '@/lib/voice';
-import { directionLabel } from '@/lib/wording';
+import { type Msg, useChat } from '../lib/chat';
+import { useLive } from '../lib/live';
+import { useAnalysis } from '../lib/market';
+import { sendChat, sendVoiceCommand } from '../lib/send';
+import { useSelection } from '../lib/sessions';
+import { pickSetup, useUi } from '../lib/ui';
+import { useTranscript, useVoice } from '../lib/voice';
+import { directionLabel } from '../lib/wording';
 import { GradeChip } from './canvas-tabs';
 import { ExplainDialog } from './explain-dialog';
 
@@ -83,7 +83,7 @@ function Bubble({ m }: { m: Msg }) {
     return (
       <article className="rounded-card border border-line bg-s2 p-3">
         <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          <span className="rounded-full accent-soft px-2 py-0.5 text-accent">
+          <span className="rounded-full accent-soft px-2 py-0.5 text-accent-text">
             Scenario updated · {time(m.at)}
           </span>
           {n.aiGenerated && <AiTag />}
@@ -115,11 +115,11 @@ function Bubble({ m }: { m: Msg }) {
   return (
     <article className="rounded-card border border-line bg-s2 p-3">
       <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
-        <span className="rounded-full accent-soft px-2 py-0.5 text-accent">
+        <span className="rounded-full accent-soft px-2 py-0.5 text-accent-text">
           Chart explained · {time(m.at)}
         </span>
         {m.mode === 'APPROXIMATE' && (
-          <span className="text-warn">Approximate: read from your picture, no live data</span>
+          <span className="text-warn-text">Approximate: read from your picture, no live data</span>
         )}
         {m.done && m.ai && <AiTag />}
       </p>
@@ -161,7 +161,9 @@ function Bubble({ m }: { m: Msg }) {
           <p className="text-xs text-muted">{c.caveats.join(' ')}</p>
         </div>
       )}
-      {m.warnings.length > 0 && <p className="mt-2 text-xs text-warn">{m.warnings.join(' · ')}</p>}
+      {m.warnings.length > 0 && (
+        <p className="mt-2 text-xs text-warn-text">{m.warnings.join(' · ')}</p>
+      )}
     </article>
   );
 }
@@ -208,7 +210,7 @@ function MicButton({
       onPointerLeave={() => recording && voice.release()}
       onKeyDown={(e) => reason === null && key(e, true)}
       onKeyUp={(e) => reason === null && key(e, false)}
-      className={`grid size-10 shrink-0 place-items-center rounded-ctl border border-line ${recording ? 'bg-bear text-white' : 'bg-s2 hover:bg-s3'} ${reason ? 'opacity-50' : ''}`}
+      className={`grid size-10 shrink-0 place-items-center rounded-ctl border border-line ${recording ? 'bg-bear-strong text-white' : 'bg-s2 hover:bg-s3'} ${reason ? 'opacity-50' : ''}`}
     >
       <Mic className="size-4" aria-hidden />
       {busy && <span className="sr-only">Working…</span>}
@@ -313,7 +315,7 @@ export function Dock() {
         </p>
       )}
       {voice.warning && (
-        <p className="mt-2 text-xs text-warn" role="status">
+        <p className="mt-2 text-xs text-warn-text" role="status">
           {WARN_TEXT[voice.warning]}
         </p>
       )}
@@ -335,7 +337,7 @@ export function Dock() {
             <p className="mt-1 text-xs text-muted">Heard: “{tr.transcript.raw}”</p>
           )}
           {forbidden && (
-            <p role="alert" className="mt-1 text-warn">
+            <p role="alert" className="mt-1 text-warn-text">
               Voice cannot confirm, log, change risk, delete data or pay. Use the buttons on screen.
             </p>
           )}
@@ -351,7 +353,7 @@ export function Dock() {
               type="button"
               onClick={() => void sendTranscript()}
               disabled={!tr.text.trim() || !connected}
-              className="rounded-ctl bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-50"
+              className="rounded-ctl bg-accent-strong px-3 py-1.5 font-medium text-white disabled:opacity-50"
             >
               {forbidden ? 'Send for the record' : 'Send'}
             </button>
@@ -386,7 +388,7 @@ export function Dock() {
           type="submit"
           disabled={!connected || !text.trim()}
           aria-label="Send"
-          className="grid size-10 shrink-0 place-items-center rounded-ctl bg-accent text-white disabled:opacity-50"
+          className="grid size-10 shrink-0 place-items-center rounded-ctl bg-accent-strong text-white disabled:opacity-50"
         >
           <SendHorizontal className="size-4" aria-hidden />
         </button>

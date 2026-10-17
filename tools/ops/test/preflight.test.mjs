@@ -55,9 +55,8 @@ describe('preflight', () => {
     expect(JSON.stringify(r)).not.toContain('postgres://u:p');
   });
 
-  it('refuses a production setup with the developer client on or no admin allow-list', () => {
-    const r = evaluate({ ...base, DEV_CLIENT_ENABLED: 'true', ADMIN_IP_ALLOWLIST: '' }, null);
-    expect(by(r, 'Developer client is off').level).toBe('FAIL');
+  it('refuses a production setup with no admin allow-list', () => {
+    const r = evaluate({ ...base, ADMIN_IP_ALLOWLIST: '' }, null);
     expect(by(r, 'Admin address allow-list is set').level).toBe('FAIL');
   });
 
