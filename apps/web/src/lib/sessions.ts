@@ -1,6 +1,7 @@
 'use client';
 import type { SessionCreatedSchema, SessionDtoSchema, Timeframe } from '@smc/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import { api } from './api';
 import { createKeyHolder } from './gate';
@@ -71,6 +72,11 @@ export function useCreateSession() {
         }),
       );
     },
+    onError: () => {
+      // "Session limit reached" means a live session exists that this tab does not know about: reload the list so
+      // the room can pick it up.
+      qc.invalidateQueries({ queryKey: ['sessions'] });
+    },
     onSuccess: (s) => {
       keys.release();
       sel.set({ sessionId: s.sessionId, startedAt: new Date().toISOString() });
@@ -86,9 +92,38 @@ export function useEndSession() {
     mutationFn: async () => {
       if (sel.sessionId) await api(`/v1/sessions/${sel.sessionId}/end`, { method: 'POST' });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Refresh the list first: clearing the selection while the old list still shows this session as live would
+      // make the room adopt it again.
+      await qc.invalidateQueries({ queryKey: ['sessions'] });
       sel.set({ sessionId: null, startedAt: null });
-      qc.invalidateQueries({ queryKey: ['sessions'] });
     },
   });
+}
+
+/**
+ * Picks up the account's live session when this browser has none selected (after a reload, in another tab, or when
+ * the remembered one has ended). Without it the room looks empty while the server refuses a new session with
+ * "session limit reached".
+ */
+export function useAdoptLiveSession(sessions: ReturnType<typeof useSessions>): void {
+  const sel = useSelection();
+  const list = sessions.data;
+  const fetching = sessions.isFetching;
+  useEffect(() => {
+    if (!list || fetching) return;
+    const known = sel.sessionId ? list.find((s) => s.id === sel.sessionId) : undefined;
+    if (known && known.state !== 'ENDED') return;
+    const live = list.find((s) => s.state !== 'ENDED');
+    if (live) {
+      sel.set({
+        sessionId: live.id,
+        startedAt: live.startedAt,
+        instrumentId: live.instrumentId,
+        tf: live.tf ?? sel.tf,
+      });
+    } else if (known) {
+      sel.set({ sessionId: null, startedAt: null });
+    }
+  }, [list, fetching, sel]);
 }

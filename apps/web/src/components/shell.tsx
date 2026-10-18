@@ -24,7 +24,13 @@ import { shortAddress } from '../lib/gate';
 import { useLive, useLiveSession } from '../lib/live';
 import { useFeedStatus, useInstruments } from '../lib/queries';
 import { useNotifications } from '../lib/records';
-import { useCreateSession, useEndSession, useSelection, useSessions } from '../lib/sessions';
+import {
+  useAdoptLiveSession,
+  useCreateSession,
+  useEndSession,
+  useSelection,
+  useSessions,
+} from '../lib/sessions';
 import { useTheme } from '../lib/theme';
 import { useUi } from '../lib/ui';
 import { Canvas } from './canvas';
@@ -133,6 +139,7 @@ function BudgetMeter() {
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const me = useMe(true);
   const sessions = useSessions(true);
+  useAdoptLiveSession(sessions);
   const inst = useInstruments();
   const create = useCreateSession();
   const sel = useSelection();

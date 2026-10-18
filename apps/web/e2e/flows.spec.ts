@@ -84,6 +84,35 @@ test('starting a session sends one idempotency key and ending it clears the room
   await expect(page.getByRole('button', { name: 'End session' })).toHaveCount(0);
 });
 
+test('a live session the browser does not remember is picked up, so the room is not empty and New session is not refused', async ({
+  page,
+}) => {
+  await openRoom(page, {
+    onRoute: (path, method) =>
+      path === '/v1/sessions' && method === 'GET'
+        ? {
+            status: 200,
+            json: {
+              items: [
+                {
+                  id: SESSION_ID,
+                  instrumentId: INST_FULL,
+                  tf: '15m',
+                  mode: 'FEED',
+                  state: 'ACTIVE',
+                  startedAt: '2026-10-18T08:00:00Z',
+                  endedAt: null,
+                },
+              ],
+              nextCursor: null,
+            },
+          }
+        : undefined,
+  });
+  await expect(page.getByRole('button', { name: 'End session' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Share screen' })).toBeEnabled();
+});
+
 test.describe('confirm gate', () => {
   async function toDialog(page: Page, opts: Parameters<typeof mockApi>[1] = {}, pick = true) {
     const calls = await openRoom(page, { withSetup: true, ...opts });
