@@ -1,5 +1,6 @@
 .next
 .next-e2e
+.next-prod
 next-env.d.ts
 tsconfig.tsbuildinfo
 public/vendor

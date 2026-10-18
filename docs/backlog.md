@@ -100,4 +100,3 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 - Clean `dist` before `tsc` in package builds (audit A16).
 - Generate the web's instrument and other DTO types from `packages/contracts` instead of hand-written copies.
 - Remove unused package dependencies on `@smc/contracts` in `packages/db` and `packages/testing`; prune unused exports flagged by knip (audit hygiene pass).
-- Decide how the web app is hosted and add it to the deploy settings and docs (audit A18).
