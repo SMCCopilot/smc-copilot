@@ -1,6 +1,14 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { INST_FULL, INST_RAW_OFF, me, mockApi, SESSION_ID, signIn } from './mock';
+import {
+  INST_BINANCE_NO_RAW,
+  INST_FULL,
+  INST_RAW_OFF,
+  me,
+  mockApi,
+  SESSION_ID,
+  signIn,
+} from './mock';
 
 async function openRoom(page: Page, opts: Parameters<typeof mockApi>[1] = {}) {
   await page.route('http://supabase.test/**', (r) => r.fulfill({ status: 404, body: '{}' }));
@@ -64,6 +72,40 @@ test('a licence-restricted instrument switches to overlay-only and never asks fo
   expect(calls.paths.some((p) => p.endsWith('/candles'))).toBe(false);
   await page.getByLabel('Instrument').selectOption(INST_FULL);
   await expect.poll(() => calls.paths.some((p) => p.endsWith('/candles'))).toBe(true);
+});
+
+test('where our servers hold no price terms, the user can show live prices straight from Binance, or turn them off', async ({
+  page,
+}) => {
+  // Binance's own answer, intercepted: 120 candles of 15 minutes.
+  const now = Math.floor(Date.now() / 900_000) * 900_000;
+  await page.route('https://fapi.binance.com/fapi/v1/klines**', (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify(
+        Array.from({ length: 120 }, (_, i) => {
+          const t = now - (120 - i) * 900_000;
+          return [t, '150', '151', '149', '150.5', '10', t + 899_999, '0', 1, '0', '0', '0'];
+        }),
+      ),
+    }),
+  );
+  const calls = await openRoom(page);
+  await page.getByLabel('Instrument').selectOption(INST_BINANCE_NO_RAW);
+  await expect(
+    page.getByText(/Live prices from Binance, sent straight to your browser/),
+  ).toBeVisible();
+  await expect(page.locator('section[aria-label="Chart"] canvas').first()).toBeVisible();
+  // Our own candle route is never asked: the prices do not come through our servers.
+  expect(calls.paths.some((p) => p.endsWith('/candles'))).toBe(false);
+  await expect(page.getByText('Raw prices unavailable for this venue')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Turn off live prices' }).click();
+  await expect(page.getByText(/Live prices are off/)).toBeVisible();
+  await expect(page.locator('section[aria-label="Chart"] canvas')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Show live prices from Binance' }).click();
+  await expect(page.locator('section[aria-label="Chart"] canvas').first()).toBeVisible();
 });
 
 test('starting a session sends one idempotency key and ending it clears the room', async ({

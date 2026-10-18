@@ -173,6 +173,20 @@ export interface SttEngine {
     signal: AbortSignal,
   ): Promise<{ text: string; confidence: number; language?: string }>;
 }
+/**
+ * A recogniser that runs while the key is held and reports words as they are heard (the browser's own on-device
+ * speech recognition). It takes the microphone itself, so no audio ever reaches this code.
+ */
+export interface LiveRecognizer {
+  readonly tag: SttEngineTag;
+  /** Starts listening; `onPartial` gets the words heard so far. Rejects when it cannot start (denied, no language pack). */
+  start(onPartial: (text: string) => void): Promise<void>;
+  /** Stops and resolves with the final text; the empty string when nothing was heard. */
+  stop(): Promise<{ text: string; confidence: number }>;
+  /** Drops the session without a result. */
+  abort(): void;
+}
+
 export interface VoiceClock {
   now(): number;
   after(ms: number, fn: () => void): () => void;
@@ -223,6 +237,10 @@ export interface VoiceOptions {
   onWarning: (w: VoiceWarning) => void;
   /** Metadata only (engine, timings, outcome). Never audio, never text. */
   onReport: (r: VoiceReport) => void;
+  /** Tried first when present: live words while the key is held. Falls back to `capture` and `engines` when it fails. */
+  live?: LiveRecognizer;
+  /** Words heard so far while the key is held (only with `live`); an empty string clears the display. */
+  onPartial?: (text: string) => void;
   /** Samples shorter than this are treated as no speech. */
   minSamples?: number;
 }
@@ -240,7 +258,7 @@ export class PushToTalk {
   readonly latencies: number[] = [];
 
   constructor(private readonly o: VoiceOptions) {
-    if (o.engines.length === 0) this.set('UNAVAILABLE');
+    if (o.engines.length === 0 && !o.live) this.set('UNAVAILABLE');
   }
 
   /** Timings come from a high-resolution clock (fractions of a millisecond); the server wants whole milliseconds. */
@@ -266,18 +284,38 @@ export class PushToTalk {
   /** The button was let go before the microphone finished opening. */
   private releaseEarly = false;
   private failures = new Map<SttEngineTag, number>();
+  /** True while this utterance is being heard by the live recogniser rather than recorded for an engine. */
+  private usingLive = false;
+  private liveFailed = false;
 
   async press(): Promise<void> {
     if (this.busy || (this.state !== 'IDLE' && this.state !== 'REVIEW')) return;
-    if (this.o.engines.every((e) => this.failed.has(e.tag))) {
+    const live = this.o.live && !this.liveFailed ? this.o.live : null;
+    if (!live && this.o.engines.every((e) => this.failed.has(e.tag))) {
       this.set('UNAVAILABLE');
       this.o.onWarning('STT_UNAVAILABLE');
       return;
     }
     this.busy = true;
     this.releaseEarly = false;
+    this.usingLive = false;
+    if (live) {
+      try {
+        await live.start((text) => this.o.onPartial?.(text));
+        this.usingLive = true;
+      } catch {
+        // Denied or no language pack: fall back to recording for the on-device models (if there are any).
+        this.liveFailed = true;
+        if (this.o.engines.length === 0) {
+          this.busy = false;
+          this.o.onWarning('MIC_PERMISSION_DENIED');
+          this.set('UNAVAILABLE');
+          return;
+        }
+      }
+    }
     try {
-      await this.o.capture.start();
+      if (!this.usingLive) await this.o.capture.start();
     } catch {
       this.busy = false;
       this.o.onWarning('MIC_PERMISSION_DENIED');
@@ -307,6 +345,29 @@ export class PushToTalk {
     this.set('TRANSCRIBING');
     let pcm: Float32Array | null = null;
     const durationMs = releasedAt - this.recordedAt;
+    if (this.usingLive && this.o.live) {
+      this.usingLive = false;
+      try {
+        const r = await this.o.live.stop();
+        this.o.onPartial?.('');
+        const latencyMs = this.o.clock.now() - releasedAt;
+        this.latencies.push(latencyMs);
+        this.deliver(this.o.live.tag, r.text, r.confidence, latencyMs, durationMs);
+      } catch {
+        this.o.onPartial?.('');
+        this.report({
+          engine: this.o.live.tag,
+          outcome: 'ERROR',
+          durationMs,
+          errorCode: 'ENGINE_FAILED',
+        });
+        this.o.onWarning('NO_SPEECH');
+        this.set('IDLE');
+      } finally {
+        this.busy = false;
+      }
+      return;
+    }
     try {
       try {
         pcm = await this.o.capture.stop();
@@ -371,7 +432,7 @@ export class PushToTalk {
   }
 
   private firstEngine(): SttEngineTag {
-    return this.o.engines[0]?.tag ?? 'typed';
+    return this.o.engines[0]?.tag ?? this.o.live?.tag ?? 'typed';
   }
 
   private deliver(

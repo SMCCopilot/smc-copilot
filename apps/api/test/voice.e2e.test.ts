@@ -162,6 +162,17 @@ describe('POST /v1/voice/events', () => {
           .send({ sessionId: a.sessionId, engine: 'whisper-web', outcome: 'OK' })
       ).status,
     ).toBe(404);
+    // The browser's own on-device recognition is a valid engine, with whole-millisecond timings.
+    const local = await request(http).post('/v1/voice/events').set('Authorization', a.auth).send({
+      sessionId: a.sessionId,
+      engine: 'browser-local',
+      outcome: 'OK',
+      durationMs: 1800,
+      latencyMs: 120,
+      confidence: 0.93,
+    });
+    expect(local.status).toBe(204);
+    expect((await sql`select 1 from voice_events where engine = 'browser-local'`).length).toBe(1);
     // No place for text or audio: unknown fields are refused.
     expect(
       (

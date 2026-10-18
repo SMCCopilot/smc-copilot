@@ -137,11 +137,14 @@ export interface VoiceStore {
   /** The transcript the user is reviewing (editable), or null. */
   transcript: Transcript | null;
   text: string;
+  /** Words heard so far while the key is held (live recognition only). */
+  partial: string;
   set: (p: Partial<Omit<VoiceStore, 'set'>>) => void;
 }
 export const useTranscript = create<VoiceStore>((set) => ({
   transcript: null,
   text: '',
+  partial: '',
   set: (p) => set(p),
 }));
 
@@ -154,6 +157,7 @@ export function useVoice(sessionId: string | null) {
   const [status, setStatus] = useState<VoiceStatus>('OFF');
   const [warning, setWarning] = useState<VoiceWarning | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
+  const [engineTag, setEngineTag] = useState<string | null>(null);
   const confirmOpen = useUi((s) => s.confirmOpen);
 
   // Leaving the session, or closing the page, drops the models and any recording.
@@ -170,6 +174,8 @@ export function useVoice(sessionId: string | null) {
     if (status === 'LOADING' || status === 'READY') return;
     setStatus('LOADING');
     setDetail('Preparing speech recognition on this device…');
+    // First, while the click still counts as a user action (installing a language pack needs one).
+    const liveTry = import('./live-speech').then((m) => m.createBrowserRecognizer(setDetail));
     try {
       const [{ PushToTalk, engineChain }, { VoiceConfigSchema, GlossarySchema }] =
         await Promise.all([import('@smc/capture-kit'), import('@smc/contracts')]);
@@ -180,9 +186,11 @@ export function useVoice(sessionId: string | null) {
         hasWasm: typeof WebAssembly === 'object',
         hasMicrophoneApi: typeof navigator.mediaDevices?.getUserMedia === 'function',
       });
+      const live = await liveTry.catch(() => null);
       const engines: SttEngine[] = [];
       const reasons: string[] = [];
-      for (const choice of chain) {
+      // With the browser's own on-device recognition there is no need to download a model as well.
+      for (const choice of live ? [] : chain) {
         const conf = cfg.engines.find((e) => e.tag === choice.tag);
         const pin = conf?.files[0] ? repoOf(conf.files[0].url) : null;
         if (!conf || !pin) continue;
@@ -223,8 +231,10 @@ export function useVoice(sessionId: string | null) {
         onTranscript: (t) => useTranscript.getState().set({ transcript: t, text: t.text }),
         onWarning: setWarning,
         onReport: report,
+        ...(live ? { live } : {}),
+        onPartial: (t) => useTranscript.getState().set({ partial: t }),
       });
-      if (engines.length === 0) {
+      if (engines.length === 0 && !live) {
         setStatus('UNAVAILABLE');
         setDetail(
           `Speech recognition is not available on this device. Type instead.${reasons.length ? ` (${reasons.join('; ')})` : ''}`,
@@ -232,6 +242,9 @@ export function useVoice(sessionId: string | null) {
       } else {
         setStatus('READY');
         setDetail(null);
+        setEngineTag(
+          live ? 'browser-local' : ((engines[0] as { tag: string } | undefined)?.tag ?? null),
+        );
       }
     } catch {
       setStatus('UNAVAILABLE');
@@ -247,8 +260,8 @@ export function useVoice(sessionId: string | null) {
   const release = useCallback(() => void ptt.current?.release(), []);
   const done = useCallback(() => {
     ptt.current?.done();
-    useTranscript.getState().set({ transcript: null, text: '' });
+    useTranscript.getState().set({ transcript: null, text: '', partial: '' });
   }, []);
 
-  return { state, status, warning, detail, confirmOpen, enable, press, release, done };
+  return { state, status, warning, detail, engineTag, confirmOpen, enable, press, release, done };
 }

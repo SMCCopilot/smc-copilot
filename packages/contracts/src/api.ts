@@ -149,7 +149,7 @@ export const SessionCreateSchema = z.strictObject({
       surface: z.enum(['TAB', 'WINDOW', 'SCREEN', 'NONE']),
       webgpu: z.boolean(),
       /** Speech engine chosen on the device, for the voice log. */
-      stt: z.enum(['whisper-web', 'moonshine-web', 'typed']).optional(),
+      stt: z.enum(['whisper-web', 'moonshine-web', 'browser-local', 'typed']).optional(),
     })
     .optional(),
 });

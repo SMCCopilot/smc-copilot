@@ -210,7 +210,7 @@ function MicButton({
       onPointerLeave={() => recording && voice.release()}
       onKeyDown={(e) => reason === null && key(e, true)}
       onKeyUp={(e) => reason === null && key(e, false)}
-      className={`grid size-10 shrink-0 place-items-center rounded-ctl border border-line ${recording ? 'bg-bear-strong text-white' : 'bg-s2 hover:bg-s3'} ${reason ? 'opacity-50' : ''}`}
+      className={`grid size-10 shrink-0 place-items-center rounded-ctl border border-line ${recording ? 'animate-pulse bg-bear-strong text-white' : 'bg-s2 hover:bg-s3'} ${reason ? 'opacity-50' : ''}`}
     >
       <Mic className="size-4" aria-hidden />
       {busy && <span className="sr-only">Working…</span>}
@@ -313,6 +313,23 @@ export function Dock() {
         <p className="mt-2 text-xs text-muted" role="status">
           {voice.detail}
         </p>
+      )}
+      {(voice.state === 'RECORDING' || voice.state === 'TRANSCRIBING') && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-2 rounded-card border border-bear-text bg-s2 p-3"
+        >
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <span className="size-2.5 animate-pulse rounded-full bg-bear" aria-hidden />
+            {voice.state === 'RECORDING'
+              ? 'Listening… release to review'
+              : 'Working out what you said…'}
+          </p>
+          <p className="mt-1 min-h-5 text-fg">
+            {tr.partial || (voice.state === 'RECORDING' ? 'Speak now' : '')}
+          </p>
+        </div>
       )}
       {voice.warning && (
         <p className="mt-2 text-xs text-warn-text" role="status">

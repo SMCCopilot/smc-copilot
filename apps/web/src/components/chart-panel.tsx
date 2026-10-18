@@ -3,6 +3,7 @@ import { CandlestickChart } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useMemo } from 'react';
 import { ApiError } from '../lib/errors';
+import { useLivePricePref, useLivePrices } from '../lib/live-prices';
 import { useAnalysis, useCandles } from '../lib/market';
 import { buildOverlays, LAYER_LABEL, LAYERS, structureMarks, visible } from '../lib/overlays';
 import { useInstruments } from '../lib/queries';
@@ -16,6 +17,8 @@ const ChartRuler = dynamic(() => import('./chart-ruler'), { ssr: false });
 
 const NO_RAW =
   'Raw prices unavailable for this venue; use your own chart and share your screen to explain.';
+const BLOCKED =
+  'Binance does not serve live prices to your location, so only the analysis levels are shown. You can still share your own chart.';
 
 function Message({ text, tone }: { text: string; tone?: 'warn' }) {
   return (
@@ -38,7 +41,19 @@ export function ChartPanel() {
   const candles = useCandles(sel.instrumentId, sel.tf, wantRaw);
   const restricted =
     candles.error instanceof ApiError && candles.error.code === 'FEED_LICENSE_RESTRICTED';
-  const rawMode = wantRaw && !restricted;
+  const serverRaw = wantRaw && !restricted;
+  // Our servers show prices only where the venue's terms are on record. Where they are not, the user can still choose
+  // to see live prices that Binance sends straight to this browser (our servers do not relay them).
+  const canDirect = instrument?.venue === 'BINANCE' && !serverRaw;
+  const pref = useLivePricePref();
+  const direct = useLivePrices(
+    instrument?.canonical,
+    instrument?.marketType,
+    sel.tf,
+    canDirect && pref.on,
+  );
+  const directMode = canDirect && pref.on && direct.candles !== null;
+  const rawMode = serverRaw || directMode;
   const precision = instrument?.pricePrecision ?? 2;
 
   const setup = pickSetup(analysis.data, ui.setupId, ui.dismissed);
@@ -63,7 +78,19 @@ export function ChartPanel() {
         tone="warn"
       />
     );
-  } else if (rawMode) {
+  } else if (directMode && direct.candles) {
+    body = (
+      <ChartFull
+        key={`${sel.instrumentId}:${sel.tf}:direct`}
+        candles={direct.candles}
+        overlays={overlays}
+        marks={marks}
+        precision={precision}
+      />
+    );
+  } else if (canDirect && pref.on && direct.state === 'LOADING') {
+    body = <Message text="Loading live prices from Binance…" />;
+  } else if (serverRaw) {
     body = candles.data ? (
       <ChartFull
         key={`${sel.instrumentId}:${sel.tf}`}
@@ -116,10 +143,44 @@ export function ChartPanel() {
           DEV: raw prices enabled (local development only)
         </p>
       )}
-      {instrument && !rawMode && (
+      {instrument && !rawMode && !canDirect && (
         <p role="status" className="border-b border-line bg-s2 px-3 py-1.5 text-xs text-warn-text">
           {NO_RAW}
         </p>
+      )}
+      {canDirect && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-s2 px-3 py-1.5 text-xs"
+        >
+          {pref.on && direct.state === 'BLOCKED' ? (
+            <span className="text-warn-text">{BLOCKED}</span>
+          ) : pref.on && direct.state === 'ERROR' ? (
+            <span className="text-warn-text">
+              Could not load live prices from Binance. Retrying…
+            </span>
+          ) : pref.on ? (
+            <span className="text-muted">
+              <span
+                className={`mr-1.5 inline-block size-2 rounded-full ${direct.state === 'LIVE' ? 'bg-bull' : 'bg-warn'}`}
+                aria-hidden
+              />
+              Live prices from Binance, sent straight to your browser (our servers do not relay
+              them).
+            </span>
+          ) : (
+            <span className="text-muted">
+              Live prices are off. Levels and zones still show; you can also share your own chart.
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => pref.set(!pref.on)}
+            className="rounded-ctl border border-line px-2 py-0.5 hover:bg-s3"
+          >
+            {pref.on ? 'Turn off live prices' : 'Show live prices from Binance'}
+          </button>
+        </div>
       )}
       <div className="min-h-0 flex-1">{body}</div>
       {rawMode && (

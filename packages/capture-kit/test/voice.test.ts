@@ -261,6 +261,96 @@ describe('push to talk', () => {
     return e;
   };
 
+  describe("live words (the browser's own on-device recognition)", () => {
+    const liveRec = (opts: { startFails?: boolean; text?: string; confidence?: number } = {}) => {
+      const seen: string[] = [];
+      let push: (t: string) => void = () => {};
+      const r = {
+        tag: 'browser-local' as const,
+        started: 0,
+        stopped: 0,
+        async start(onPartial: (t: string) => void) {
+          r.started++;
+          if (opts.startFails) throw new Error('language-not-supported');
+          push = onPartial;
+        },
+        async stop() {
+          r.stopped++;
+          return { text: opts.text ?? 'bee tee see perp', confidence: opts.confidence ?? 0.9 };
+        },
+        abort() {},
+        say: (t: string) => push(t),
+        seen,
+      };
+      return r;
+    };
+    function liveRig(live: ReturnType<typeof liveRec>, engines: SttEngine[] = []) {
+      const partials: string[] = [];
+      const log = {
+        transcripts: [] as Transcript[],
+        reports: [] as VoiceReport[],
+        warnings: [] as VoiceWarning[],
+        states: [] as VoiceState[],
+      };
+      const p = new PushToTalk({
+        capture: { start: async () => {}, stop: async () => new Float32Array(16000).fill(0.1) },
+        engines,
+        live,
+        glossary: () => buildGlossary(['BTC', 'ETH']),
+        clock: { now: () => 1000, after: () => () => {} },
+        minConfidence: 0.6,
+        maxUtteranceMs: 15000,
+        onState: (s) => log.states.push(s),
+        onTranscript: (x) => log.transcripts.push(x),
+        onWarning: (w) => log.warnings.push(w),
+        onReport: (r) => log.reports.push(r),
+        onPartial: (x) => partials.push(x),
+      });
+      return { p, log, partials };
+    }
+
+    it('shows the words while the key is held, then hands over the corrected final text', async () => {
+      const live = liveRec();
+      const { p, log, partials } = liveRig(live);
+      await p.press();
+      expect(p.current).toBe('RECORDING');
+      live.say('bee tee');
+      live.say('bee tee see perp');
+      await p.release();
+      expect(partials).toEqual(['bee tee', 'bee tee see perp', '']);
+      expect(log.transcripts[0]).toMatchObject({ text: 'BTC perp', engine: 'browser-local' });
+      expect(log.reports[0]).toMatchObject({ engine: 'browser-local', outcome: 'OK' });
+      expect(p.current).toBe('REVIEW');
+    });
+
+    it('with no engines it still works, and a refusal to start falls back to typing (never to the cloud)', async () => {
+      const ok = liveRig(liveRec());
+      expect(ok.p.current).toBe('IDLE');
+      const bad = liveRig(liveRec({ startFails: true }));
+      await bad.p.press();
+      expect(bad.log.warnings).toContain('MIC_PERMISSION_DENIED');
+      expect(bad.p.current).toBe('UNAVAILABLE');
+    });
+
+    it('falls back to recording for the on-device models when the live recogniser cannot start', async () => {
+      const eng = engine('whisper-web', 'btc');
+      const r = liveRig(liveRec({ startFails: true }), [eng]);
+      await r.p.press();
+      expect(r.p.current).toBe('RECORDING');
+      await r.p.release();
+      expect(eng.calls).toBe(1);
+      expect(r.log.transcripts[0]?.engine).toBe('whisper-web');
+    });
+
+    it('treats an empty result as no speech', async () => {
+      const r = liveRig(liveRec({ text: '   ' }));
+      await r.p.press();
+      await r.p.release();
+      expect(r.log.warnings).toContain('NO_SPEECH');
+      expect(r.p.current).toBe('IDLE');
+    });
+  });
+
   it('reports whole milliseconds even when the clock has fractions (the server refuses fractions)', async () => {
     const { p, log, advance } = rig([engine('whisper-web', 'btc')], undefined, 1000.37);
     await p.press();
