@@ -197,8 +197,8 @@ describe('what may leave the device', () => {
 
 describe('push to talk', () => {
   const glossary = buildGlossary(['BTC', 'ETH']);
-  function rig(engines: SttEngine[], capture?: Partial<AudioCapture>) {
-    let t = 1000;
+  function rig(engines: SttEngine[], capture?: Partial<AudioCapture>, startAt = 1000) {
+    let t = startAt;
     const timers: { at: number; fn: () => void }[] = [];
     const log = {
       states: [] as VoiceState[],
@@ -260,6 +260,16 @@ describe('push to talk', () => {
     };
     return e;
   };
+
+  it('reports whole milliseconds even when the clock has fractions (the server refuses fractions)', async () => {
+    const { p, log, advance } = rig([engine('whisper-web', 'btc')], undefined, 1000.37);
+    await p.press();
+    advance(1234.567);
+    await p.release();
+    const r = log.reports[0];
+    expect(Number.isInteger(r?.durationMs)).toBe(true);
+    expect(r?.latencyMs === undefined || Number.isInteger(r.latencyMs)).toBe(true);
+  });
 
   it('hold, release, then an editable corrected transcript, with metadata reported', async () => {
     const { p, log } = rig([engine('whisper-web', 'bee tee see perp')]);

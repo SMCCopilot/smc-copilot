@@ -243,6 +243,15 @@ export class PushToTalk {
     if (o.engines.length === 0) this.set('UNAVAILABLE');
   }
 
+  /** Timings come from a high-resolution clock (fractions of a millisecond); the server wants whole milliseconds. */
+  private report(r: VoiceReport): void {
+    this.o.onReport({
+      ...r,
+      ...(r.durationMs !== undefined ? { durationMs: Math.round(r.durationMs) } : {}),
+      ...(r.latencyMs !== undefined ? { latencyMs: Math.round(r.latencyMs) } : {}),
+    });
+  }
+
   get current(): VoiceState {
     return this.state;
   }
@@ -302,7 +311,7 @@ export class PushToTalk {
       try {
         pcm = await this.o.capture.stop();
       } catch {
-        this.o.onReport({
+        this.report({
           engine: this.firstEngine(),
           outcome: 'ERROR',
           durationMs,
@@ -313,7 +322,7 @@ export class PushToTalk {
         return;
       }
       if (pcm.length < (this.o.minSamples ?? 4800)) {
-        this.o.onReport({ engine: this.firstEngine(), outcome: 'NO_SPEECH', durationMs });
+        this.report({ engine: this.firstEngine(), outcome: 'NO_SPEECH', durationMs });
         this.o.onWarning('NO_SPEECH');
         this.set('IDLE');
         return;
@@ -343,7 +352,7 @@ export class PushToTalk {
           const n = (this.failures.get(engine.tag) ?? 0) + 1;
           this.failures.set(engine.tag, n);
           if (n >= 2) this.failed.add(engine.tag);
-          this.o.onReport({
+          this.report({
             engine: engine.tag,
             outcome: 'ERROR',
             durationMs,
@@ -374,7 +383,7 @@ export class PushToTalk {
   ): void {
     const trimmed = raw.trim();
     if (!trimmed) {
-      this.o.onReport({ engine, outcome: 'NO_SPEECH', durationMs, latencyMs });
+      this.report({ engine, outcome: 'NO_SPEECH', durationMs, latencyMs });
       this.o.onWarning('NO_SPEECH');
       this.set('IDLE');
       return;
@@ -391,7 +400,7 @@ export class PushToTalk {
       latencyMs,
     };
     const low = confidence < this.o.minConfidence;
-    this.o.onReport({
+    this.report({
       engine,
       outcome: low ? 'LOW_CONFIDENCE' : 'OK',
       durationMs,
