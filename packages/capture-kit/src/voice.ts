@@ -163,6 +163,40 @@ const PARTIAL_EVERY_MS = 900;
 const MIN_PARTIAL_SAMPLES = 9600; // 0.6 s at 16 kHz
 const MAX_PARTIAL_SAMPLES = 16000 * 20;
 
+// ---- microphone level ---------------------------------------------------------------------------------------------------
+
+/** Below this loudness (about -54 dBFS) the microphone is treated as giving no sound at all. */
+export const SILENCE_LEVEL = 0.002;
+const TARGET_LEVEL = 0.7;
+const MAX_GAIN = 60;
+
+/** How loud the recording is, ignoring one-off clicks: the 99.5th percentile of sample sizes (0 to 1). */
+export function levelOf(pcm: Float32Array): number {
+  if (pcm.length === 0) return 0;
+  const step = Math.max(1, Math.floor(pcm.length / 4000));
+  const sizes: number[] = [];
+  for (let i = 0; i < pcm.length; i += step) sizes.push(Math.abs(pcm[i] as number));
+  sizes.sort((a, b) => a - b);
+  return sizes[Math.min(sizes.length - 1, Math.floor(sizes.length * 0.995))] as number;
+}
+
+/**
+ * Brings a quiet recording up to a normal loudness, in place, and returns how loud it was before. Many microphones
+ * arrive far too quiet for speech recognition, which then hears nothing. Loud recordings are left alone.
+ */
+export function normalizeLevel(pcm: Float32Array): number {
+  const level = levelOf(pcm);
+  if (level < SILENCE_LEVEL) return level;
+  const gain = Math.min(MAX_GAIN, TARGET_LEVEL / level);
+  if (gain > 1.05) {
+    for (let i = 0; i < pcm.length; i++) {
+      const v = (pcm[i] as number) * gain;
+      pcm[i] = v > 1 ? 1 : v < -1 ? -1 : v;
+    }
+  }
+  return level;
+}
+
 // ---- push to talk ------------------------------------------------------------------------------------------------------
 
 export interface AudioCapture {
@@ -172,6 +206,8 @@ export interface AudioCapture {
   stop(): Promise<Float32Array>;
   /** A copy of the audio so far (16 kHz mono) without stopping, so words can be shown while the key is held. */
   peek?(): Float32Array;
+  /** How loud the microphone is right now (0 to 1), for the level meter. */
+  level?(): number;
 }
 export interface SttEngine {
   readonly tag: SttEngineTag;
@@ -190,6 +226,7 @@ export type VoiceWarning =
   | 'MIC_PERMISSION_DENIED'
   | 'STT_UNAVAILABLE'
   | 'NO_SPEECH'
+  | 'MIC_SILENT'
   | 'LOW_CONFIDENCE'
   | 'TOO_LONG';
 
@@ -338,6 +375,18 @@ export class PushToTalk {
         this.set('IDLE');
         return;
       }
+      if (normalizeLevel(pcm) < SILENCE_LEVEL) {
+        // The microphone gave no sound at all (muted, wrong input device): say so rather than "nothing heard".
+        this.report({
+          engine: this.firstEngine(),
+          outcome: 'NO_SPEECH',
+          durationMs,
+          errorCode: 'MIC_SILENT',
+        });
+        this.o.onWarning('MIC_SILENT');
+        this.set('IDLE');
+        return;
+      }
       for (const engine of this.o.engines) {
         if (this.failed.has(engine.tag)) continue;
         const ctl = new AbortController();
@@ -420,6 +469,7 @@ export class PushToTalk {
     // Only the last stretch: a long utterance must not make every pass slower.
     const recent =
       pcm.length > MAX_PARTIAL_SAMPLES ? pcm.slice(pcm.length - MAX_PARTIAL_SAMPLES) : pcm;
+    if (normalizeLevel(recent) < SILENCE_LEVEL) return;
     this.partialBusy = true;
     const ctl = new AbortController();
     this.partialCtl = ctl;

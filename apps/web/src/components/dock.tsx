@@ -169,7 +169,9 @@ function Bubble({ m }: { m: Msg }) {
 }
 
 const WARN_TEXT: Record<string, string> = {
-  NO_SPEECH: 'I did not hear anything. Click the mic, speak, then click it again.',
+  NO_SPEECH: 'I could not make out any words. Speak a little closer, then try again.',
+  MIC_SILENT:
+    'Your microphone gave no sound. Check it is not muted and the right one is selected in your browser, then try again.',
   LOW_CONFIDENCE: 'I may have misheard. Check the text before sending.',
   TOO_LONG: 'That was too long, so recording stopped.',
   MIC_PERMISSION_DENIED: 'Microphone access is blocked. Allow it in your browser, or type instead.',
@@ -336,6 +338,22 @@ export function Dock() {
           <p className="mt-1 min-h-5 text-fg">
             {tr.partial || (voice.state === 'RECORDING' ? 'Speak now' : '')}
           </p>
+          {voice.state === 'RECORDING' && (
+            <>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-s3" aria-hidden>
+                <div
+                  className="h-full rounded-full bg-bull transition-[width] duration-75"
+                  style={{ width: `${Math.min(100, Math.round(Math.sqrt(tr.level) * 140))}%` }}
+                />
+              </div>
+              {tr.quiet && (
+                <p className="mt-1 text-xs text-warn-text">
+                  I cannot hear your microphone. Check it is not muted and the right one is
+                  selected.
+                </p>
+              )}
+            </>
+          )}
         </div>
       )}
       {voice.warning && (

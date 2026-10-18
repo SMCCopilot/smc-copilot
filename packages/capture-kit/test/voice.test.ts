@@ -6,13 +6,16 @@ import {
   type AudioCapture,
   EnergyVad,
   engineChain,
+  levelOf,
   loadVerified,
   type ModelFile,
   ModelIntegrityError,
   type ModelIo,
+  normalizeLevel,
   PushToTalk,
   percentile,
   rms,
+  SILENCE_LEVEL,
   type SttEngine,
   type Transcript,
   type VoiceReport,
@@ -283,6 +286,33 @@ describe('push to talk', () => {
     expect(log.partials).toHaveLength(2);
   });
 
+  it('brings a quiet microphone up to a normal level before the engine hears it', async () => {
+    let heard = 0;
+    const eng: SttEngine = {
+      tag: 'moonshine-web',
+      transcribe: async (pcm) => {
+        heard = levelOf(pcm);
+        return { text: 'what is the daily structure', confidence: 0.9 };
+      },
+    };
+    const { p, log } = rig([eng], { stop: async () => new Float32Array(16000).fill(0.01) });
+    await p.press();
+    await p.release();
+    expect(heard).toBeGreaterThan(0.5);
+    expect(log.transcripts[0]?.raw).toBe('what is the daily structure');
+  });
+
+  it('says the microphone gave no sound, without asking an engine, when the recording is silent', async () => {
+    const eng = engine('moonshine-web', 'x');
+    const { p, log } = rig([eng], { stop: async () => new Float32Array(16000).fill(0.0001) });
+    await p.press();
+    await p.release();
+    expect(eng.calls).toBe(0);
+    expect(log.warnings).toEqual(['MIC_SILENT']);
+    expect(log.reports[0]).toMatchObject({ outcome: 'NO_SPEECH', errorCode: 'MIC_SILENT' });
+    expect(log.states.at(-1)).toBe('IDLE');
+  });
+
   it('reports whole milliseconds even when the clock has fractions (the server refuses fractions)', async () => {
     const { p, log, advance } = rig([engine('whisper-web', 'btc')], undefined, 1000.37);
     await p.press();
@@ -512,5 +542,21 @@ describe('push to talk: review regressions', () => {
     await releasing;
     expect(r.warnings).toContain('STT_UNAVAILABLE');
     expect(r.p.current).not.toBe('TRANSCRIBING');
+  });
+});
+
+describe('microphone level', () => {
+  it('ignores one-off clicks and leaves loud audio alone', () => {
+    const quiet = new Float32Array(16000).fill(0.01);
+    quiet[5] = 0.9;
+    expect(levelOf(quiet)).toBeCloseTo(0.01, 3);
+    const loud = new Float32Array(1000).fill(0.8);
+    expect(normalizeLevel(loud)).toBeCloseTo(0.8, 3);
+    expect(loud[0]).toBeCloseTo(0.8, 3);
+  });
+  it('caps the boost so hiss is not blown up into speech', () => {
+    const hiss = new Float32Array(1000).fill(SILENCE_LEVEL * 1.1);
+    normalizeLevel(hiss);
+    expect(hiss[0]).toBeLessThan(0.2);
   });
 });

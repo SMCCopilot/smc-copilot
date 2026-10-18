@@ -12,17 +12,27 @@ import { api } from './api';
 import { prepareSpeech, useSpeech } from './speech-loader';
 import { useUi } from './ui';
 
+/** Same value as SILENCE_LEVEL in capture-kit (kept here so the page does not load the whole package up front). */
+const SILENCE_LEVEL = 0.002;
+
 /** The microphone buffer: 16 kHz mono samples held in memory only, dropped by the controller after each utterance. */
 class MicCapture {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private node: AudioWorkletNode | null = null;
   private chunks: Float32Array[] = [];
+  private lvl = 0;
 
   async start(): Promise<void> {
     this.chunks = [];
+    this.lvl = 0;
     this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
     });
     const ctx = new AudioContext({ sampleRate: 16000 });
     this.ctx = ctx;
@@ -36,9 +46,17 @@ class MicCapture {
     const node = new AudioWorkletNode(ctx, 'rec');
     node.port.onmessage = (e: MessageEvent<Float32Array>) => {
       this.chunks.push(e.data);
+      let p = 0;
+      for (const v of e.data) p = Math.max(p, Math.abs(v));
+      this.lvl = Math.max(p, this.lvl * 0.9);
     };
     ctx.createMediaStreamSource(this.stream).connect(node);
     this.node = node;
+  }
+
+  /** How loud the microphone is right now (0 to 1), for the level meter. */
+  level(): number {
+    return this.lvl;
   }
 
   /** A copy of what has been recorded so far at 16 kHz, without stopping (for the live preview). */
@@ -91,14 +109,20 @@ export interface VoiceStore {
   /** The transcript the user is reviewing (editable), or null. */
   transcript: Transcript | null;
   text: string;
-  /** Words heard so far while the key is held (live recognition only). */
+  /** Words heard so far while recording (a preview). */
   partial: string;
+  /** Microphone loudness while recording, 0 to 1. */
+  level: number;
+  /** Recording for a few seconds and the microphone has given no sound at all. */
+  quiet: boolean;
   set: (p: Partial<Omit<VoiceStore, 'set'>>) => void;
 }
 export const useTranscript = create<VoiceStore>((set) => ({
   transcript: null,
   text: '',
   partial: '',
+  level: 0,
+  quiet: false,
   set: (p) => set(p),
 }));
 
@@ -106,6 +130,7 @@ export type VoiceStatus = 'OFF' | 'LOADING' | 'READY' | 'UNAVAILABLE';
 
 export function useVoice(sessionId: string | null) {
   const ptt = useRef<PushToTalk | null>(null);
+  const mic = useRef<MicCapture | null>(null);
   const sid = useRef(sessionId);
   sid.current = sessionId;
   const [state, setState] = useState<VoiceState>('IDLE');
@@ -127,8 +152,10 @@ export function useVoice(sessionId: string | null) {
           body: { ...(sid.current ? { sessionId: sid.current } : {}), ...r },
         }).catch(() => {});
       };
+      const capture = new MicCapture();
+      mic.current = capture;
       ptt.current = new PushToTalk({
-        capture: new MicCapture(),
+        capture,
         engines: speech.engines,
         glossary: () => speech.glossary,
         clock: {
@@ -152,6 +179,25 @@ export function useVoice(sessionId: string | null) {
       ptt.current = null;
     };
   }, [speech]);
+
+  // While recording: feed the level meter and notice a microphone that gives no sound.
+  useEffect(() => {
+    if (state !== 'RECORDING') {
+      useTranscript.getState().set({ level: 0, quiet: false });
+      return;
+    }
+    const startedAt = performance.now();
+    let loudest = 0;
+    const t = setInterval(() => {
+      const l = mic.current?.level() ?? 0;
+      loudest = Math.max(loudest, l);
+      useTranscript.getState().set({
+        level: l,
+        quiet: performance.now() - startedAt > 2500 && loudest < SILENCE_LEVEL,
+      });
+    }, 80);
+    return () => clearInterval(t);
+  }, [state]);
 
   /** Starts getting voice ready (it normally already did, right after sign-in). */
   const enable = useCallback(async () => {
