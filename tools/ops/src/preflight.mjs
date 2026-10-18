@@ -133,7 +133,8 @@ export function evaluate(rawEnv, db = null) {
       );
 
   if (db) {
-    db.migrations >= Math.max(11, db.migrationsShipped ?? 0)
+    // The base migrations in packages/db/migrations (the dev shims live in a subfolder and never apply to production).
+    db.migrations >= (db.migrationsShipped ?? 9)
       ? add(LEVEL.PASS, 'Migrations are applied', `${db.migrations} applied`)
       : add(LEVEL.FAIL, 'Migrations are applied', `${db.migrations} applied`);
     db.devInvite
@@ -195,7 +196,7 @@ export async function readDb(url) {
     const shipped = (() => {
       try {
         return readdirSync(new URL('../../../packages/db/migrations/', import.meta.url)).filter(
-          (f) => /^d{4}_.*.sql$/.test(f) && !f.includes('dev_shims'),
+          (f) => /^\d{4}_.*\.sql$/.test(f),
         ).length;
       } catch {
         return undefined;

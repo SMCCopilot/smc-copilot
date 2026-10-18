@@ -42,6 +42,13 @@ describe('preflight', () => {
     );
   });
 
+  it('a production database with exactly the shipped migrations passes; one fewer fails', () => {
+    const ok = evaluate(base, { ...db, migrations: 9, migrationsShipped: 9 });
+    expect(by(ok, 'Migrations are applied').level).toBe('PASS');
+    const short = evaluate(base, { ...db, migrations: 8, migrationsShipped: 9 });
+    expect(by(short, 'Migrations are applied').level).toBe('FAIL');
+  });
+
   it('a short metrics token fails', () => {
     const r = evaluate({ ...base, METRICS_TOKEN: 'short' }, db);
     expect(by(r, 'Metrics endpoint is protected and on').level).toBe('FAIL');

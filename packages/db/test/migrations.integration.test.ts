@@ -42,10 +42,10 @@ describe('MVP schema (migrations 0001-0009 with dev shims)', () => {
 
   it('applies every migration once and is idempotent on the second run', async () => {
     const first = await applyMigrations(sql, { withShims: true });
-    expect(first.applied).toHaveLength(11);
+    expect(first.applied).toHaveLength(12);
     const second = await applyMigrations(sql, { withShims: true });
     expect(second.applied).toEqual([]);
-    expect(second.skipped).toHaveLength(11);
+    expect(second.skipped).toHaveLength(12);
   });
 
   it('creates the 55 MVP tables the plan promises (partition children excluded)', async () => {
@@ -78,7 +78,7 @@ describe('MVP schema (migrations 0001-0009 with dev shims)', () => {
 
   it('records the migrations in smc_meta and keeps that schema out of public', async () => {
     const [row] = await sql<{ n: number }[]>`select count(*)::int as n from smc_meta.migrations`;
-    expect(row?.n).toBe(11);
+    expect(row?.n).toBe(12);
   });
 
   it('refuses a migration whose content changed after it was applied (forward-only)', async () => {
@@ -99,6 +99,26 @@ describe('MVP schema (migrations 0001-0009 with dev shims)', () => {
     expect(report.problems).toEqual([]);
     expect(report.expectedFailuresFired).toBe(15);
   });
+});
+
+describe('function privileges', () => {
+  it('no SECURITY DEFINER function in public can be executed by PUBLIC', async () => {
+    const server = await startTestServer();
+    try {
+      const url = await server.createDatabase();
+      const sql = postgres(url, { max: 2 });
+      await applyMigrations(sql, { withShims: true });
+      const open = await sql<{ proname: string }[]>`
+        select p.proname from pg_proc p
+         where p.pronamespace = 'public'::regnamespace and p.prosecdef
+           and (p.proacl is null
+                or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'))`;
+      await sql.end({ timeout: 5 });
+      expect(open.map((r) => r.proname)).toEqual([]);
+    } finally {
+      await server.stop();
+    }
+  }, 120_000);
 });
 
 describe('full schema (with upgrade/0010 and upgrade/0011)', () => {
@@ -127,8 +147,8 @@ describe('concurrent runners', () => {
       applyMigrations(a, { withShims: true }),
       applyMigrations(b, { withShims: true }),
     ]);
-    expect(ra.applied.length + rb.applied.length).toBe(11);
+    expect(ra.applied.length + rb.applied.length).toBe(12);
     const [row] = await a<{ n: number }[]>`select count(*)::int as n from smc_meta.migrations`;
-    expect(row?.n).toBe(11);
+    expect(row?.n).toBe(12);
   });
 });
