@@ -1,7 +1,7 @@
 'use client';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Mic, ScanSearch, SendHorizontal } from 'lucide-react';
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type Msg, useChat } from '../lib/chat';
 import { useLive } from '../lib/live';
 import { useAnalysis } from '../lib/market';
@@ -169,7 +169,7 @@ function Bubble({ m }: { m: Msg }) {
 }
 
 const WARN_TEXT: Record<string, string> = {
-  NO_SPEECH: 'I did not hear anything. Hold the mic button while you speak.',
+  NO_SPEECH: 'I did not hear anything. Click the mic, speak, then click it again.',
   LOW_CONFIDENCE: 'I may have misheard. Check the text before sending.',
   TOO_LONG: 'That was too long, so recording stopped.',
   MIC_PERMISSION_DENIED: 'Microphone access is blocked. Allow it in your browser, or type instead.',
@@ -185,15 +185,13 @@ function MicButton({
 }) {
   const recording = voice.state === 'RECORDING';
   const busy = voice.state === 'TRANSCRIBING' || voice.status === 'LOADING';
-  const down = () => {
+  // One click starts listening, the next click stops and shows what was heard (no holding).
+  const toggle = () => {
     if (voice.status === 'OFF') void voice.enable();
-    else if (voice.status === 'READY') voice.press();
-  };
-  const key = (e: KeyboardEvent, isDown: boolean) => {
-    if (e.key !== ' ' && e.key !== 'Enter') return;
-    e.preventDefault();
-    if (isDown && !e.repeat) down();
-    if (!isDown) voice.release();
+    else if (voice.status === 'READY') {
+      if (recording) voice.release();
+      else voice.press();
+    }
   };
   const reason =
     disabledReason ??
@@ -201,15 +199,17 @@ function MicButton({
   const btn = (
     <button
       type="button"
-      aria-label={voice.status === 'LOADING' ? 'Voice is getting ready' : 'Hold to talk'}
+      aria-label={
+        voice.status === 'LOADING'
+          ? 'Voice is getting ready'
+          : recording
+            ? 'Stop listening'
+            : 'Start talking'
+      }
       aria-pressed={recording}
       aria-disabled={reason !== null}
       disabled={reason !== null && disabledReason !== null}
-      onPointerDown={() => reason === null && down()}
-      onPointerUp={voice.release}
-      onPointerLeave={() => recording && voice.release()}
-      onKeyDown={(e) => reason === null && key(e, true)}
-      onKeyUp={(e) => reason === null && key(e, false)}
+      onClick={() => reason === null && toggle()}
       className={`grid size-10 shrink-0 place-items-center rounded-ctl border border-line ${recording ? 'animate-pulse bg-bear-strong text-white' : 'bg-s2 hover:bg-s3'} ${reason ? 'opacity-50' : ''}`}
     >
       <Mic className="size-4" aria-hidden />
@@ -218,7 +218,11 @@ function MicButton({
   );
   const tip =
     reason ??
-    (voice.status === 'OFF' ? 'Voice (runs on this device)' : 'Hold to talk, release to review');
+    (voice.status === 'OFF'
+      ? 'Voice (runs on this device)'
+      : recording
+        ? 'Click to stop and review'
+        : 'Click to start talking, click again to stop');
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
@@ -326,7 +330,7 @@ export function Dock() {
           <p className="flex items-center gap-2 text-sm font-medium">
             <span className="size-2.5 animate-pulse rounded-full bg-bear" aria-hidden />
             {voice.state === 'RECORDING'
-              ? 'Listening… release to review'
+              ? 'Listening… click the mic when you are done'
               : 'Working out what you said…'}
           </p>
           <p className="mt-1 min-h-5 text-fg">

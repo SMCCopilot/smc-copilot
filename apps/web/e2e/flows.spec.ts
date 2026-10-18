@@ -212,7 +212,7 @@ test.describe('confirm gate', () => {
       [INST_FULL, SESSION_ID],
     );
     await toDialog(page, {}, false);
-    await expect(page.getByLabel(/Hold to talk|Voice is getting ready/)).toBeDisabled();
+    await expect(page.getByLabel(/Start talking|Voice is getting ready/)).toBeDisabled();
   });
 });
 

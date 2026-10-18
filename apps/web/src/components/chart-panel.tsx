@@ -196,9 +196,6 @@ export function ChartPanel() {
           ))}
         </div>
         <span className="relative ml-auto flex items-center gap-2">
-          {analysis.data && analysis.data.dataQuality !== 'OK' && (
-            <span className="text-xs text-warn-text">Waiting for new data</span>
-          )}
           {rawMode && (
             <button
               type="button"
