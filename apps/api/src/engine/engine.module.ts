@@ -52,6 +52,14 @@ class EngineLifecycle implements OnApplicationBootstrap, OnApplicationShutdown {
               86_400_000,
             ),
           );
+          // The first interval fires an hour after start, so a server restarted more often than that would never refresh
+          // them. Run once shortly after start as well (idempotent).
+          this.timers.push(
+            setTimeout(
+              safely('cohort refresh', () => jobs.refreshCohorts(strategy.id)),
+              30_000,
+            ),
+          );
           for (const t of this.timers) t.unref();
         }
       }
