@@ -20,12 +20,9 @@ function copy(from, to) {
 }
 
 const ort = join(pkgDir('onnxruntime-web', 'onnxruntime-web'), 'dist');
-for (const f of [
-  'ort-wasm-simd-threaded.wasm',
-  'ort-wasm-simd-threaded.mjs',
-  'ort-wasm-simd-threaded.jsep.wasm',
-  'ort-wasm-simd-threaded.jsep.mjs',
-]) {
+// Every runtime variant the library may pick (plain, jsep, asyncify, jspi): it chooses at run time by browser
+// features, and a missing one made speech recognition fail to start on a live Chrome ("asyncify.mjs" not found).
+for (const f of readdirSync(ort).filter((n) => /^ort-wasm-simd-threaded.*\.(mjs|wasm)$/.test(n))) {
   copy(join(ort, f), join(out, 'ort', f));
 }
 

@@ -2,6 +2,7 @@
 // Speech recognition in a Web Worker so the page's main thread stays free. Model files come only from the
 // server's pinned list and must match their SHA-256 and size, or they are refused (A02 section 6.3).
 import { loadVerified, type ModelCache, type ModelFile, type ModelIo } from '@smc/capture-kit';
+import { pinnedFor } from './stt-pin';
 
 interface InitMsg {
   type: 'init';
@@ -54,7 +55,6 @@ let asr: ((audio: Float32Array, opts?: Record<string, unknown>) => Promise<any>)
 
 async function init(m: InitMsg): Promise<void> {
   const { env, pipeline } = await import('@huggingface/transformers');
-  const pinned = new Map(m.files.map((f) => [f.url, f]));
   env.allowLocalModels = false;
   env.useBrowserCache = false;
   env.useCustomCache = false;
@@ -62,7 +62,7 @@ async function init(m: InitMsg): Promise<void> {
   // requests are refused, and only same-origin files (the runtime under /vendor) may be fetched directly.
   env.fetch = async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
-    const file = pinned.get(url);
+    const file = pinnedFor(url, m.files);
     if (file) {
       const bytes = await loadVerified(file, io);
       return new Response(bytes as BufferSource, {
@@ -102,7 +102,7 @@ self.onmessage = async (e: MessageEvent<In>) => {
     self.postMessage({
       type: 'error',
       id: m.id,
-      message: err instanceof Error ? err.message.slice(0, 200) : 'failed',
+      message: err instanceof Error ? err.message.slice(0, 400) : 'failed',
     });
   }
 };

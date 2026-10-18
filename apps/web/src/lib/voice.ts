@@ -181,6 +181,7 @@ export function useVoice(sessionId: string | null) {
         hasMicrophoneApi: typeof navigator.mediaDevices?.getUserMedia === 'function',
       });
       const engines: SttEngine[] = [];
+      const reasons: string[] = [];
       for (const choice of chain) {
         const conf = cfg.engines.find((e) => e.tag === choice.tag);
         const pin = conf?.files[0] ? repoOf(conf.files[0].url) : null;
@@ -192,7 +193,9 @@ export function useVoice(sessionId: string | null) {
           workers.current.push(engine);
           engines.push(engine);
           break; // the best working engine is enough; the next one is only built if this one fails later
-        } catch {
+        } catch (e) {
+          // Keep why the engine did not start (a short message from the worker, never audio or text), so it can be fixed.
+          reasons.push(`${choice.tag}: ${e instanceof Error ? e.message.slice(0, 400) : 'failed'}`);
           engine.terminate();
         }
       }
@@ -223,7 +226,9 @@ export function useVoice(sessionId: string | null) {
       });
       if (engines.length === 0) {
         setStatus('UNAVAILABLE');
-        setDetail('Speech recognition is not available on this device. Type instead.');
+        setDetail(
+          `Speech recognition is not available on this device. Type instead.${reasons.length ? ` (${reasons.join('; ')})` : ''}`,
+        );
       } else {
         setStatus('READY');
         setDetail(null);
