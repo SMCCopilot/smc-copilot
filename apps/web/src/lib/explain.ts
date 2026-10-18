@@ -6,6 +6,7 @@ import { applyChatEvent, failExplain, say, startExplain } from './chat';
 import { API_URL } from './env';
 import { FRIENDLY, toApiError } from './errors';
 import { emitEvent } from './live';
+import { keepKnown } from './share-merge';
 import { getAccessToken } from './supabase';
 
 export const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
@@ -157,7 +158,8 @@ export async function startShare(): Promise<void> {
           return () => clearInterval(t);
         },
       },
-      onContext: (ctx) => {
+      onContext: (read) => {
+        const ctx = keepKnown(useShare.getState().ctx, read);
         lastCtx = ctx;
         useShare.getState().set({ readSome: true, ctx });
         emitEvent('context.hint', ctx);
