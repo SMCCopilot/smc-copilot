@@ -92,6 +92,6 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 - Decide Docker vs Railpack for deploy; add image-content check (audit A8).
 - Check `packages/market-data/src/replay.ts` is unreachable from the production API path (audit A9).
 - First-load JavaScript is over the 200 KB target (already noted in PROGRESS F1).
-- Calibration job runs 24 h after start only; run once at start like cohorts (audit A10).
+- Calibration job runs 24 h after start only; run once at start like cohorts (audit A11).
 - Engine start rebuilds from the beginning of history; resume from the last snapshot when history grows.
 - `apps/worker` is a stub; decide when ingest/engine/jobs leave the API process.
