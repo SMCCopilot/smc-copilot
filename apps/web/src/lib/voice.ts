@@ -1,16 +1,15 @@
 'use client';
 import type {
   PushToTalk,
-  SttEngine,
   Transcript,
   VoiceReport,
   VoiceState,
   VoiceWarning,
 } from '@smc/capture-kit';
-import type { Glossary, SttEngineTag, VoiceConfig } from '@smc/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { api } from './api';
+import { prepareSpeech, useSpeech } from './speech-loader';
 import { useUi } from './ui';
 
 /** The microphone buffer: 16 kHz mono samples held in memory only, dropped by the controller after each utterance. */
@@ -40,6 +39,19 @@ class MicCapture {
     };
     ctx.createMediaStreamSource(this.stream).connect(node);
     this.node = node;
+  }
+
+  /** A copy of what has been recorded so far at 16 kHz, without stopping (for the live preview). */
+  peek(): Float32Array {
+    const rate = this.ctx?.sampleRate ?? 16000;
+    const total = this.chunks.reduce((n, c) => n + c.length, 0);
+    const pcm = new Float32Array(total);
+    let at = 0;
+    for (const c of this.chunks) {
+      pcm.set(c, at);
+      at += c.length;
+    }
+    return rate !== 16000 ? resample(pcm, rate, 16000) : pcm;
   }
 
   async stop(): Promise<Float32Array> {
@@ -75,64 +87,6 @@ function resample(input: Float32Array, from: number, to: number): Float32Array {
   return out;
 }
 
-interface WorkerReply {
-  type: 'ready' | 'text' | 'error';
-  id: number;
-  text?: string;
-  message?: string;
-}
-
-class WorkerStt implements SttEngine {
-  private seq = 0;
-  constructor(
-    readonly tag: SttEngineTag,
-    private readonly worker: Worker,
-  ) {}
-
-  private call<T extends WorkerReply>(
-    msg: Record<string, unknown>,
-    transfer: Transferable[] = [],
-  ): Promise<T> {
-    const id = ++this.seq;
-    return new Promise<T>((resolve, reject) => {
-      const on = (e: MessageEvent<WorkerReply>) => {
-        if (e.data.id !== id) return;
-        this.worker.removeEventListener('message', on);
-        if (e.data.type === 'error') reject(new Error(e.data.message ?? 'failed'));
-        else resolve(e.data as T);
-      };
-      this.worker.addEventListener('message', on);
-      this.worker.postMessage({ ...msg, id }, transfer);
-    });
-  }
-
-  async init(
-    repo: string,
-    revision: string,
-    backend: 'webgpu' | 'wasm',
-    files: unknown[],
-  ): Promise<void> {
-    await this.call({ type: 'init', repo, revision, backend, files });
-  }
-
-  async transcribe(pcm: Float32Array, signal: AbortSignal) {
-    const copy = pcm.slice(); // the controller wipes its own buffer; the worker gets a transferred copy
-    const r = await this.call<WorkerReply>({ type: 'transcribe', pcm: copy }, [copy.buffer]);
-    if (signal.aborted) throw new Error('aborted');
-    // The engines do not report a confidence, so a plain non-empty result is treated as a fixed, modest value.
-    return { text: r.text ?? '', confidence: 0.8 };
-  }
-  terminate(): void {
-    this.worker.terminate();
-  }
-}
-
-/** Turns a model file URL back into the repo and revision it was pinned at. */
-export function repoOf(url: string): { repo: string; revision: string } | null {
-  const m = /^https:\/\/huggingface\.co\/(.+?)\/resolve\/([0-9a-f]{40})\//.exec(url);
-  return m ? { repo: m[1] as string, revision: m[2] as string } : null;
-}
-
 export interface VoiceStore {
   /** The transcript the user is reviewing (editable), or null. */
   transcript: Transcript | null;
@@ -152,72 +106,31 @@ export type VoiceStatus = 'OFF' | 'LOADING' | 'READY' | 'UNAVAILABLE';
 
 export function useVoice(sessionId: string | null) {
   const ptt = useRef<PushToTalk | null>(null);
-  const workers = useRef<WorkerStt[]>([]);
+  const sid = useRef(sessionId);
+  sid.current = sessionId;
   const [state, setState] = useState<VoiceState>('IDLE');
-  const [status, setStatus] = useState<VoiceStatus>('OFF');
   const [warning, setWarning] = useState<VoiceWarning | null>(null);
-  const [detail, setDetail] = useState<string | null>(null);
-  const [engineTag, setEngineTag] = useState<string | null>(null);
+  const { status: loadStatus, progress, speech, detail } = useSpeech();
   const confirmOpen = useUi((s) => s.confirmOpen);
+  const status: VoiceStatus =
+    loadStatus === 'IDLE' ? 'OFF' : loadStatus === 'LOADING' ? 'LOADING' : loadStatus;
 
-  // Leaving the session, or closing the page, drops the models and any recording.
-  useEffect(
-    () => () => {
-      for (const w of workers.current) w.terminate();
-      workers.current = [];
-      ptt.current = null;
-    },
-    [],
-  );
-
-  const enable = useCallback(async () => {
-    if (status === 'LOADING' || status === 'READY') return;
-    setStatus('LOADING');
-    setDetail('Preparing speech recognition on this device…');
-    // First, while the click still counts as a user action (installing a language pack needs one).
-    const liveTry = import('./live-speech').then((m) => m.createBrowserRecognizer(setDetail));
-    try {
-      const [{ PushToTalk, engineChain }, { VoiceConfigSchema, GlossarySchema }] =
-        await Promise.all([import('@smc/capture-kit'), import('@smc/contracts')]);
-      const cfg: VoiceConfig = VoiceConfigSchema.parse(await api('/v1/voice/config'));
-      const glossary: Glossary = GlossarySchema.parse(await api('/v1/voice/glossary'));
-      const chain = engineChain(cfg, {
-        hasWebGpu: 'gpu' in navigator,
-        hasWasm: typeof WebAssembly === 'object',
-        hasMicrophoneApi: typeof navigator.mediaDevices?.getUserMedia === 'function',
-      });
-      const live = await liveTry.catch(() => null);
-      const engines: SttEngine[] = [];
-      const reasons: string[] = [];
-      // With the browser's own on-device recognition there is no need to download a model as well.
-      for (const choice of live ? [] : chain) {
-        const conf = cfg.engines.find((e) => e.tag === choice.tag);
-        const pin = conf?.files[0] ? repoOf(conf.files[0].url) : null;
-        if (!conf || !pin) continue;
-        const worker = new Worker(new URL('./stt.worker.ts', import.meta.url), { type: 'module' });
-        const engine = new WorkerStt(choice.tag, worker);
-        try {
-          await engine.init(pin.repo, pin.revision, choice.backend, conf.files);
-          workers.current.push(engine);
-          engines.push(engine);
-          break; // the best working engine is enough; the next one is only built if this one fails later
-        } catch (e) {
-          // Keep why the engine did not start (a short message from the worker, never audio or text), so it can be fixed.
-          reasons.push(`${choice.tag}: ${e instanceof Error ? e.message.slice(0, 400) : 'failed'}`);
-          engine.terminate();
-        }
-      }
-      const mic = new MicCapture();
+  // Build the push-to-talk controller as soon as the speech models are ready (they load quietly after sign-in).
+  useEffect(() => {
+    if (!speech || speech.engines.length === 0) return;
+    let cancelled = false;
+    void import('@smc/capture-kit').then(({ PushToTalk }) => {
+      if (cancelled) return;
       const report = (r: VoiceReport) => {
         void api('/v1/voice/events', {
           method: 'POST',
-          body: { ...(sessionId ? { sessionId } : {}), ...r },
+          body: { ...(sid.current ? { sessionId: sid.current } : {}), ...r },
         }).catch(() => {});
       };
       ptt.current = new PushToTalk({
-        capture: mic,
-        engines,
-        glossary: () => glossary,
+        capture: new MicCapture(),
+        engines: speech.engines,
+        glossary: () => speech.glossary,
         clock: {
           now: () => performance.now(),
           after: (ms, fn) => {
@@ -225,32 +138,25 @@ export function useVoice(sessionId: string | null) {
             return () => clearTimeout(t);
           },
         },
-        minConfidence: cfg.minConfidence,
-        maxUtteranceMs: cfg.maxUtteranceMs,
+        minConfidence: speech.cfg.minConfidence,
+        maxUtteranceMs: speech.cfg.maxUtteranceMs,
         onState: setState,
         onTranscript: (t) => useTranscript.getState().set({ transcript: t, text: t.text }),
         onWarning: setWarning,
         onReport: report,
-        ...(live ? { live } : {}),
         onPartial: (t) => useTranscript.getState().set({ partial: t }),
       });
-      if (engines.length === 0 && !live) {
-        setStatus('UNAVAILABLE');
-        setDetail(
-          `Speech recognition is not available on this device. Type instead.${reasons.length ? ` (${reasons.join('; ')})` : ''}`,
-        );
-      } else {
-        setStatus('READY');
-        setDetail(null);
-        setEngineTag(
-          live ? 'browser-local' : ((engines[0] as { tag: string } | undefined)?.tag ?? null),
-        );
-      }
-    } catch {
-      setStatus('UNAVAILABLE');
-      setDetail('Speech recognition could not start. Type instead.');
-    }
-  }, [status, sessionId]);
+    });
+    return () => {
+      cancelled = true;
+      ptt.current = null;
+    };
+  }, [speech]);
+
+  /** Starts getting voice ready (it normally already did, right after sign-in). */
+  const enable = useCallback(async () => {
+    await prepareSpeech();
+  }, []);
 
   const press = useCallback(() => {
     if (useUi.getState().confirmOpen) return; // voice is off while the confirm dialog is open
@@ -263,5 +169,17 @@ export function useVoice(sessionId: string | null) {
     useTranscript.getState().set({ transcript: null, text: '', partial: '' });
   }, []);
 
-  return { state, status, warning, detail, engineTag, confirmOpen, enable, press, release, done };
+  return {
+    state,
+    status,
+    progress,
+    warning,
+    detail,
+    engineTag: speech?.engines[0]?.tag ?? null,
+    confirmOpen,
+    enable,
+    press,
+    release,
+    done,
+  };
 }

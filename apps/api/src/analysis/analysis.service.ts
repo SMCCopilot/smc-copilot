@@ -10,6 +10,7 @@ import {
   buildFacts,
   dealingRange,
   type EngineState,
+  originTimes,
   STATE_VERSION,
   sessionContext,
   sha1,
@@ -174,12 +175,18 @@ export class AnalysisService {
           : null,
       };
     }
-    if (want('zones')) out.zones = facts.zones;
-    if (want('liquidity')) out.liquidity = facts.levels.filter((l) => !l.kind.startsWith('OPEN_'));
+    const born = originTimes(state);
+    const stamp = <T extends { id: string }>(x: T): T & { from?: string } => {
+      const t = born.get(x.id);
+      return t === undefined ? x : { ...x, from: new Date(t).toISOString() };
+    };
+    if (want('zones')) out.zones = facts.zones.map(stamp);
+    if (want('liquidity'))
+      out.liquidity = facts.levels.filter((l) => !l.kind.startsWith('OPEN_')).map(stamp);
     if (want('context')) {
       const c = sessionContext(asOf, cfg);
       out.context = {
-        openLevels: facts.levels.filter((l) => l.kind.startsWith('OPEN_')),
+        openLevels: facts.levels.filter((l) => l.kind.startsWith('OPEN_')).map(stamp),
         weekend: c.weekend,
         session: c.killzones[0] ?? c.active[c.active.length - 1] ?? 'OFF',
         inKillzone: c.inKillzone,

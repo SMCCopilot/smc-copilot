@@ -65,6 +65,7 @@ async function init(m: InitMsg): Promise<void> {
     const file = pinnedFor(url, m.files);
     if (file) {
       const bytes = await loadVerified(file, io);
+      self.postMessage({ type: 'progress', id: -1, bytes: file.bytes });
       return new Response(bytes as BufferSource, {
         status: 200,
         headers: { 'content-length': String(bytes.byteLength) },

@@ -5,6 +5,7 @@ import {
   countEventsByType as countsOf,
   createEngine,
   feed,
+  originTimes,
   step,
   eventStreamHash as streamHash,
 } from '../src/index.js';
@@ -39,6 +40,16 @@ describe('ChartFacts', () => {
     }
     const ids = [...facts.levels, ...facts.zones].map((x) => x.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('knows when every zone formed, and not after the data ends, without putting dates in the facts', () => {
+    const born = originTimes(state);
+    for (const z of facts.zones) {
+      const t = born.get(z.id);
+      expect(t, z.label).toBeDefined();
+      expect(t as number).toBeLessThanOrEqual(asOf);
+    }
+    expect(JSON.stringify(facts)).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
   it('only lists live zones (filled gaps are dropped)', () => {

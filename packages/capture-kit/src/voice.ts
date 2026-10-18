@@ -158,6 +158,11 @@ export function percentile(values: readonly number[], p: number): number | null 
   return sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)] ?? null;
 }
 
+const PARTIAL_FIRST_MS = 900;
+const PARTIAL_EVERY_MS = 900;
+const MIN_PARTIAL_SAMPLES = 9600; // 0.6 s at 16 kHz
+const MAX_PARTIAL_SAMPLES = 16000 * 20;
+
 // ---- push to talk ------------------------------------------------------------------------------------------------------
 
 export interface AudioCapture {
@@ -165,6 +170,8 @@ export interface AudioCapture {
   start(): Promise<void>;
   /** Stops and returns the audio recorded since `start`, as 16 kHz mono samples. Kept in memory only. */
   stop(): Promise<Float32Array>;
+  /** A copy of the audio so far (16 kHz mono) without stopping, so words can be shown while the key is held. */
+  peek?(): Float32Array;
 }
 export interface SttEngine {
   readonly tag: SttEngineTag;
@@ -173,20 +180,6 @@ export interface SttEngine {
     signal: AbortSignal,
   ): Promise<{ text: string; confidence: number; language?: string }>;
 }
-/**
- * A recogniser that runs while the key is held and reports words as they are heard (the browser's own on-device
- * speech recognition). It takes the microphone itself, so no audio ever reaches this code.
- */
-export interface LiveRecognizer {
-  readonly tag: SttEngineTag;
-  /** Starts listening; `onPartial` gets the words heard so far. Rejects when it cannot start (denied, no language pack). */
-  start(onPartial: (text: string) => void): Promise<void>;
-  /** Stops and resolves with the final text; the empty string when nothing was heard. */
-  stop(): Promise<{ text: string; confidence: number }>;
-  /** Drops the session without a result. */
-  abort(): void;
-}
-
 export interface VoiceClock {
   now(): number;
   after(ms: number, fn: () => void): () => void;
@@ -237,9 +230,7 @@ export interface VoiceOptions {
   onWarning: (w: VoiceWarning) => void;
   /** Metadata only (engine, timings, outcome). Never audio, never text. */
   onReport: (r: VoiceReport) => void;
-  /** Tried first when present: live words while the key is held. Falls back to `capture` and `engines` when it fails. */
-  live?: LiveRecognizer;
-  /** Words heard so far while the key is held (only with `live`); an empty string clears the display. */
+  /** Words heard so far while the key is held (a preview from the engine); an empty string clears the display. */
   onPartial?: (text: string) => void;
   /** Samples shorter than this are treated as no speech. */
   minSamples?: number;
@@ -258,7 +249,7 @@ export class PushToTalk {
   readonly latencies: number[] = [];
 
   constructor(private readonly o: VoiceOptions) {
-    if (o.engines.length === 0 && !o.live) this.set('UNAVAILABLE');
+    if (o.engines.length === 0) this.set('UNAVAILABLE');
   }
 
   /** Timings come from a high-resolution clock (fractions of a millisecond); the server wants whole milliseconds. */
@@ -284,38 +275,18 @@ export class PushToTalk {
   /** The button was let go before the microphone finished opening. */
   private releaseEarly = false;
   private failures = new Map<SttEngineTag, number>();
-  /** True while this utterance is being heard by the live recogniser rather than recorded for an engine. */
-  private usingLive = false;
-  private liveFailed = false;
 
   async press(): Promise<void> {
     if (this.busy || (this.state !== 'IDLE' && this.state !== 'REVIEW')) return;
-    const live = this.o.live && !this.liveFailed ? this.o.live : null;
-    if (!live && this.o.engines.every((e) => this.failed.has(e.tag))) {
+    if (this.o.engines.every((e) => this.failed.has(e.tag))) {
       this.set('UNAVAILABLE');
       this.o.onWarning('STT_UNAVAILABLE');
       return;
     }
     this.busy = true;
     this.releaseEarly = false;
-    this.usingLive = false;
-    if (live) {
-      try {
-        await live.start((text) => this.o.onPartial?.(text));
-        this.usingLive = true;
-      } catch {
-        // Denied or no language pack: fall back to recording for the on-device models (if there are any).
-        this.liveFailed = true;
-        if (this.o.engines.length === 0) {
-          this.busy = false;
-          this.o.onWarning('MIC_PERMISSION_DENIED');
-          this.set('UNAVAILABLE');
-          return;
-        }
-      }
-    }
     try {
-      if (!this.usingLive) await this.o.capture.start();
+      await this.o.capture.start();
     } catch {
       this.busy = false;
       this.o.onWarning('MIC_PERMISSION_DENIED');
@@ -324,6 +295,7 @@ export class PushToTalk {
     }
     this.recordedAt = this.o.clock.now();
     this.set('RECORDING');
+    this.startPartials();
     // A held key must not record forever.
     this.cancelTimer?.();
     this.cancelTimer = this.o.clock.after(this.o.maxUtteranceMs, () => {
@@ -341,33 +313,11 @@ export class PushToTalk {
     }
     this.cancelTimer?.();
     this.cancelTimer = null;
+    this.stopPartials();
     const releasedAt = this.o.clock.now();
     this.set('TRANSCRIBING');
     let pcm: Float32Array | null = null;
     const durationMs = releasedAt - this.recordedAt;
-    if (this.usingLive && this.o.live) {
-      this.usingLive = false;
-      try {
-        const r = await this.o.live.stop();
-        this.o.onPartial?.('');
-        const latencyMs = this.o.clock.now() - releasedAt;
-        this.latencies.push(latencyMs);
-        this.deliver(this.o.live.tag, r.text, r.confidence, latencyMs, durationMs);
-      } catch {
-        this.o.onPartial?.('');
-        this.report({
-          engine: this.o.live.tag,
-          outcome: 'ERROR',
-          durationMs,
-          errorCode: 'ENGINE_FAILED',
-        });
-        this.o.onWarning('NO_SPEECH');
-        this.set('IDLE');
-      } finally {
-        this.busy = false;
-      }
-      return;
-    }
     try {
       try {
         pcm = await this.o.capture.stop();
@@ -431,8 +381,63 @@ export class PushToTalk {
     }
   }
 
+  // ---- words while the key is held --------------------------------------------------------------------------------------
+
+  private partialTimer: (() => void) | null = null;
+  private partialCtl: AbortController | null = null;
+  private partialBusy = false;
+
+  /**
+   * Every second or so, runs the first working engine on the audio so far and shows what it heard, so the user sees
+   * words as they speak. The final transcript still comes from the whole recording when the key is released.
+   */
+  private startPartials(): void {
+    if (!this.o.capture.peek || !this.o.onPartial) return;
+    const tick = () => {
+      this.partialTimer = null;
+      if (this.state !== 'RECORDING') return;
+      void this.partial().finally(() => {
+        if (this.state === 'RECORDING')
+          this.partialTimer = this.o.clock.after(PARTIAL_EVERY_MS, tick);
+      });
+    };
+    this.partialTimer = this.o.clock.after(PARTIAL_FIRST_MS, tick);
+  }
+
+  private stopPartials(): void {
+    this.partialTimer?.();
+    this.partialTimer = null;
+    this.partialCtl?.abort();
+    this.partialCtl = null;
+  }
+
+  private async partial(): Promise<void> {
+    const engine = this.o.engines.find((e) => !this.failed.has(e.tag));
+    const peek = this.o.capture.peek;
+    if (!engine || !peek || this.partialBusy) return;
+    const pcm = peek.call(this.o.capture);
+    if (pcm.length < MIN_PARTIAL_SAMPLES) return;
+    // Only the last stretch: a long utterance must not make every pass slower.
+    const recent =
+      pcm.length > MAX_PARTIAL_SAMPLES ? pcm.slice(pcm.length - MAX_PARTIAL_SAMPLES) : pcm;
+    this.partialBusy = true;
+    const ctl = new AbortController();
+    this.partialCtl = ctl;
+    try {
+      const r = await engine.transcribe(recent, ctl.signal);
+      if (this.state === 'RECORDING' && !ctl.signal.aborted && r.text.trim()) {
+        this.o.onPartial?.(r.text.trim());
+      }
+    } catch {
+      // A failed preview is not an error: the final pass decides.
+    } finally {
+      this.partialBusy = false;
+      recent.fill(0);
+    }
+  }
+
   private firstEngine(): SttEngineTag {
-    return this.o.engines[0]?.tag ?? this.o.live?.tag ?? 'typed';
+    return this.o.engines[0]?.tag ?? 'typed';
   }
 
   private deliver(

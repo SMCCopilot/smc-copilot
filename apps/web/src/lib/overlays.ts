@@ -12,7 +12,17 @@ export const LAYER_LABEL: Record<LayerId, string> = {
   ob: 'Order blocks',
   liquidity: 'Liquidity',
   ranges: 'Ranges',
-  sessions: 'Sessions',
+  sessions: 'Session levels',
+};
+/** One line each, shown on hover, so no label needs prior knowledge. */
+export const LAYER_HINT: Record<LayerId, string> = {
+  structure: 'Breaks of structure (BOS, CHoCH) and the main swing highs and lows',
+  fvg: 'Fair value gaps: price gaps left by a fast move, which price often returns to',
+  ob: 'Order blocks: the last opposite candle before a strong move',
+  liquidity:
+    'Liquidity: equal highs and lows and previous day and week highs and lows, where stops sit',
+  ranges: 'The current range with its midpoint, premium and discount halves',
+  sessions: 'Daily, weekly and monthly opens and session highs and lows',
 };
 export const DEFAULT_LAYERS: Record<LayerId, boolean> = {
   structure: true,
@@ -42,6 +52,8 @@ export type Overlay =
       top: number;
       bottom: number;
       tone: ZoneTone;
+      /** When it formed (ISO). A zone with a time starts at that candle; without one it spans the chart. */
+      from?: string;
     }
   | {
       kind: 'line';
@@ -50,6 +62,7 @@ export type Overlay =
       label: string;
       price: number;
       tone: LineTone;
+      from?: string;
       /** Price direction for targets: above the entry is up (green), below is down (red). */
       up?: boolean;
     };
@@ -82,6 +95,7 @@ export function buildOverlays(a: AnalysisResponse, setup: Setup | null): Overlay
       top: z.top,
       bottom: z.bottom,
       tone: layer,
+      ...(z.from ? { from: z.from } : {}),
     });
   }
   for (const l of [...(a.liquidity ?? []), ...(a.context?.openLevels ?? [])]) {
@@ -94,6 +108,7 @@ export function buildOverlays(a: AnalysisResponse, setup: Setup | null): Overlay
       label: l.label,
       price: l.price,
       tone: layer === 'ranges' ? 'range' : layer === 'sessions' ? 'open' : 'liquidity',
+      ...(l.from ? { from: l.from } : {}),
     });
   }
   const r = a.structure?.range;
@@ -277,4 +292,19 @@ export function formatPrice(price: number, precision = 2): string {
     minimumFractionDigits: precision,
     maximumFractionDigits: precision,
   });
+}
+
+/** The open time (seconds) of the last candle that opened at or before `t`; null when `t` is before the first one. */
+export function snapToBar(bars: readonly number[], t: number): number | null {
+  let lo = 0;
+  let hi = bars.length - 1;
+  let found: number | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if ((bars[mid] as number) <= t) {
+      found = bars[mid] as number;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return found;
 }

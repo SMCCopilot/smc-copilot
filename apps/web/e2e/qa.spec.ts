@@ -23,17 +23,8 @@ async function room(page: Page, theme: 'dark' | 'light') {
   await signIn(page);
   const calls = await mockApi(page, { withSetup: true });
   await page.goto('/');
-  await page.getByLabel('Instrument').selectOption(INST_FULL);
-  if ((page.viewportSize()?.width ?? 1440) < 1024) {
-    await page.getByRole('button', { name: 'Open menu' }).click();
-    await page
-      .getByRole('dialog', { name: 'Menu' })
-      .getByRole('button', { name: 'New session' })
-      .click();
-  } else {
-    await page.getByRole('button', { name: 'New session' }).click();
-  }
-  await expect(page.getByRole('button', { name: 'End session' })).toBeVisible();
+  await page.getByLabel('Chart market').selectOption(INST_FULL);
+  await expect(page.getByRole('button', { name: 'Share screen' })).toBeEnabled({ timeout: 15_000 });
   return calls;
 }
 

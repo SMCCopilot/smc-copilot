@@ -1,6 +1,6 @@
 export { createEngine, feed, STATE_VERSION, step, WINDOW_BARS } from './engine.js';
 export type { FactsOptions } from './facts.js';
-export { buildFacts } from './facts.js';
+export { buildFacts, originTimes } from './facts.js';
 export { countEventsByType, eventStreamHash } from './hash.js';
 export { shortId } from './ids.js';
 export type { Bias } from './mtf.js';

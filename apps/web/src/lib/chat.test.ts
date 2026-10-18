@@ -3,7 +3,7 @@ import { forbiddenByVoice } from '@smc/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyChatEvent, applyNarrative, useChat } from './chat';
 import { checkImage, MAX_IMAGE_BYTES } from './explain';
-import { repoOf } from './voice';
+import { repoOf } from './speech-loader';
 
 const nar = (hash: string, source: 'LLM' | 'TEMPLATE'): NarrativeResponse => ({
   instrumentId: 'i',

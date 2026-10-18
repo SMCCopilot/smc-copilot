@@ -56,6 +56,6 @@ describe('packages/db migrations vs canonical set-b/sql', () => {
   it('does not select shims or upgrades unless asked (shims must never reach Supabase by default)', () => {
     const names = selectMigrations().map((m) => m.name);
     expect(names.some((n) => n.startsWith('dev/') || n.startsWith('upgrade/'))).toBe(false);
-    expect(names).toHaveLength(12);
+    expect(names).toHaveLength(11);
   });
 });

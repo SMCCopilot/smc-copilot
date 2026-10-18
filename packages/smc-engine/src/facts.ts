@@ -110,6 +110,21 @@ function zonesOf(tf: Timeframe, s: TfState): Zone[] {
   return out;
 }
 
+/**
+ * When each zone and level in the facts was formed (epoch ms), keyed by its fact id. Kept out of the facts themselves
+ * (what the AI sees) so a chart can start a rectangle at the candle where the zone formed without the AI ever being
+ * handed dates to repeat.
+ */
+export function originTimes(state: EngineState): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const s of Object.values(state.perTf) as TfState[]) {
+    for (const f of s.fvgs) out.set(shortId('Z', f.id), f.createdAt);
+    for (const o of s.orderBlocks) out.set(shortId('Z', o.id), o.createdAt);
+    for (const p of s.pools) out.set(shortId('L', p.id), p.createdAt);
+  }
+  return out;
+}
+
 export function buildFacts(
   state: EngineState,
   cfg: StrategyConfig,

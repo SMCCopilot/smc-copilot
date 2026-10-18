@@ -6,6 +6,10 @@ import { TimeframeSchema } from './timeframe.js';
 /** REST DTOs for setups, analysis, sessions and risk (A07 sections 4 to 6). Zod is the source of truth. */
 
 const iso = z.string();
+
+/** A zone or level as a chart draws it: the facts plus when it formed (so it can start at that candle). */
+export const ZoneViewSchema = ZoneFactSchema.extend({ from: iso.optional() });
+export const LevelViewSchema = LevelFactSchema.extend({ from: iso.optional() });
 const price = z.number().finite();
 
 export const TradePlanDtoSchema = z.strictObject({
@@ -114,11 +118,11 @@ export const AnalysisResponseSchema = z.strictObject({
         .nullable(),
     })
     .optional(),
-  zones: z.array(ZoneFactSchema).optional(),
-  liquidity: z.array(LevelFactSchema).optional(),
+  zones: z.array(ZoneViewSchema).optional(),
+  liquidity: z.array(LevelViewSchema).optional(),
   context: z
     .strictObject({
-      openLevels: z.array(LevelFactSchema),
+      openLevels: z.array(LevelViewSchema),
       weekend: z.boolean(),
       session: z.string(),
       inKillzone: z.boolean(),
@@ -149,7 +153,7 @@ export const SessionCreateSchema = z.strictObject({
       surface: z.enum(['TAB', 'WINDOW', 'SCREEN', 'NONE']),
       webgpu: z.boolean(),
       /** Speech engine chosen on the device, for the voice log. */
-      stt: z.enum(['whisper-web', 'moonshine-web', 'browser-local', 'typed']).optional(),
+      stt: z.enum(['whisper-web', 'moonshine-web', 'typed']).optional(),
     })
     .optional(),
 });

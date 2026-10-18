@@ -97,7 +97,7 @@ export function SharePanel() {
                   <Chip>{d.tfText ?? 'Timeframe ?'}</Chip>
                   {d.venueText && <Chip>{d.venueText}</Chip>}
                   <Chip>{d.lastPrice !== undefined ? fmtPrice(d.lastPrice) : 'Price ?'}</Chip>
-                  <span className="text-xs text-muted">Confidence: {confLabel}</span>
+                  <span className="text-xs text-muted">Chart reading: {confLabel}</span>
                 </>
               ) : (
                 <span className="text-xs text-muted">Reading your chart…</span>

@@ -95,6 +95,7 @@ export function useEndSession() {
     onSuccess: async () => {
       // Refresh the list first: clearing the selection while the old list still shows this session as live would
       // make the room adopt it again.
+      stopAutoStart();
       await qc.invalidateQueries({ queryKey: ['sessions'] });
       sel.set({ sessionId: null, startedAt: null });
     },
@@ -127,3 +128,14 @@ export function useAdoptLiveSession(sessions: ReturnType<typeof useSessions>): v
     }
   }, [list, fetching, sel]);
 }
+
+/** Set when the user ends the session, so the room does not start another one behind their back. */
+let autoStartOff = false;
+export const stopAutoStart = (): void => {
+  autoStartOff = true;
+};
+export const allowAutoStart = (): void => {
+  autoStartOff = false;
+};
+
+export const isAutoStartOff = (): boolean => autoStartOff;

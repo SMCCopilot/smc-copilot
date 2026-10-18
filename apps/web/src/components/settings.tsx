@@ -7,6 +7,7 @@ import { signOut, useMe } from '../lib/auth';
 import { useChat } from '../lib/chat';
 import { ApiError } from '../lib/errors';
 import { usePrefs } from '../lib/records';
+import { allowAutoStart, useEndSession, useSelection } from '../lib/sessions';
 import { useTheme } from '../lib/theme';
 import { DisclaimerText } from './disclaimer';
 import { WalletList } from './wallet-list';
@@ -86,6 +87,43 @@ function DeleteAccount() {
   );
 }
 
+function SessionControl() {
+  const sel = useSelection();
+  const end = useEndSession();
+  const qc = useQueryClient();
+  return (
+    <Section title="Analysis session">
+      <p className="text-muted">
+        Your live analysis starts by itself when you open the chart and picks up where you left off.
+        Ending it stops live updates and chat until you start it again.
+      </p>
+      <div className="mt-3">
+        {sel.sessionId ? (
+          <button
+            type="button"
+            disabled={end.isPending}
+            onClick={() => end.mutate()}
+            className="rounded-ctl border border-line px-3 py-1.5 hover:bg-s3 disabled:opacity-50"
+          >
+            End session
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              allowAutoStart();
+              void qc.invalidateQueries({ queryKey: ['sessions'] });
+            }}
+            className="rounded-ctl border border-line px-3 py-1.5 hover:bg-s3"
+          >
+            Start session
+          </button>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 export function SettingsView() {
   const [theme, toggle] = useTheme();
   const prefs = usePrefs();
@@ -95,6 +133,7 @@ export function SettingsView() {
     <main id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-auto p-4">
       <h1 className="mb-3 text-lg font-semibold">Settings</h1>
       <div className="max-w-2xl">
+        <SessionControl />
         <Section title="Appearance">
           <button
             type="button"

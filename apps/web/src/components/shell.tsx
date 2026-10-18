@@ -1,47 +1,37 @@
 'use client';
-import { TIMEFRAMES } from '@smc/contracts';
 import {
   Bell,
   BookOpen,
   CandlestickChart,
   ChevronsRight,
-  Layers,
   LogOut,
   Menu,
   Moon,
   PanelRight,
-  Plus,
   Settings,
   Sun,
   Wallet,
   X,
 } from 'lucide-react';
-import { type PointerEvent, useCallback, useEffect, useState } from 'react';
+import { type PointerEvent, useCallback, useState } from 'react';
 import { signOut, useMe } from '../lib/auth';
 import { useChat } from '../lib/chat';
-import { ApiError } from '../lib/errors';
 import { shortAddress } from '../lib/gate';
 import { useLive, useLiveSession } from '../lib/live';
-import { useFeedStatus, useInstruments } from '../lib/queries';
+import { useFeedStatus } from '../lib/queries';
 import { useNotifications } from '../lib/records';
-import {
-  useAdoptLiveSession,
-  useCreateSession,
-  useEndSession,
-  useSelection,
-  useSessions,
-} from '../lib/sessions';
+import { useAutoRoom, useSpeechPrefetch } from '../lib/room';
+import { useAdoptLiveSession, useSelection, useSessions } from '../lib/sessions';
 import { useTheme } from '../lib/theme';
 import { useUi } from '../lib/ui';
 import { Canvas } from './canvas';
 import { ChartPanel } from './chart-panel';
 import { Dock } from './dock';
 import { SettingsView } from './settings';
-import { InstrumentsView, JournalView, NotificationsView, TradesView } from './views';
+import { JournalView, NotificationsView, TradesView } from './views';
 
 const NAV = [
-  { label: 'Session room', icon: CandlestickChart, view: 'room' },
-  { label: 'Instruments', icon: Layers, view: 'instruments' },
+  { label: 'Chart', icon: CandlestickChart, view: 'room' },
   { label: 'Journal', icon: BookOpen, view: 'journal' },
   { label: 'Trades', icon: ChevronsRight, view: 'trades' },
   { label: 'Settings', icon: Settings, view: 'settings' },
@@ -54,30 +44,38 @@ function FeedChip() {
   const { data, isError, isPending } = useFeedStatus();
   const live = useLive((s) => s.state);
   const inSession = live !== 'IDLE';
-  let label = 'CONNECTING';
+  let label = 'Connecting…';
   let tone = 'text-muted';
   if (inSession) {
-    label = live === 'ENDED' ? 'ENDED' : live === 'TAKEN' ? 'PAUSED' : live;
+    const words: Record<string, string> = {
+      CONNECTING: 'Connecting…',
+      LIVE: 'Live',
+      RESYNCING: 'Reconnecting…',
+      STALE: 'Waiting for new data',
+      TAKEN: 'Open in another tab',
+      ENDED: 'Session ended',
+    };
+    label = words[live] ?? live;
     tone = live === 'LIVE' ? 'text-fg' : live === 'ENDED' ? 'text-muted' : 'text-warn-text';
   } else if (isError) {
-    label = 'NO API';
+    label = 'Cannot reach the server';
     tone = 'text-warn-text';
   } else if (data) {
     if (data.ingest === 'DISABLED') {
-      label = 'INGEST OFF';
+      label = 'No live analysis feed';
       tone = 'text-warn-text';
     } else if (data.feeds.stale > 0) {
-      label = 'STALE';
+      label = 'Waiting for new data';
       tone = 'text-warn-text';
     } else {
-      label = 'LIVE';
+      label = 'Live';
       tone = 'text-fg';
     }
   }
   return (
     <span
       role="status"
-      aria-label={`Feed status ${label}`}
+      aria-label={`Connection: ${label}`}
       className={`rounded-full border border-line bg-s2 px-2.5 py-1 text-xs font-medium ${tone}`}
     >
       <span aria-hidden className="mr-1.5">
@@ -88,21 +86,10 @@ function FeedChip() {
   );
 }
 
-function useSessionTimer(startedAt: string | null): string {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!startedAt) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [startedAt]);
-  if (!startedAt) return '00:00:00';
-  const sec = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(Math.floor(sec / 3600))}:${p(Math.floor((sec % 3600) / 60))}:${p(sec % 60)}`;
-}
-
 function BudgetMeter() {
   const b = useChat((s) => s.budget);
+  // Shown only when it matters: close to the daily AI limit or past it.
+  if (!b || (b.state !== 'SOFT' && b.state !== 'HARD')) return null;
   const pct = b && b.limitUsd > 0 ? Math.min(100, Math.round((b.spentUsd / b.limitUsd) * 100)) : 0;
   const warn = b?.state === 'SOFT' || b?.state === 'HARD';
   return (
@@ -140,14 +127,9 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const me = useMe(true);
   const sessions = useSessions(true);
   useAdoptLiveSession(sessions);
-  const inst = useInstruments();
-  const create = useCreateSession();
-  const sel = useSelection();
   const current = useUi((s) => s.view);
   const setView = useUi((s) => s.setView);
   const wallet = me.data?.wallets.find((w) => w.primary) ?? me.data?.wallets[0];
-  const nameOf = (id: string | null) =>
-    inst.data?.items.find((i) => i.id === id)?.canonical ?? 'Session';
   return (
     <nav aria-label="Main" className="flex h-full flex-col gap-4 overflow-auto p-3">
       <div className="flex items-center gap-2 px-1 font-semibold">
@@ -159,29 +141,6 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
         </span>
         SMC Copilot
       </div>
-      <button
-        type="button"
-        disabled={!sel.instrumentId || create.isPending || sel.sessionId !== null}
-        title={
-          sel.sessionId
-            ? 'End the current session first'
-            : sel.instrumentId
-              ? undefined
-              : 'Pick an instrument first'
-        }
-        onClick={() => {
-          create.mutate();
-          onNavigate?.();
-        }}
-        className="flex items-center gap-2 rounded-ctl border border-line bg-s2 px-3 py-2 hover:bg-s3 disabled:opacity-60"
-      >
-        <Plus className="size-4" aria-hidden /> New session
-      </button>
-      {create.error && (
-        <p role="alert" className="px-1 text-xs text-warn-text">
-          {create.error instanceof ApiError ? create.error.message : 'Could not start a session.'}
-        </p>
-      )}
       <ul className="flex flex-col gap-0.5">
         {NAV.map(({ label, icon: Icon, view }) => (
           <li key={label}>
@@ -199,42 +158,6 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
           </li>
         ))}
       </ul>
-      <div>
-        <h2 className="px-3 pb-1 text-xs uppercase tracking-wide text-muted">Recent sessions</h2>
-        {sessions.data?.length ? (
-          <ul className="flex flex-col gap-0.5">
-            {sessions.data.map((s) => {
-              const live = s.state !== 'ENDED';
-              const current = s.id === sel.sessionId;
-              return (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    disabled={!live}
-                    aria-current={current ? 'true' : undefined}
-                    title={live ? 'Resume this session' : 'Ended'}
-                    onClick={() => {
-                      sel.set({
-                        sessionId: s.id,
-                        startedAt: s.startedAt,
-                        instrumentId: s.instrumentId,
-                        tf: s.tf ?? sel.tf,
-                      });
-                      onNavigate?.();
-                    }}
-                    className={`flex w-full items-center justify-between gap-2 rounded-ctl px-3 py-1.5 text-left hover:bg-s3 disabled:text-muted ${current ? 'accent-soft text-accent-text' : ''}`}
-                  >
-                    <span className="num truncate">{nameOf(s.instrumentId)}</span>
-                    <span className="text-xs text-muted">{live ? s.tf : 'ended'}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="px-3 text-muted">{sessions.isPending ? 'Loading…' : 'None yet.'}</p>
-        )}
-      </div>
       <div className="mt-auto flex flex-col gap-2">
         <BudgetMeter />
         <div className="flex items-center gap-2 rounded-ctl px-2 py-1.5">
@@ -259,66 +182,16 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
 
 function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void }) {
   const [theme, toggleTheme] = useTheme();
-  const inst = useInstruments();
-  const sel = useSelection();
-  const end = useEndSession();
-  const timer = useSessionTimer(sel.startedAt);
   const notes = useNotifications();
   const setView = useUi((s) => s.setView);
   const unread = notes.data?.filter((n) => !n.read).length ?? 0;
-  const locked = sel.sessionId !== null;
   const btn = 'grid size-9 place-items-center rounded-ctl border border-line bg-s2 hover:bg-s3';
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-line bg-s1 px-3 py-2">
       <button type="button" aria-label="Open menu" onClick={onMenu} className={`${btn} lg:hidden`}>
         <Menu className="size-4" aria-hidden />
       </button>
-      <label className="sr-only" htmlFor="instrument">
-        Instrument
-      </label>
-      <select
-        id="instrument"
-        value={sel.instrumentId ?? ''}
-        disabled={!inst.data?.items.length || locked}
-        onChange={(e) => sel.set({ instrumentId: e.target.value || null })}
-        className="num rounded-ctl border border-line bg-s3 px-2 py-1.5"
-      >
-        <option value="">{inst.data?.items.length ? 'Pick an instrument' : 'No instrument'}</option>
-        {inst.data?.items.map((i) => (
-          <option key={i.id} value={i.id}>
-            {i.canonical}
-            {i.rawDataAllowed ? '' : ' · analysis only'}
-          </option>
-        ))}
-      </select>
-      <label className="sr-only" htmlFor="timeframe">
-        Timeframe
-      </label>
-      <select
-        id="timeframe"
-        value={sel.tf}
-        disabled={locked}
-        onChange={(e) => sel.set({ tf: e.target.value as typeof sel.tf })}
-        className="rounded-ctl border border-line bg-s3 px-2 py-1.5"
-      >
-        {TIMEFRAMES.map((t) => (
-          <option key={t}>{t}</option>
-        ))}
-      </select>
       <FeedChip />
-      <span className="num text-xs text-muted" title="Session timer">
-        {timer}
-      </span>
-      {locked && (
-        <button
-          type="button"
-          disabled={end.isPending}
-          onClick={() => end.mutate()}
-          className="rounded-ctl border border-line bg-s2 px-2.5 py-1.5 text-xs hover:bg-s3"
-        >
-          End session
-        </button>
-      )}
       <div className="ml-auto flex gap-2">
         <button
           type="button"
@@ -366,7 +239,6 @@ function Centre() {
   if (view === 'trades') return <TradesView />;
   if (view === 'notifications') return <NotificationsView />;
   if (view === 'settings') return <SettingsView />;
-  if (view === 'instruments') return <InstrumentsView />;
   return (
     <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col">
       {live.state === 'TAKEN' && (
@@ -397,6 +269,8 @@ function Centre() {
 
 export function Shell() {
   useLiveSession(useSelection((s) => s.sessionId));
+  useAutoRoom();
+  useSpeechPrefetch();
   const [menu, setMenu] = useState(false);
   const drawer = useUi((s) => s.drawer);
   const setDrawer = useUi((s) => s.setDrawer);

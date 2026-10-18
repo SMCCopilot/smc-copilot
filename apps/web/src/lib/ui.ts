@@ -6,7 +6,7 @@ import { DEFAULT_LAYERS, type LayerId } from './overlays';
 type Setup = NonNullable<AnalysisResponse['setups']>[number];
 
 export type CanvasTab = 'Plan' | 'Evidence' | 'Changes' | 'Stats' | 'Journal';
-export type View = 'room' | 'instruments' | 'journal' | 'trades' | 'notifications' | 'settings';
+export type View = 'room' | 'journal' | 'trades' | 'notifications' | 'settings';
 
 interface Ui {
   layers: Record<LayerId, boolean>;

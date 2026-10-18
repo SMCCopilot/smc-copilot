@@ -201,7 +201,7 @@ function MicButton({
   const btn = (
     <button
       type="button"
-      aria-label={voice.status === 'OFF' ? 'Turn on voice' : 'Hold to talk'}
+      aria-label={voice.status === 'LOADING' ? 'Voice is getting ready' : 'Hold to talk'}
       aria-pressed={recording}
       aria-disabled={reason !== null}
       disabled={reason !== null && disabledReason !== null}
@@ -218,9 +218,7 @@ function MicButton({
   );
   const tip =
     reason ??
-    (voice.status === 'OFF'
-      ? 'Turn on voice (runs on this device)'
-      : 'Hold to talk, release to review');
+    (voice.status === 'OFF' ? 'Voice (runs on this device)' : 'Hold to talk, release to review');
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
@@ -309,6 +307,11 @@ export function Dock() {
         )}
       </div>
 
+      {voice.status === 'LOADING' && voice.progress > 0 && voice.progress < 1 && (
+        <p className="mt-2 text-xs text-muted" role="status">
+          Getting voice ready… {Math.round(voice.progress * 100)}% (once; it stays on this device)
+        </p>
+      )}
       {voice.detail && (
         <p className="mt-2 text-xs text-muted" role="status">
           {voice.detail}

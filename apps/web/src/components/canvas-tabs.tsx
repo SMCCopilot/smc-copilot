@@ -31,7 +31,7 @@ export const GradeChip = ({ grade }: { grade: string | null }) =>
   grade ? (
     <span
       className="rounded-full bg-grade-bg px-2 py-0.5 text-xs font-medium text-grade"
-      title="Setup grade"
+      title="Setup quality: A is the strongest. A grade is not a prediction."
     >
       Grade {grade}
     </span>
@@ -96,18 +96,28 @@ export function PlanTab({ setup }: { setup: Setup | null }) {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="text-base font-semibold">{directionLabel(setup.direction)}</h2>
         <GradeChip grade={setup.grade} />
-        <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-          {setup.template}
+        <span
+          className="rounded-full border border-line px-2 py-0.5 text-xs text-muted"
+          title="Which of the strategy's three setup patterns this is"
+        >
+          Pattern {setup.template}
         </span>
-        <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-          {setup.state.toLowerCase()}
+        <span
+          className="rounded-full border border-line px-2 py-0.5 text-xs text-muted"
+          title={
+            setup.state === 'ARMED'
+              ? 'All the rules are met; waiting for price to reach the entry zone'
+              : 'Price reached the entry zone and confirmed'
+          }
+        >
+          {setup.state === 'ARMED' ? 'Ready, waiting for price' : setup.state.toLowerCase()}
         </span>
       </div>
       <Card title="Levels">
         <dl>
           <Row k="Entry zone" v={`${f(plan.entry.bottom)} – ${f(plan.entry.top)}`} />
-          <Row k={`Reference (${plan.entry.basis})`} v={f(plan.entry.refPrice)} />
-          <Row k={`Stop (${plan.stop.basis})`} v={f(plan.stop.price)} />
+          <Row k="Reference price" v={f(plan.entry.refPrice)} />
+          <Row k="Stop" v={f(plan.stop.price)} />
           {plan.targets.map((t) => (
             <Row
               key={t.id}
@@ -132,10 +142,6 @@ export function PlanTab({ setup }: { setup: Setup | null }) {
           <Row k="Spread" v={f(plan.assumptions.spread)} />
           <Row k="Slippage" v={f(plan.assumptions.slippage)} />
           <Row k="Fee" v={`${plan.assumptions.feeBps} bps`} />
-          <Row
-            k="Net R after fees"
-            v={<span className="text-muted">not supplied by the API yet</span>}
-          />
         </dl>
       </Card>
       {plan.risk && (

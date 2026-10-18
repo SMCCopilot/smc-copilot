@@ -54,23 +54,17 @@ test('onboarding runs disclaimer and 18+ in order (no invite step), then opens t
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.getByRole('button', { name: 'New session' })).toBeVisible();
+  await expect(page.getByLabel('Chart market')).toBeVisible();
 });
 
 test('a licence-restricted instrument switches to overlay-only and never asks for candles', async ({
   page,
 }) => {
   const calls = await openRoom(page);
-  await page.getByLabel('Instrument').selectOption(INST_RAW_OFF);
-  await expect(
-    page
-      .getByText(
-        'Raw prices unavailable for this venue; use your own chart and share your screen to explain.',
-      )
-      .first(),
-  ).toBeVisible();
-  expect(calls.paths.some((p) => p.endsWith('/candles'))).toBe(false);
-  await page.getByLabel('Instrument').selectOption(INST_FULL);
+  await page.getByLabel('Chart market').selectOption(INST_RAW_OFF);
+  await expect(page.getByText(/Prices are not available for this market/).first()).toBeVisible();
+  expect(calls.paths.some((p) => p.includes(INST_RAW_OFF) && p.endsWith('/candles'))).toBe(false);
+  await page.getByLabel('Chart market').selectOption(INST_FULL);
   await expect.poll(() => calls.paths.some((p) => p.endsWith('/candles'))).toBe(true);
 });
 
@@ -93,26 +87,29 @@ test('where our servers hold no price terms, the user can show live prices strai
     }),
   );
   const calls = await openRoom(page);
-  await page.getByLabel('Instrument').selectOption(INST_BINANCE_NO_RAW);
-  await expect(page.getByText(/Live prices from Binance, direct to your browser/)).toBeVisible();
+  await page.getByLabel('Chart market').selectOption(INST_BINANCE_NO_RAW);
+  await expect(page.getByRole('button', { name: 'Binance prices' })).toBeVisible();
   await expect(page.locator('section[aria-label="Chart"] canvas').first()).toBeVisible();
   // Our own candle route is never asked: the prices do not come through our servers.
-  expect(calls.paths.some((p) => p.endsWith('/candles'))).toBe(false);
-  await expect(page.getByText('Raw prices unavailable for this venue')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Turn off live prices' }).click();
-  await expect(page.getByText(/Live prices are off/)).toBeVisible();
+  expect(calls.paths.some((p) => p.includes(INST_BINANCE_NO_RAW) && p.endsWith('/candles'))).toBe(
+    false,
+  );
+  await expect(page.getByText(/Prices are not available for this market/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Binance prices' }).click();
+  await page.getByRole('button', { name: 'Turn prices off' }).click();
+  await expect(page.getByRole('button', { name: 'Prices off' })).toBeVisible();
   await expect(page.locator('section[aria-label="Chart"] canvas')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Show live prices from Binance' }).click();
+  await page.getByRole('button', { name: 'Prices off' }).click();
+  await page.getByRole('button', { name: 'Turn prices on' }).click();
   await expect(page.locator('section[aria-label="Chart"] canvas').first()).toBeVisible();
 });
 
-test('starting a session sends one idempotency key and ending it clears the room', async ({
+test('the analysis session starts by itself with one idempotency key, and can be ended in Settings', async ({
   page,
 }) => {
   const calls = await openRoom(page);
-  await page.getByLabel('Instrument').selectOption(INST_FULL);
-  await page.getByRole('button', { name: 'New session' }).click();
-  await expect(page.getByRole('button', { name: 'End session' })).toBeVisible();
+  await expect.poll(() => calls.paths.includes('POST /v1/sessions')).toBe(true);
+  await expect(page.getByRole('button', { name: 'Share screen' })).toBeEnabled();
   const key = calls.headers['POST /v1/sessions']?.['idempotency-key'];
   expect(key).toMatch(/^[0-9a-f-]{36}$/);
   expect(calls.bodies['POST /v1/sessions']).toEqual({
@@ -120,14 +117,15 @@ test('starting a session sends one idempotency key and ending it clears the room
     tf: '15m',
     mode: 'FEED',
   });
+  await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'End session' }).click();
-  await expect(page.getByRole('button', { name: 'End session' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Start session' })).toBeVisible();
 });
 
-test('a live session the browser does not remember is picked up, so the room is not empty and New session is not refused', async ({
+test('a live session the browser does not remember is picked up, not duplicated', async ({
   page,
 }) => {
-  await openRoom(page, {
+  const calls = await openRoom(page, {
     onRoute: (path, method) =>
       path === '/v1/sessions' && method === 'GET'
         ? {
@@ -149,14 +147,14 @@ test('a live session the browser does not remember is picked up, so the room is 
           }
         : undefined,
   });
-  await expect(page.getByRole('button', { name: 'End session' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Share screen' })).toBeEnabled();
+  expect(calls.paths).not.toContain('POST /v1/sessions');
 });
 
 test.describe('confirm gate', () => {
   async function toDialog(page: Page, opts: Parameters<typeof mockApi>[1] = {}, pick = true) {
     const calls = await openRoom(page, { withSetup: true, ...opts });
-    if (pick) await page.getByLabel('Instrument').selectOption(INST_FULL);
+    if (pick) await page.getByLabel('Chart market').selectOption(INST_FULL);
     await expect(page.getByText('Long scenario').first()).toBeVisible();
     await expect(
       page.getByText('Rules check: all hard filters passed. This is not a prediction.'),
@@ -214,7 +212,7 @@ test.describe('confirm gate', () => {
       [INST_FULL, SESSION_ID],
     );
     await toDialog(page, {}, false);
-    await expect(page.getByLabel('Turn on voice')).toBeDisabled();
+    await expect(page.getByLabel(/Hold to talk|Voice is getting ready/)).toBeDisabled();
   });
 });
 
@@ -231,7 +229,7 @@ test('settings: theme choice is remembered and "never send images" switches off 
   expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe(chosen);
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByLabel(/Never send images to AI/).check();
-  await page.getByRole('button', { name: 'Session room' }).first().click();
+  await page.getByRole('button', { name: 'Chart' }).first().click();
   await page.getByRole('button', { name: 'Explain this chart' }).click();
   await expect(page.getByRole('button', { name: 'Upload an image' })).toBeDisabled();
 });
@@ -259,7 +257,7 @@ test('small screens use a menu and a plan drawer', async ({ page }) => {
 
 test('no serious accessibility violations on the main screens', async ({ page }) => {
   await openRoom(page, { withSetup: true });
-  await page.getByLabel('Instrument').selectOption(INST_FULL);
+  await page.getByLabel('Chart market').selectOption(INST_FULL);
   await expect(page.getByText('Long scenario').first()).toBeVisible();
   for (const theme of ['dark', 'light']) {
     await page.evaluate((t) => {

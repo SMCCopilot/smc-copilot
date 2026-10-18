@@ -13,8 +13,6 @@ import {
   useReadAll,
   useTrades,
 } from '../lib/records';
-import { useSelection } from '../lib/sessions';
-import { useUi } from '../lib/ui';
 import { percent } from '../lib/wording';
 
 const Page = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -313,48 +311,6 @@ export function NotificationsView() {
         </ul>
       ) : (
         <Muted>No notifications.</Muted>
-      )}
-    </Page>
-  );
-}
-
-export function InstrumentsView() {
-  const inst = useInstruments();
-  const sel = useSelection();
-  const setView = useUi((s) => s.setView);
-  return (
-    <Page title="Instruments">
-      <p className="mb-3 text-muted">
-        Pick the market to study. “Analysis only” means raw prices are not shown for that venue;
-        levels and zones still are, and you can share your own chart to explain.
-      </p>
-      {inst.isPending ? (
-        <Muted>Loading…</Muted>
-      ) : (
-        <ul className="grid gap-2 sm:grid-cols-2">
-          {inst.data?.items.map((i) => (
-            <li key={i.id}>
-              <button
-                type="button"
-                disabled={sel.sessionId !== null}
-                aria-pressed={sel.instrumentId === i.id}
-                onClick={() => {
-                  sel.set({ instrumentId: i.id });
-                  setView('room');
-                }}
-                className={`flex w-full items-center justify-between gap-2 rounded-card border border-line px-3 py-2.5 text-left hover:bg-s3 disabled:opacity-60 ${sel.instrumentId === i.id ? 'accent-soft' : 'bg-s2'}`}
-              >
-                <span className="num">{i.canonical}</span>
-                <span className="text-xs text-muted">
-                  {i.rawDataAllowed ? 'Full data' : 'Analysis only'}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {sel.sessionId && (
-        <p className="mt-3 text-xs text-muted">End the current session to change the instrument.</p>
       )}
     </Page>
   );

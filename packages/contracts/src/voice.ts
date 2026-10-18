@@ -1,13 +1,11 @@
 import { z } from 'zod';
 
-/** Speech engine that produced a transcript. Server engines are reserved for Tier 2 (A02 section 6.3). `browser-local` is the browser's own speech recognition,
- * used only with `processLocally` (audio stays on the device). */
+/** Speech engine that produced a transcript. Server engines are reserved for Tier 2 (A02 section 6.3). */
 export const STT_ENGINE_TAGS = [
   'whisper-web',
   'moonshine-web',
   'parakeet-server',
   'whispercpp-server',
-  'browser-local',
   'typed',
 ] as const;
 export const SttEngineTagSchema = z.enum(STT_ENGINE_TAGS);
