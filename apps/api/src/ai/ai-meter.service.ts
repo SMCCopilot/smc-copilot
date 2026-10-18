@@ -59,12 +59,16 @@ export class AiMeterService implements OnModuleInit {
     }
   };
 
-  readonly onOutcome = async (callId: string, outcome: CallOutcome): Promise<void> => {
+  readonly onOutcome = async (
+    callId: string,
+    outcome: CallOutcome,
+    detail?: string,
+  ): Promise<void> => {
     if (!this.sql) return;
     try {
       // The creation-time bound lets Postgres prune to the current partitions.
       await this.sql`
-        update ai_calls set outcome = ${outcome}
+        update ai_calls set outcome = ${outcome}, error_code = coalesce(${detail?.slice(0, 120) ?? null}, error_code)
          where id = ${callId} and created_at > now() - interval '1 hour'`;
     } catch (e) {
       this.log.error(`outcome update failed: ${String(e)}`);

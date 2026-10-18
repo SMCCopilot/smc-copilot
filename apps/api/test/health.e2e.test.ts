@@ -111,6 +111,23 @@ describe('CORS', () => {
   });
 });
 
+describe('CORS preflight for the headers the web app sets itself', () => {
+  // The browser blocks a cross-origin call whose custom header is not allowed. The web app sets these by hand
+  // (apps/web/src/lib/api.ts, market.ts, confirm.ts); a fake API in the browser tests cannot catch a gap here.
+  it.each(['authorization', 'content-type', 'idempotency-key', 'if-none-match', 'x-input-mode'])(
+    'allows %s',
+    async (header) => {
+      const server = (await app({ env: { CORS_ORIGINS: 'https://app.example' } })).getHttpServer();
+      const res = await request(server)
+        .options('/v1/me')
+        .set('Origin', 'https://app.example')
+        .set('Access-Control-Request-Method', 'GET')
+        .set('Access-Control-Request-Headers', header);
+      expect(String(res.headers['access-control-allow-headers']).toLowerCase()).toContain(header);
+    },
+  );
+});
+
 describe('GET /readyz', () => {
   let server: TestServer;
   beforeAll(async () => {

@@ -1,4 +1,4 @@
-import type { ProviderId } from './types.js';
+import type { LlmUsage, ProviderId } from './types.js';
 
 export type LlmErrorKind =
   | 'RATE_LIMITED'
@@ -15,6 +15,8 @@ export class LlmError extends Error {
     message: string,
     readonly status?: number,
     readonly retryAfterMs?: number,
+    /** Tokens the vendor reports for a call that still failed (it bills them), so the meter can count them. */
+    readonly usage?: LlmUsage,
   ) {
     super(message);
   }

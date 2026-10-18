@@ -36,7 +36,7 @@ export function Canvas() {
       >
         <Tabs.List
           aria-label="Canvas"
-          className="flex gap-1 overflow-x-auto border-b border-line px-3 pt-3 pr-10"
+          className="flex gap-1 overflow-x-auto border-b border-line px-3 pt-3 pr-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {TABS.map((t) => (
             <Tabs.Trigger

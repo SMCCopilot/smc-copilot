@@ -28,7 +28,7 @@ export interface RouterOptions {
   /** Called once per provider attempt (success or failure), for the `ai_calls` ledger. */
   onCall?: (r: CallRecord) => void | Promise<void>;
   /** Called when a later check (guardrails) changes the outcome of a recorded call. */
-  onOutcome?: (callId: string, outcome: CallOutcome) => void | Promise<void>;
+  onOutcome?: (callId: string, outcome: CallOutcome, detail?: string) => void | Promise<void>;
   timeoutMs?: Partial<Record<JobId, number>>;
   breaker?: BreakerOptions;
 }
@@ -87,8 +87,9 @@ export class LlmRouter {
     });
   }
 
-  async markOutcome(callId: string, outcome: CallOutcome): Promise<void> {
-    await this.o.onOutcome?.(callId, outcome);
+  /** `detail` is a short, content-free reason (for example "number" or "schema"), stored as the call's error code. */
+  async markOutcome(callId: string, outcome: CallOutcome, detail?: string): Promise<void> {
+    await this.o.onOutcome?.(callId, outcome, detail);
   }
 
   async call(
@@ -184,9 +185,10 @@ export class LlmRouter {
           attempts.push({ provider: p.id, kind: err.kind });
           // A call that timed out may still have been read (and billed) by the vendor: count the input we sent.
           const failedUsage: LlmUsage =
-            err.kind === 'TIMEOUT'
+            err.usage ??
+            (err.kind === 'TIMEOUT'
               ? { ...ZERO, tokensIn: Math.ceil((req.system.length + req.user.length) / 4) }
-              : ZERO;
+              : ZERO);
           await this.record({
             id: randomUUID(),
             job,
@@ -197,7 +199,8 @@ export class LlmRouter {
             costUsd: this.o.prices.cost(model, failedUsage),
             latencyMs: this.now() - started,
             outcome: OUTCOME_OF[err.kind],
-            errorCode: err.kind,
+            // Kind plus the adapter's own short message (never a vendor body), so a failure can be diagnosed.
+            errorCode: `${err.kind}:${err.message}`.slice(0, 120),
           });
           if (err.retryable && attempt === 0) {
             const wait = Math.min(

@@ -18,6 +18,27 @@ export function extractJson(text: string): unknown {
   }
 }
 
+/** A short, content-free label for why an answer was rejected, kept with the call record for diagnosis. */
+export function summarizeErrors(errors: readonly string[]): string {
+  const tags = new Set<string>();
+  for (const e of errors) {
+    if (e.startsWith('the JSON does not match the schema')) {
+      tags.add(
+        `schema:${e
+          .slice(e.indexOf(':') + 2)
+          .split(' ')
+          .slice(0, 2)
+          .join(' ')}`,
+      );
+    } else if (e.includes('outside a placeholder')) tags.add('number');
+    else if (e.includes('language that is not allowed')) {
+      tags.add(`lexicon:${/\(([^)]*)\)/.exec(e)?.[1] ?? '?'}`);
+    } else if (e.includes('key-like')) tags.add('secret');
+    else tags.add(e.replace(/["'\d]+/g, '').slice(0, 30));
+  }
+  return [...tags].join('|').slice(0, 120);
+}
+
 /** The checks every piece of model prose passes: no price literals, no banned language, no echoed secret. */
 export function checkProse(texts: readonly string[]): string[] {
   const errors: string[] = [];
@@ -107,7 +128,11 @@ export async function runGuarded<T>(o: GuardedOptions<T>): Promise<GuardedResult
       return { ok: true, out: parsed.data, calls, retried: attempt > 0 };
     }
     lastErrors = errors;
-    await o.router.markOutcome(r.callId, attempt === 0 ? 'SCHEMA_RETRY' : 'GUARDRAIL_REJECTED');
+    await o.router.markOutcome(
+      r.callId,
+      attempt === 0 ? 'SCHEMA_RETRY' : 'GUARDRAIL_REJECTED',
+      summarizeErrors(errors),
+    );
     user = `${o.user}\n\nYour previous answer was rejected for these reasons:\n- ${errors.slice(0, 8).join('\n- ')}\nReturn only the corrected JSON object.`;
   }
   return { ok: false, reason: 'GUARDRAIL_REJECTED', calls, errors: lastErrors };

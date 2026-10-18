@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AnthropicAdapter } from '../src/adapters/anthropic.js';
-import { GeminiAdapter } from '../src/adapters/gemini.js';
+import { GEMINI_THINKING_HEADROOM, GeminiAdapter } from '../src/adapters/gemini.js';
 import type { FetchLike } from '../src/adapters/http.js';
 import { OpenAiAdapter } from '../src/adapters/openai.js';
 import type { LlmRequest } from '../src/types.js';
@@ -128,6 +128,39 @@ describe('gemini adapter', () => {
     );
     expect(r.text).toBe('ab');
     expect(r.usage.tokensOut).toBe(12);
+  });
+});
+
+describe('Gemini thinking headroom', () => {
+  it('adds room for thinking tokens to the output cap, and names the finish reason when no text comes back', async () => {
+    const ok = fake({ candidates: [{ content: { parts: [{ text: 'x' }] } }], usageMetadata: {} });
+    await new GeminiAdapter(ok.f).call({
+      apiKey: 'K',
+      model: 'm',
+      req: { ...REQ, maxTokens: 700 },
+      signal: new AbortController().signal,
+    });
+    expect(
+      ((ok.seen[0] as Seen).body.generationConfig as Record<string, unknown>).maxOutputTokens,
+    ).toBe(700 + GEMINI_THINKING_HEADROOM);
+    const empty = fake({
+      candidates: [{ content: { parts: [] }, finishReason: 'MAX_TOKENS' }],
+      usageMetadata: { promptTokenCount: 10, thoughtsTokenCount: 900 },
+    });
+    let err: { message: string; usage?: { tokensOut: number } } | undefined;
+    try {
+      await new GeminiAdapter(empty.f).call({
+        apiKey: 'K',
+        model: 'm',
+        req: REQ,
+        signal: new AbortController().signal,
+      });
+    } catch (e) {
+      err = e as { message: string; usage?: { tokensOut: number } };
+    }
+    expect(err?.message).toMatch(/MAX_TOKENS/);
+    // The vendor bills the thinking tokens even though no text came back; the meter must see them.
+    expect(err?.usage?.tokensOut).toBe(900);
   });
 });
 
