@@ -31,6 +31,7 @@ interface RecognitionCtor {
 }
 
 const LANG = 'en-US';
+const INSTALL_TIMEOUT_MS = 60_000;
 
 function ctor(): RecognitionCtor | null {
   if (typeof window === 'undefined') return null;
@@ -51,7 +52,11 @@ export async function createBrowserRecognizer(
   let status = await C.available(opts).catch(() => 'unavailable');
   if ((status === 'downloadable' || status === 'downloading') && typeof C.install === 'function') {
     onNote('Downloading the on-device speech language pack (once)…');
-    const ok = await C.install(opts).catch(() => false);
+    // A language pack that never finishes must not leave voice stuck on "loading": after a minute, use the fallback.
+    const ok = await Promise.race([
+      C.install(opts).catch(() => false),
+      new Promise<boolean>((r) => setTimeout(() => r(false), INSTALL_TIMEOUT_MS)),
+    ]);
     status = ok ? 'available' : 'unavailable';
     onNote(null);
   }
