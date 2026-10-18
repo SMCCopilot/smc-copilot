@@ -14,6 +14,21 @@ const pick = (...keys) => {
   return '';
 };
 
+// A hosted production build must not silently point at localhost or an unset Supabase project: fail the build.
+// (Local builds are unaffected; set REQUIRE_PUBLIC_WEB_ENV=true to apply the same check anywhere.)
+if (
+  process.env.NODE_ENV === 'production' &&
+  (process.env.RAILWAY_ENVIRONMENT || process.env.REQUIRE_PUBLIC_WEB_ENV === 'true')
+) {
+  const problems = [];
+  if (!/^https:\/\//.test(pick('NEXT_PUBLIC_API_URL')))
+    problems.push('NEXT_PUBLIC_API_URL (https)');
+  if (!pick('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL')) problems.push('NEXT_PUBLIC_SUPABASE_URL');
+  if (!pick('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_ANON_KEY'))
+    problems.push('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  if (problems.length > 0) throw new Error(`web build refused, set: ${problems.join(', ')}`);
+}
+
 // Baseline response headers for the web app. No CSP yet: the speech and OCR workers need a tested allow-list (backlog).
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
