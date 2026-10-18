@@ -5,7 +5,15 @@ import { useMemo } from 'react';
 import { ApiError } from '../lib/errors';
 import { useLivePricePref, useLivePrices } from '../lib/live-prices';
 import { useAnalysis, useCandles } from '../lib/market';
-import { buildOverlays, LAYER_LABEL, LAYERS, structureMarks, visible } from '../lib/overlays';
+import {
+  buildOverlays,
+  focusOverlays,
+  LAYER_LABEL,
+  LAYERS,
+  relevantForTf,
+  structureMarks,
+  visible,
+} from '../lib/overlays';
 import { useInstruments } from '../lib/queries';
 import { useSelection } from '../lib/sessions';
 import { pickSetup, useUi } from '../lib/ui';
@@ -57,10 +65,27 @@ export function ChartPanel() {
   const precision = instrument?.pricePrecision ?? 2;
 
   const setup = pickSetup(analysis.data, ui.setupId, ui.dismissed);
-  const overlays = useMemo(
-    () => (analysis.data ? visible(buildOverlays(analysis.data, setup), ui.layers) : []),
-    [analysis.data, setup, ui.layers],
+  const allOverlays = useMemo(
+    () =>
+      analysis.data
+        ? relevantForTf(visible(buildOverlays(analysis.data, setup), ui.layers), sel.tf)
+        : [],
+    [analysis.data, setup, ui.layers, sel.tf],
   );
+  // With real candles, keep the levels nearest the last closed price (stable within a bar, so the picture does not jump).
+  const priceCandles = directMode ? direct.candles : serverRaw ? (candles.data ?? null) : null;
+  const refPrice = useMemo(() => {
+    const closed = priceCandles?.filter((c) => c.status === 'CLOSED').at(-1);
+    return (closed ?? priceCandles?.at(-1))?.c;
+  }, [priceCandles]);
+  const focused = useMemo(
+    () =>
+      refPrice === undefined
+        ? { shown: allOverlays, hidden: 0 }
+        : focusOverlays(allOverlays, 14, refPrice),
+    [allOverlays, refPrice],
+  );
+  const overlays = refPrice === undefined ? allOverlays : focused.shown;
   const marks = useMemo(
     () => (analysis.data && ui.layers.structure ? structureMarks(analysis.data) : null),
     [analysis.data, ui.layers.structure],
@@ -107,7 +132,10 @@ export function ChartPanel() {
   }
 
   return (
-    <section aria-label="Chart" className="flex min-h-0 flex-[6] flex-col border-b border-line">
+    <section
+      aria-label="Chart"
+      className="flex min-h-[280px] flex-[7] flex-col border-b border-line"
+    >
       {/* biome-ignore lint/a11y/useSemanticElements: a toolbar of toggle buttons, not a form group */}
       <div
         className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-1.5"
@@ -165,8 +193,7 @@ export function ChartPanel() {
                 className={`mr-1.5 inline-block size-2 rounded-full ${direct.state === 'LIVE' ? 'bg-bull' : 'bg-warn'}`}
                 aria-hidden
               />
-              Live prices from Binance, sent straight to your browser (our servers do not relay
-              them).
+              Live prices from Binance, direct to your browser.
             </span>
           ) : (
             <span className="text-muted">
@@ -184,16 +211,23 @@ export function ChartPanel() {
       )}
       <div className="min-h-0 flex-1">{body}</div>
       {rawMode && (
-        <p className="border-t border-line px-3 py-0.5 text-right text-[11px] text-muted">
-          Charts by{' '}
-          <a
-            className="underline"
-            href="https://www.tradingview.com/lightweight-charts/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            TradingView Lightweight Charts™
-          </a>
+        <p className="flex flex-wrap items-center justify-between gap-x-3 border-t border-line px-3 py-0.5 text-[11px] text-muted">
+          <span>
+            {focused.hidden > 0
+              ? `Showing the ${focused.shown.length} levels nearest the price; ${focused.hidden} more are not drawn.`
+              : ''}
+          </span>
+          <span>
+            Charts by{' '}
+            <a
+              className="underline"
+              href="https://www.tradingview.com/lightweight-charts/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              TradingView Lightweight Charts™
+            </a>
+          </span>
         </p>
       )}
     </section>

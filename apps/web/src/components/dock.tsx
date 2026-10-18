@@ -292,7 +292,7 @@ export function Dock() {
       : null;
 
   return (
-    <section aria-label="Conversation" className="flex min-h-0 flex-[4] flex-col p-3">
+    <section aria-label="Conversation" className="flex min-h-0 flex-[3] flex-col p-3">
       <div
         ref={scroller}
         className="min-h-0 flex-1 space-y-3 overflow-auto pr-1"

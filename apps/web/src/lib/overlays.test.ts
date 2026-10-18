@@ -7,6 +7,7 @@ import {
   levelLayer,
   type Overlay,
   overlayPrices,
+  relevantForTf,
   stackLabels,
   visible,
   zoneLayer,
@@ -102,6 +103,58 @@ describe('focusOverlays', () => {
     // The median level is near 80,000, so the far ends are left out.
     expect(r.shown.some((o) => o.id === 'z0')).toBe(false);
     expect(r.shown.some((o) => o.id === 'z39')).toBe(false);
+  });
+});
+
+describe('focusOverlays with a real price', () => {
+  it('centres on the given price, not on the median level', () => {
+    const z = (id: string, price: number): Overlay => ({
+      kind: 'zone',
+      layer: 'fvg',
+      id,
+      label: id,
+      top: price + 5,
+      bottom: price - 5,
+      tone: 'fvg',
+    });
+    const many = Array.from({ length: 40 }, (_, i) => z(`z${i}`, 60_000 + i * 1000));
+    // The median is near 80,000, but the price is 61,000: the low levels are the ones kept.
+    const r = focusOverlays(many, 6, 61_000);
+    expect(r.shown.some((o) => o.id === 'z1')).toBe(true);
+    expect(r.shown.some((o) => o.id === 'z39')).toBe(false);
+  });
+});
+
+describe('relevantForTf', () => {
+  const z = (label: string, layer: Overlay['layer'] = 'fvg'): Overlay => ({
+    kind: 'zone',
+    layer,
+    id: label,
+    label,
+    top: 2,
+    bottom: 1,
+    tone: 'fvg',
+  });
+  it('drops levels from lower timeframes than the chart, keeps equal, higher and unlabelled ones', () => {
+    const items = [
+      z('Bearish FVG 15m'),
+      z('Bullish FVG 1h'),
+      z('Bullish order block 1d'),
+      z('Equal highs'),
+      z('Entry zone', 'plan'),
+    ];
+    expect(relevantForTf(items, '1h').map((o) => o.id)).toEqual([
+      'Bullish FVG 1h',
+      'Bullish order block 1d',
+      'Equal highs',
+      'Entry zone',
+    ]);
+    expect(relevantForTf(items, '1d').map((o) => o.id)).toEqual([
+      'Bullish order block 1d',
+      'Equal highs',
+      'Entry zone',
+    ]);
+    expect(relevantForTf(items, '5m')).toHaveLength(5);
   });
 });
 

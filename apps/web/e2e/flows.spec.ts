@@ -94,9 +94,7 @@ test('where our servers hold no price terms, the user can show live prices strai
   );
   const calls = await openRoom(page);
   await page.getByLabel('Instrument').selectOption(INST_BINANCE_NO_RAW);
-  await expect(
-    page.getByText(/Live prices from Binance, sent straight to your browser/),
-  ).toBeVisible();
+  await expect(page.getByText(/Live prices from Binance, direct to your browser/)).toBeVisible();
   await expect(page.locator('section[aria-label="Chart"] canvas').first()).toBeVisible();
   // Our own candle route is never asked: the prices do not come through our servers.
   expect(calls.paths.some((p) => p.endsWith('/candles'))).toBe(false);

@@ -224,6 +224,8 @@ export default function ChartFull({
   useEffect(() => {
     const p = readPalette();
     const m: SeriesMarker<Time>[] = (marks ?? [])
+      // Internal swings are dots by the hundred; keep the external swings and every break.
+      .filter((x) => x.kind === 'BREAK' || x.scale === 'external')
       .map((x) => ({
         time: sec(x.time),
         position: (x.kind === 'LOW' ? 'belowBar' : 'aboveBar') as 'belowBar' | 'aboveBar',

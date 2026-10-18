@@ -169,6 +169,34 @@ export function visible(items: Overlay[], on: Record<LayerId, boolean>): Overlay
   return items.filter((o) => o.layer === 'plan' || on[o.layer]);
 }
 
+const TF_MINUTES: Record<string, number> = {
+  '1m': 1,
+  '3m': 3,
+  '5m': 5,
+  '15m': 15,
+  '30m': 30,
+  '1h': 60,
+  '2h': 120,
+  '4h': 240,
+  '1d': 1440,
+  '1w': 10080,
+};
+
+/**
+ * A chart should not carry levels from timeframes below its own: on a daily chart, fifteen-minute gaps are noise a few
+ * dollars wide. Levels whose label names a lower timeframe are dropped; ones with no timeframe in the label stay.
+ */
+export function relevantForTf(items: Overlay[], chartTf: string): Overlay[] {
+  const mine = TF_MINUTES[chartTf];
+  if (mine === undefined) return items;
+  return items.filter((o) => {
+    if (o.layer === 'plan') return true;
+    const m = /\b(1m|3m|5m|15m|30m|1h|2h|4h|1d|1w)\b/i.exec(o.label);
+    const theirs = m?.[1] ? TF_MINUTES[m[1].toLowerCase()] : undefined;
+    return theirs === undefined || theirs >= mine;
+  });
+}
+
 const midOf = (o: Overlay): number => (o.kind === 'zone' ? (o.top + o.bottom) / 2 : o.price);
 
 /**
@@ -177,12 +205,17 @@ const midOf = (o: Overlay): number => (o.kind === 'zone' ? (o.top + o.bottom) / 
  * and say how many were left out. The reference price is the plan's entry when there is one, else the median level
  * (levels cluster around the market).
  */
-export function focusOverlays(items: Overlay[], max = 14): { shown: Overlay[]; hidden: number } {
+export function focusOverlays(
+  items: Overlay[],
+  max = 14,
+  /** The real price when there are candles; else the plan's entry or the median level is used. */
+  price?: number,
+): { shown: Overlay[]; hidden: number } {
   if (items.length <= max) return { shown: items, hidden: 0 };
   const plan = items.filter((o) => o.layer === 'plan');
   const entry = plan.find((o) => o.kind === 'zone');
   const mids = items.map(midOf).sort((a, b) => a - b);
-  const ref = entry ? midOf(entry) : (mids[Math.floor(mids.length / 2)] as number);
+  const ref = price ?? (entry ? midOf(entry) : (mids[Math.floor(mids.length / 2)] as number));
   const rest = items
     .filter((o) => o.layer !== 'plan')
     .sort((a, b) => Math.abs(midOf(a) - ref) - Math.abs(midOf(b) - ref));
