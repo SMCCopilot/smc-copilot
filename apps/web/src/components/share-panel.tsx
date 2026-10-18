@@ -103,6 +103,12 @@ export function SharePanel() {
                 <span className="text-xs text-muted">Reading your chart…</span>
               )}
             </div>
+            {share.readSome && !d?.symbolText && (
+              <p className="text-xs text-warn-text">
+                No trading symbol was found on this chart. If it is a BTC, ETH or SOL market, pick
+                it from the Market list; other markets are not covered by our feeds.
+              </p>
+            )}
             {mismatch && (
               <p role="alert" className="text-xs text-warn-text">
                 {mismatch}

@@ -82,9 +82,9 @@ export class ScreenSource implements FrameSource {
   async grab(): Promise<Frame | null> {
     const v = this.video;
     if (!v || v.videoWidth === 0) return null;
-    // Chart text is small (11 to 13 px). Shrinking a 1920 px tab to 1280 px made the symbol and price unreadable in a
-    // live test, so keep up to full HD and only shrink beyond that.
-    const scale = Math.min(1, 1920 / v.videoWidth);
+    // Text on charts is read well at 1280 px wide (checked against a live 1920 px TradingView tab: the same lines at both
+    // sizes, same speed), and it keeps the pass fast.
+    const scale = Math.min(1, 1280 / v.videoWidth);
     const w = Math.round(v.videoWidth * scale);
     const h = Math.round(v.videoHeight * scale);
     this.canvas.width = w;
