@@ -79,7 +79,7 @@ describe('20-session smoke', () => {
     for (let i = 0; i < N; i++) {
       const id = randomUUID();
       await sql`insert into auth.users (id, raw_user_meta_data) values (${id}, '{}'::jsonb)`;
-      await sql`update profiles set invite_redeemed_at = now(), disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
+      await sql`update profiles set disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
       const auth = `Bearer ${await keys.sign({ sub: id })}`;
       const created = await request(app.getHttpServer())
         .post('/v1/sessions')

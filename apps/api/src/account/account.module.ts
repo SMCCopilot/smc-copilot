@@ -9,17 +9,14 @@ import { DeletionService } from './deletion.service.js';
 import { FlagsService } from './flags.service.js';
 import { MeController } from './me.controller.js';
 import { RateLimitGuard } from './rate-limit.js';
-import { FETCH, type FetchFn, TurnstileVerifier } from './turnstile.js';
 
 /** Identity, gates, abuse controls and operator actions (B05 week 9). Global so every feature module can use its guards. */
 @Global()
 @Module({
   controllers: [MeController, AdminOpsController, DeletionController, AdminDeletionController],
   providers: [
-    { provide: FETCH, useValue: ((url, init) => fetch(url, init)) as FetchFn },
     FlagsService,
     AbuseService,
-    TurnstileVerifier,
     AccountService,
     AdminOpsService,
     DeletionService,

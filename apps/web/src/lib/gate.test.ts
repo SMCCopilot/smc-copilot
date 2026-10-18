@@ -2,22 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { createKeyHolder, nextStep, shortAddress } from './gate';
 import { explainWalletError } from './wallets';
 
-const me = (o: { invited?: boolean; req?: boolean; disc?: string | null; age?: boolean }) => ({
-  invite: { required: o.req ?? true, redeemed: o.invited ?? false },
+const me = (o: { disc?: string | null; age?: boolean }) => ({
   disclaimer: { required: true, currentVersion: 'v2', acceptedVersion: o.disc ?? null },
   ageConfirmed: o.age ?? false,
 });
 
 describe('onboarding order', () => {
-  it('asks for the invite, then the disclaimer, then age', () => {
-    expect(nextStep(me({}))).toBe('INVITE');
-    expect(nextStep(me({ invited: true }))).toBe('DISCLAIMER');
-    expect(nextStep(me({ invited: true, disc: 'v1' }))).toBe('DISCLAIMER');
-    expect(nextStep(me({ invited: true, disc: 'v2' }))).toBe('AGE');
-    expect(nextStep(me({ invited: true, disc: 'v2', age: true }))).toBe('DONE');
-  });
-  it('skips the invite when the deployment does not require one', () => {
-    expect(nextStep(me({ req: false }))).toBe('DISCLAIMER');
+  it('asks for the disclaimer, then age (there is no invite step)', () => {
+    expect(nextStep(me({}))).toBe('DISCLAIMER');
+    expect(nextStep(me({ disc: 'v1' }))).toBe('DISCLAIMER');
+    expect(nextStep(me({ disc: 'v2' }))).toBe('AGE');
+    expect(nextStep(me({ disc: 'v2', age: true }))).toBe('DONE');
   });
 });
 

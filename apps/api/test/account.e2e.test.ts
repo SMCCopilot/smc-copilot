@@ -5,7 +5,6 @@ import { applyMigrations, createClient, type Sql } from '@smc/db';
 import { startTestServer, type TestServer } from '@smc/db/testing';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { TurnstileVerifier } from '../src/account/turnstile.js';
 import { toChecksum, walletFromIdentity } from '../src/account/wallet.js';
 import { createTestApp, makeKeys, type TestKeys } from './helpers.js';
 
@@ -30,8 +29,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
 });
 beforeEach(async () => {
-  await sql`truncate abuse_flags, audit_log, address_blocklist, invite_redemptions`;
-  await sql`delete from invite_codes`;
+  await sql`truncate abuse_flags, audit_log, address_blocklist`;
   await sql`delete from workspaces`; // owns profiles with no cascade
   await sql`delete from auth.users`;
   await sql`update feature_flags set enabled = false, rollout_pct = 0 where key = 'signup.open' or key like 'kill.%'`;
@@ -68,7 +66,7 @@ const adminBearer = async () =>
 /** A user who has been through every gate. */
 async function readyUser(wallets = [{ chain: 'ethereum' as const, address: evm() }]) {
   const id = await newUser({ wallets });
-  await sql`update profiles set invite_redeemed_at = now(), disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
+  await sql`update profiles set disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
   return id;
 }
 
@@ -132,7 +130,6 @@ describe('GET /v1/me', () => {
       address: toChecksum(address),
     });
     expect(me.workspace.plan).toBe('free');
-    expect(me.invite).toEqual({ required: true, redeemed: false });
     expect(me.disclaimer).toMatchObject({
       required: true,
       currentVersion: '2026-10-01',
@@ -207,28 +204,12 @@ describe('GET /v1/me', () => {
   });
 });
 
-describe('the gates (invite, disclaimer, age)', () => {
-  it('walks INVITE_REQUIRED, then DISCLAIMER_REQUIRED, then AGE_CONFIRMATION_REQUIRED, then opens', async () => {
+describe('the gates (disclaimer, age; sign-up is open, no invite)', () => {
+  it('walks DISCLAIMER_REQUIRED, then AGE_CONFIRMATION_REQUIRED, then opens', async () => {
     const id = await newUser({ wallets: [{ chain: 'ethereum', address: evm() }] });
-    await sql`insert into invite_codes (code, max_uses, grants) values ('BETA-TEST-1', 1, '{"daily_ai_budget_usd":1.00}')`;
     const http = await boot();
     const auth = await bearer(id);
     const wallets = () => request(http).get('/v1/me/wallets').set('Authorization', auth);
-
-    expect((await wallets()).body.code).toBe('INVITE_REQUIRED');
-    const bad = await request(http)
-      .post('/v1/me/invite')
-      .set('Authorization', auth)
-      .send({ code: 'NOPE-NOPE' });
-    expect(bad.status).toBe(403);
-    expect(
-      (
-        await request(http)
-          .post('/v1/me/invite')
-          .set('Authorization', auth)
-          .send({ code: ' beta-test-1 ' })
-      ).status,
-    ).toBe(204);
 
     expect((await wallets()).body.code).toBe('DISCLAIMER_REQUIRED');
     const wrong = await request(http)
@@ -257,98 +238,7 @@ describe('the gates (invite, disclaimer, age)', () => {
     expect((await wallets()).status).toBe(200);
 
     const me = await request(http).get('/v1/me').set('Authorization', auth);
-    expect(me.body.entitlements.limits.daily_ai_budget_usd).toBe(1); // the invite's grant was merged
-  });
-
-  it('an invite code works once, and a used or expired code is refused', async () => {
-    await sql`insert into invite_codes (code, max_uses) values ('ONCE-ONLY', 1)`;
-    await sql`insert into invite_codes (code, max_uses, expires_at) values ('OLD-CODE', 5, now() - interval '1 day')`;
-    const http = await boot();
-    const first = await newUser();
-    const second = await newUser();
-    const redeem = async (u: string, code: string) =>
-      request(http)
-        .post('/v1/me/invite')
-        .set('Authorization', await bearer(u))
-        .send({ code });
-    expect((await redeem(first, 'ONCE-ONLY')).status).toBe(204);
-    expect((await redeem(second, 'ONCE-ONLY')).status).toBe(403);
-    expect((await redeem(second, 'OLD-CODE')).status).toBe(403);
-  });
-
-  it('opens to everyone when signup.open is on (no invite needed)', async () => {
-    await sql`update feature_flags set enabled = true, rollout_pct = 100 where key = 'signup.open'`;
-    const id = await newUser();
-    await sql`update profiles set disclaimer_version = '2026-10-01', age_confirmed_at = now() where id = ${id}`;
-    const res = await request(await boot())
-      .get('/v1/me/wallets')
-      .set('Authorization', await bearer(id));
-    expect(res.status).toBe(200);
-  });
-
-  it('blocks a guesser: ten failed codes, then a temporary block keyed by a salted hash (never the raw address)', async () => {
-    const http = await boot({ ABUSE_HASH_SALT: 'a-test-salt-of-16+chars' });
-    const id = await newUser();
-    const auth = await bearer(id);
-    let last = 0;
-    for (let i = 0; i < 12; i++) {
-      last = (
-        await request(http)
-          .post('/v1/me/invite')
-          .set('Authorization', auth)
-          .send({ code: `WRONG-${i}` })
-      ).status;
-    }
-    expect(last).toBe(429);
-    const rows = await sql<
-      { subject_kind: string; subject_key: string; reason: string }[]
-    >`select subject_kind, subject_key, reason from abuse_flags`;
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ subject_kind: 'IP_HASH', reason: 'INVITE_GUESS' });
-    expect(rows[0]?.subject_key).toMatch(/^[0-9a-f]{64}$/);
-    expect(rows[0]?.subject_key).not.toMatch(/127\.0\.0\.1|::1/);
-    const retry = await request(http)
-      .post('/v1/me/invite')
-      .set('Authorization', auth)
-      .send({ code: 'WRONG-X' });
-    expect(retry.status).toBe(429);
-  });
-});
-
-describe('Turnstile bot check', () => {
-  const env = (secret?: string, disabled = false) =>
-    ({ TURNSTILE_SECRET: secret, TURNSTILE_DISABLED: disabled, NODE_ENV: 'test' }) as never;
-  const verifier = (
-    fetchImpl: ConstructorParameters<typeof TurnstileVerifier>[1],
-    secret?: string,
-    disabled = false,
-  ) => new TurnstileVerifier(env(secret, disabled), fetchImpl);
-  const ok = async () => ({ ok: true, json: async () => ({ success: true }) });
-  const no = async () => ({ ok: true, json: async () => ({ success: false }) });
-  const boom = async () => {
-    throw new Error('network');
-  };
-
-  it('is skipped (and said so) only when disabled or unconfigured', async () => {
-    expect(await verifier(boom, undefined).verify(undefined, '1.1.1.1')).toBe(true);
-    expect(await verifier(boom, 'a-secret-key', true).verify(undefined, '1.1.1.1')).toBe(true);
-  });
-
-  it('fails closed when enforced: missing token, a negative answer, or an unreachable verifier', async () => {
-    expect(await verifier(ok, 'a-secret-key').verify(undefined, '1.1.1.1')).toBe(false);
-    expect(await verifier(no, 'a-secret-key').verify('tok', '1.1.1.1')).toBe(false);
-    expect(await verifier(boom, 'a-secret-key').verify('tok', '1.1.1.1')).toBe(false);
-    expect(await verifier(ok, 'a-secret-key').verify('tok', '1.1.1.1')).toBe(true);
-  });
-
-  it('sends the secret and token to Cloudflare as a form body and never logs them', async () => {
-    let seen = '';
-    await verifier(async (_u, init) => {
-      seen = init.body;
-      return { ok: true, json: async () => ({ success: true }) };
-    }, 'a-secret-key').verify('the-token', '2.2.2.2');
-    expect(seen).toContain('secret=a-secret-key');
-    expect(seen).toContain('response=the-token');
+    expect(me.body).not.toHaveProperty('invite');
   });
 });
 
@@ -510,7 +400,7 @@ describe('admin operations', () => {
     expect(
       (
         await request(http)
-          .post('/v1/admin/invites')
+          .post('/v1/admin/blocklist')
           .set('Authorization', await bearer(u))
           .set('X-Admin-Confirm', 'yes')
           .send({})
@@ -519,31 +409,11 @@ describe('admin operations', () => {
     expect(
       (
         await request(http)
-          .post('/v1/admin/invites')
+          .post('/v1/admin/blocklist')
           .set('Authorization', await adminBearer())
           .send({})
       ).status,
     ).toBe(403);
-  });
-
-  it('creates an invite (code returned once), and audits it', async () => {
-    const http = await boot();
-    const res = await call(http, 'post', '/v1/admin/invites', {
-      maxUses: 3,
-      note: 'testers',
-    });
-    expect(res.status).toBe(201);
-    expect(res.body.code).toMatch(/^[A-Z2-9]{12}$/);
-    const [row] = await sql<
-      { max_uses: number; note: string }[]
-    >`select max_uses, note from invite_codes where code = ${res.body.code}`;
-    expect(row).toMatchObject({ max_uses: 3, note: 'testers' });
-    const [a] = await sql<
-      { action: string }[]
-    >`select action from audit_log order by id desc limit 1`;
-    expect(a?.action).toBe('admin.invite.create');
-    const dup = await call(http, 'post', '/v1/admin/invites', { code: res.body.code });
-    expect(dup.status).toBe(409);
   });
 
   it('manages the blocklist: add, import (skipping bad addresses), remove', async () => {
@@ -628,26 +498,9 @@ describe('admin operations', () => {
   it('flags and kill switches take effect within seconds and are audited', async () => {
     const http = await boot();
     const id = await newUser();
-    await sql`update profiles set disclaimer_version = '2026-10-01', age_confirmed_at = now() where id = ${id}`;
     expect(
-      (
-        await request(http)
-          .get('/v1/me/wallets')
-          .set('Authorization', await bearer(id))
-      ).body.code,
-    ).toBe('INVITE_REQUIRED');
-    expect(
-      (await call(http, 'post', '/v1/admin/flags/signup.open', { enabled: true })).status,
+      (await call(http, 'post', '/v1/admin/flags/payments.enabled', { enabled: true })).status,
     ).toBe(204);
-    expect(
-      (
-        await request(http)
-          .get('/v1/me/wallets')
-          .set('Authorization', await bearer(id))
-      ).status,
-    ).toBe(200);
-
-    await sql`insert into invite_codes (code, max_uses) values ('K-1', 1)`;
     expect(
       (
         await call(http, 'post', '/v1/admin/kill-switch', {
@@ -657,9 +510,9 @@ describe('admin operations', () => {
       ).status,
     ).toBe(204);
     const closed = await request(http)
-      .post('/v1/me/invite')
+      .post('/v1/me/disclaimer')
       .set('Authorization', await bearer(id))
-      .send({ code: 'K-1' });
+      .send({ version: '2026-10-01' });
     expect(closed.status).toBe(503);
     expect(closed.body.code).toBe('KILL_SWITCH_ACTIVE');
     expect((await call(http, 'post', '/v1/admin/flags/Bad Key!', { enabled: true })).status).toBe(

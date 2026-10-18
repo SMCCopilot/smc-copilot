@@ -45,7 +45,8 @@ export const RATE_LIMITS = {
   tradeWrite: { name: 'trade.write', limit: 60, windowMs: 3_600_000 },
   resolve: { name: 'resolve', limit: 60, windowMs: 60_000 },
   analysis: { name: 'analysis', limit: 30, windowMs: 60_000 },
-  invite: { name: 'invite', limit: 10, windowMs: 3_600_000 },
+  // Slow, sensitive account actions (deletion and cancelling it).
+  accountAction: { name: 'account.action', limit: 10, windowMs: 3_600_000 },
 } as const satisfies Record<string, RateLimitSpec>;
 
 export const RateLimit = (spec: RateLimitSpec) => SetMetadata(META, spec);

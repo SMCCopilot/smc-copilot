@@ -9,7 +9,6 @@ const base = {
   SUPABASE_JWKS_URL: 'https://example.supabase.co/auth/v1/.well-known/jwks.json',
   WS_TOKEN_SECRET: 'w'.repeat(40),
   ABUSE_HASH_SALT: 's'.repeat(24),
-  TURNSTILE_SECRET: 't'.repeat(16),
   CORS_ORIGINS: 'https://app.example.test',
   ADMIN_IP_ALLOWLIST: '203.0.113.7',
   METRICS_TOKEN: 'm'.repeat(40),
@@ -18,11 +17,8 @@ const base = {
 };
 const db = {
   migrations: 11,
-  devInvite: false,
-  invites: 20,
   blocklist: 500,
   activeStrategy: true,
-  signupOpen: false,
   killSwitches: [],
   rlsOff: [],
   venueTerms: 3,
@@ -78,23 +74,14 @@ describe('preflight', () => {
     expect(by(ok, 'Prices are entered for the active models').level).toBe('WARN');
   });
 
-  it('database facts: the dev invite, no invites, an empty blocklist, open sign-up and missing row-level security all fail', () => {
+  it('database facts: an empty blocklist and missing row-level security fail', () => {
     const r = evaluate(base, {
       ...db,
-      devInvite: true,
-      invites: 0,
       blocklist: 0,
-      signupOpen: true,
       rlsOff: ['t1'],
       killSwitches: ['kill.AI'],
     });
-    for (const n of [
-      'The development invite code does not exist',
-      'Real invite codes exist',
-      'Sanctions blocklist is loaded',
-      'Open sign-up is off',
-      'Row-level security is on for every table',
-    ]) {
+    for (const n of ['Sanctions blocklist is loaded', 'Row-level security is on for every table']) {
       expect(by(r, n).level, n).toBe('FAIL');
     }
     expect(by(r, 'No kill switch is left on').level).toBe('WARN');
@@ -108,7 +95,7 @@ describe('preflight', () => {
 });
 
 describe('database facts against a real, migrated database', () => {
-  it('reads every fact without error, and sees an empty beta as not ready', async () => {
+  it('reads every fact without error, and sees an empty blocklist as not ready', async () => {
     const { applyMigrations, createClient } = await import('@smc/db');
     const { startTestServer } = await import('@smc/db/testing');
     const { readDb } = await import('../src/preflight.mjs');
@@ -120,15 +107,11 @@ describe('database facts against a real, migrated database', () => {
       await sql.end({ timeout: 5 });
       const facts = await readDb(url);
       expect(facts.migrations).toBeGreaterThanOrEqual(11);
-      expect(facts.devInvite).toBe(true); // the dev shims seed it; production migrations remove it
-      expect(facts.invites).toBeGreaterThan(0);
       expect(facts.blocklist).toBe(0);
       expect(facts.activeStrategy).toBe(true);
-      expect(facts.signupOpen).toBe(false);
       expect(Array.isArray(facts.rlsOff)).toBe(true);
       const r = evaluate(base, facts);
       expect(by(r, 'Sanctions blocklist is loaded').level).toBe('FAIL');
-      expect(by(r, 'The development invite code does not exist').level).toBe('FAIL');
     } finally {
       await server.stop();
     }

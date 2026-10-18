@@ -54,7 +54,7 @@ async function boot(env: Record<string, string> = {}, logSink?: LogSink) {
 async function readyUser() {
   const id = randomUUID();
   await sql`insert into auth.users (id, raw_user_meta_data) values (${id}, '{}'::jsonb)`;
-  await sql`update profiles set invite_redeemed_at = now(), disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
+  await sql`update profiles set disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
   const token = await keys.sign({ sub: id });
   const [ws] = await sql<{ id: string }[]>`select id from workspaces where owner_id = ${id}`;
   return { id, token, auth: `Bearer ${token}`, workspaceId: ws?.id as string };
@@ -134,11 +134,6 @@ describe('log redaction', () => {
       .set('Authorization', u.auth)
       .set('Cookie', 'session=COOKIE-SENTINEL-123');
     await request(http)
-      .post('/v1/me/invite')
-      .set('Authorization', u.auth)
-      .set('X-Turnstile-Token', 'TURNSTILE-SENTINEL-999')
-      .send({ code: 'INVITE-SENTINEL-CODE' });
-    await request(http)
       .post('/v1/journal/notes')
       .set('Authorization', u.auth)
       .send({ notes: seed, tags: [] });
@@ -155,8 +150,6 @@ describe('log redaction', () => {
       u.token,
       SECRET_KEY,
       'COOKIE-SENTINEL-123',
-      'TURNSTILE-SENTINEL-999',
-      'INVITE-SENTINEL-CODE',
       M_TOKEN.slice(0, 20),
       'x'.repeat(40),
       'abandon abandon',

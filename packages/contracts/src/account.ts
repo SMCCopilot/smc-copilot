@@ -30,7 +30,6 @@ export const MeResponseSchema = z.strictObject({
     limits: z.record(z.string(), z.number()),
     features: z.record(z.string(), z.boolean()),
   }),
-  invite: z.strictObject({ required: z.boolean(), redeemed: z.boolean() }),
   disclaimer: z.strictObject({
     required: z.boolean(),
     currentVersion: z.string(),
@@ -51,27 +50,12 @@ export const PatchMeSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'at least one field is required' });
 
-export const InviteBodySchema = z.strictObject({ code: z.string().trim().min(3).max(64) });
 export const DisclaimerBodySchema = z.strictObject({ version: z.string().min(1).max(32) });
 export const AgeBodySchema = z.strictObject({ confirmed: z.literal(true) });
 
 // ---- admin
 
 const kv = z.record(z.string().min(1).max(64), z.number().finite());
-
-export const InviteCreateSchema = z.strictObject({
-  /** Omit to have a random code generated. */
-  code: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9-]{4,40}$/)
-    .optional(),
-  note: z.string().max(200).optional(),
-  maxUses: z.number().int().min(1).max(10_000).default(1),
-  expiresAt: z.iso.datetime().optional(),
-  /** Merged into the redeemer's entitlements.limits. */
-  grants: kv.optional(),
-});
 
 export const BlocklistEntrySchema = z.strictObject({
   chain: WalletChainSchema,

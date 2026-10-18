@@ -38,13 +38,6 @@ export function evaluate(rawEnv, db = null) {
   parsed.CORS_ORIGINS.some((o) => /localhost|127\.0\.0\.1/.test(o))
     ? add(LEVEL.WARN, 'CORS allows only real origins', 'a localhost origin is listed')
     : add(LEVEL.PASS, 'CORS allows only real origins');
-  parsed.TURNSTILE_DISABLED
-    ? add(
-        LEVEL.WARN,
-        'Bot check (Turnstile) is on',
-        'TURNSTILE_DISABLED=true: sign-up relies on the invite code alone',
-      )
-    : add(LEVEL.PASS, 'Bot check (Turnstile) is on');
   parsed.METRICS_TOKEN && String(parsed.METRICS_TOKEN).length < 32
     ? add(
         LEVEL.FAIL,
@@ -137,29 +130,12 @@ export function evaluate(rawEnv, db = null) {
     db.migrations >= (db.migrationsShipped ?? 9)
       ? add(LEVEL.PASS, 'Migrations are applied', `${db.migrations} applied`)
       : add(LEVEL.FAIL, 'Migrations are applied', `${db.migrations} applied`);
-    db.devInvite
-      ? add(LEVEL.FAIL, 'The development invite code does not exist', 'DEV-BETA-0001 is present')
-      : add(LEVEL.PASS, 'The development invite code does not exist');
-    db.invites > 0
-      ? add(LEVEL.PASS, 'Real invite codes exist', `${db.invites}`)
-      : add(
-          LEVEL.FAIL,
-          'Real invite codes exist',
-          'none: nobody can sign up (mint with POST /v1/admin/invites)',
-        );
     db.blocklist > 0
       ? add(LEVEL.PASS, 'Sanctions blocklist is loaded', `${db.blocklist} entries`)
       : add(LEVEL.FAIL, 'Sanctions blocklist is loaded', 'empty (POST /v1/admin/blocklist/import)');
     db.activeStrategy
       ? add(LEVEL.PASS, 'An active strategy version exists')
       : add(LEVEL.FAIL, 'An active strategy version exists');
-    db.signupOpen
-      ? add(
-          LEVEL.FAIL,
-          'Open sign-up is off',
-          'flag signup.open is on: invite codes are not required',
-        )
-      : add(LEVEL.PASS, 'Open sign-up is off');
     db.killSwitches.length > 0
       ? add(LEVEL.WARN, 'No kill switch is left on', db.killSwitches.join(', '))
       : add(LEVEL.PASS, 'No kill switch is left on');
@@ -202,24 +178,13 @@ export async function readDb(url) {
         return undefined;
       }
     })();
-    const devInvite =
-      Number(
-        (await one("select count(*)::int as n from invite_codes where code = 'DEV-BETA-0001'")).n,
-      ) > 0;
-    const invites = Number(
-      (
-        await one(
-          'select count(*)::int as n from invite_codes where uses < max_uses and (expires_at is null or expires_at > now())',
-        )
-      ).n,
-    );
     const blocklist = Number((await one('select count(*)::int as n from address_blocklist')).n);
     const activeStrategy =
       Number(
         (await one("select count(*)::int as n from strategy_versions where status = 'ACTIVE'")).n,
       ) > 0;
     const flags = await sql.unsafe(
-      "select key, enabled from feature_flags where enabled and (key = 'signup.open' or key like 'kill.%')",
+      "select key, enabled from feature_flags where enabled and key like 'kill.%'",
     );
     const rls = await sql.unsafe(
       "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r','p') and not c.relrowsecurity and c.relispartition = false",
@@ -235,11 +200,8 @@ export async function readDb(url) {
     return {
       migrations,
       migrationsShipped: shipped,
-      devInvite,
-      invites,
       blocklist,
       activeStrategy,
-      signupOpen: flags.some((f) => f.key === 'signup.open'),
       killSwitches: flags.filter((f) => f.key.startsWith('kill.')).map((f) => f.key),
       rlsOff: rls.map((r) => r.relname),
       venueTerms,

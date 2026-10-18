@@ -15,7 +15,6 @@ export const FRIENDLY: Record<ErrorCode, FriendlyError> = {
   STEP_UP_REQUIRED: f('Confirm with your wallet again to continue.', 'SIGN_IN'),
   FORBIDDEN: f('You do not have access to this.'),
   ADDRESS_BLOCKED: f('This wallet cannot be used here.'),
-  INVITE_REQUIRED: f('An invite code is required.'),
   DISCLAIMER_REQUIRED: f('Accept the current disclaimer to continue.'),
   AGE_CONFIRMATION_REQUIRED: f('Confirm you are 18 or older to continue.'),
   KILL_SWITCH_ACTIVE: f('This feature is switched off for now. Try again later.', 'WAIT'),

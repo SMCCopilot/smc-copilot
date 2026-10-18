@@ -3,14 +3,12 @@
 //
 //   pnpm local check              what is set and what is missing in .env.local (names only, never values)
 //   pnpm local migrate            create/upgrade the tables in your database (safe to repeat)
-//   pnpm local invite [--uses N]  make a real invite code in your database and print it
 //   pnpm local admin [user-id]    give a signed-in user the admin role (no id: lists users, newest first)
 //   pnpm local start [--no-ingest] [--no-build]
 //                                 build if needed, then start the API and the web app (http://localhost:3000)
 //
-// Nothing here writes test data. `invite` and `admin` only change what you ask for.
+// Nothing here writes test data. `admin` only changes what you ask for.
 import { spawn, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +19,6 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 const [cmd = 'help', ...rest] = process.argv.slice(2);
 const flag = (name) => rest.includes(name);
-const option = (name) => (rest.includes(name) ? rest[rest.indexOf(name) + 1] : undefined);
 const set = (name) => Boolean(process.env[name] && process.env[name].trim() !== '');
 const dbUrl = () => process.env.DATABASE_URL_SESSION || process.env.DATABASE_URL;
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
@@ -95,16 +92,6 @@ async function main() {
   } else if (cmd === 'migrate') {
     if (!existsSync(resolve(root, 'packages/db/dist/cli/migrate.js'))) build();
     if (!run('node', ['packages/db/dist/cli/migrate.js'])) process.exitCode = 1;
-  } else if (cmd === 'invite') {
-    const uses = Number(option('--uses') ?? 1);
-    if (!Number.isInteger(uses) || uses < 1)
-      throw new Error('--uses must be a whole number, 1 or more');
-    const code = `SMC-${randomBytes(5).toString('hex').toUpperCase()}`;
-    await withDb(
-      (sql) =>
-        sql`insert into invite_codes (code, note, max_uses) values (${code}, 'created by pnpm local invite', ${uses})`,
-    );
-    console.log(`Invite code: ${code}   (can be used ${uses} time${uses === 1 ? '' : 's'})`);
   } else if (cmd === 'admin') {
     const id = rest.find((a) => !a.startsWith('--'));
     await withDb(async (sql) => {
@@ -149,7 +136,6 @@ async function main() {
       env: {
         ...process.env,
         NODE_ENV: 'development',
-        TURNSTILE_DISABLED: 'true',
         // Home networks often block or break exchange and Supabase lookups; 1.1.1.1 fixes it. Development only.
         DNS_SERVERS: process.env.DNS_SERVERS || '1.1.1.1',
         ENGINE_ENABLED: 'true',
@@ -169,7 +155,7 @@ async function main() {
     child.on('exit', (code) => process.exit(code ?? 0));
   } else {
     console.log(
-      'usage: pnpm local check | migrate | invite [--uses N] | admin [user-id] | start [--no-ingest] [--no-build]',
+      'usage: pnpm local check | migrate | admin [user-id] | start [--no-ingest] [--no-build]',
     );
   }
 }

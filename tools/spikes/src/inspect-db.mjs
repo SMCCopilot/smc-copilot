@@ -29,7 +29,6 @@ for (const t of [
   'journal_entries',
   'setups',
   'candles',
-  'invite_codes',
   'ai_calls',
 ]) {
   out[t] = (await exists(`public.${t}`))

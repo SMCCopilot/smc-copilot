@@ -283,3 +283,8 @@ Not changed, documented: `abuse_flags` rows keyed by a salted hash of the user s
 ## D-045 HTML dev client retired (F4)
 
 The web app replaces it. Removed: `/dev` and `/dev/config`, `DEV_CLIENT_ENABLED` (schema, preflight, local runner) and the dev client's admin panel for AI providers (use `PUT /v1/admin/ai/providers/:id`). `dns-override.ts` moved to `apps/api/src/ingest/` because ingest still uses it. Web imports are relative so the dependency checker resolves them.
+
+## D-046 Open sign-up: invite codes and the Turnstile bot check removed (2026-10-18)
+
+The owner decided anyone should be able to use the platform. Removed: the invite gate (`INVITE_REQUIRED`, `POST /v1/me/invite`, `POST /v1/admin/invites`, `invite` in `/v1/me`), the web invite step, `pnpm local invite`, the invite preflight checks, and the Turnstile verifier (API, web widget, `TURNSTILE_*` settings, `X-Turnstile-Token` header), which only ever protected the invite endpoint. Migration 0013 drops `redeem_invite`, `invite_codes`, `invite_redemptions`, `profiles.invite_redeemed_at` and the `signup.open` flag. Gates now: wallet sign-in, the disclaimer, 18+.
+Consequences, accepted by the owner: sign-up has no bot protection until captcha is enabled in Supabase Auth; every user gets the default AI budget (`AI_DAILY_BUDGET_DEFAULT_USD`, no $1 invite grant); the Sybil defence is the per-user, per-IP and per-device AI limits plus the global daily cap and kill switches. The `SIGNUP` kill switch now blocks finishing onboarding (`POST /v1/me/disclaimer`), so it stays as an emergency stop. `docs/beta/legal-prerequisites.md` said invited testers only: counsel should review that change.

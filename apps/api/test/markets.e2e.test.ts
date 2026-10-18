@@ -22,7 +22,7 @@ beforeAll(async () => {
   // The default test subject, as a user who has been through every gate (throwaway test database only).
   const sub = '11111111-1111-1111-1111-111111111111';
   await sql`insert into auth.users (id, raw_user_meta_data) values (${sub}, '{}'::jsonb)`;
-  await sql`update profiles set invite_redeemed_at = now(), disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${sub}`;
+  await sql`update profiles set disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${sub}`;
 }, 180_000);
 afterAll(async () => {
   await sql.end({ timeout: 5 });

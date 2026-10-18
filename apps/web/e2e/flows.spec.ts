@@ -18,14 +18,13 @@ test('signed out users see wallet sign-in and nothing else', async ({ page }) =>
   await expect(page.getByText(/email or password/i)).toBeVisible();
 });
 
-test('onboarding runs invite, disclaimer and 18+ in order, then opens the app', async ({
+test('onboarding runs disclaimer and 18+ in order (no invite step), then opens the app', async ({
   page,
 }) => {
-  const state = { invited: false, accepted: false, adult: false };
+  const state = { accepted: false, adult: false };
   await openRoom(page, {
     me: () =>
       me({
-        invite: { required: true, redeemed: state.invited },
         disclaimer: {
           required: true,
           currentVersion: 'v1',
@@ -35,15 +34,13 @@ test('onboarding runs invite, disclaimer and 18+ in order, then opens the app', 
       }),
     onRoute: (path, method) => {
       if (method !== 'POST') return undefined;
-      if (path === '/v1/me/invite') state.invited = true;
-      else if (path === '/v1/me/disclaimer') state.accepted = true;
+      if (path === '/v1/me/disclaimer') state.accepted = true;
       else if (path === '/v1/me/age-confirmation') state.adult = true;
       else return undefined;
       return { status: 204 };
     },
   });
-  await page.getByLabel('Invite code').fill('BETA-CODE');
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByLabel('Invite code')).toHaveCount(0);
   await expect(page.getByText(/accept this disclaimer/)).toBeVisible();
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: 'Continue' }).click();

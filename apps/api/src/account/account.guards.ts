@@ -11,7 +11,6 @@ import { type AuthenticatedRequest, JwtAuthGuard } from '../auth/jwt-auth.guard.
 import { ApiProblemError } from '../common/problem.js';
 import { ENV } from '../config/tokens.js';
 import { type AccountContext, AccountService } from './account.service.js';
-import { FlagsService } from './flags.service.js';
 import { RateLimitGuard } from './rate-limit.js';
 
 export type AccountRequest = AuthenticatedRequest & { account: AccountContext };
@@ -35,19 +34,13 @@ export class AccountGuard implements CanActivate {
   }
 }
 
-/** USER access class: invite (while the beta is closed), then disclaimer, then 18+ confirmation (A07 section 3). */
+/** USER access class: disclaimer, then 18+ confirmation (A07 section 3). Sign-up is open: there is no invite step. */
 @Injectable()
 export class GatesGuard implements CanActivate {
-  constructor(
-    @Inject(ENV) private readonly env: Env,
-    private readonly flags: FlagsService,
-  ) {}
+  constructor(@Inject(ENV) private readonly env: Env) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const { profile } = context.switchToHttp().getRequest<AccountRequest>().account;
-    if (!profile.inviteRedeemedAt && !(await this.flags.isEnabled('signup.open'))) {
-      throw new ApiProblemError('INVITE_REQUIRED', 'Redeem an invite code first.');
-    }
     if (profile.disclaimerVersion !== this.env.DISCLAIMER_VERSION) {
       throw new ApiProblemError('DISCLAIMER_REQUIRED', 'Accept the current disclaimer first.');
     }
@@ -74,7 +67,7 @@ export class StepUpGuard implements CanActivate {
   }
 }
 
-/** Authenticated, not blocked. Works before the invite, disclaimer and age gates (the `USER*` class). */
+/** Authenticated, not blocked. Works before the disclaimer and age gates (the `USER*` class). */
 export const UserStar = () =>
   applyDecorators(UseGuards(JwtAuthGuard, AccountGuard, RateLimitGuard));
 /** USER class plus a fresh sign-in (step-up). One decorator so the guard order is explicit: auth first. */

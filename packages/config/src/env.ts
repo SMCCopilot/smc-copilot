@@ -55,10 +55,6 @@ const EnvSchema = z
 
     WS_TOKEN_SECRET: optionalString,
     ABUSE_HASH_SALT: optionalString,
-    TURNSTILE_SECRET: optionalString,
-    // Explicit opt-out of the Cloudflare Turnstile bot check on the invite endpoint. Production otherwise requires
-    // TURNSTILE_SECRET. With the opt-out the closed-beta invite code and per-address attempt limits are the only gate.
-    TURNSTILE_DISABLED: z.stringbool().default(false),
     // The public Supabase anon key (safe to ship to browsers); only the optional dev client needs it.
     SUPABASE_ANON_KEY: optionalString,
     // Version string of the disclaimer text users must accept (A09). Changing it asks everyone to accept again.
@@ -155,7 +151,6 @@ const EnvSchema = z
     const minimumLength = [
       ['WS_TOKEN_SECRET', 32],
       ['ABUSE_HASH_SALT', 16],
-      ['TURNSTILE_SECRET', 8],
     ] as const;
     for (const [key, min] of minimumLength) {
       const value = env[key];
@@ -166,14 +161,6 @@ const EnvSchema = z
           message: `must be at least ${min} characters`,
         });
       }
-    }
-    if (!env.TURNSTILE_DISABLED && env.TURNSTILE_SECRET === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['TURNSTILE_SECRET'],
-        message:
-          'required in production (or set TURNSTILE_DISABLED=true to opt out of the bot check)',
-      });
     }
     if (env.CORS_ORIGINS.length === 0) {
       ctx.addIssue({ code: 'custom', path: ['CORS_ORIGINS'], message: 'required in production' });
@@ -187,7 +174,6 @@ const SECRET_KEYS = [
   'DATABASE_URL_SESSION',
   'WS_TOKEN_SECRET',
   'ABUSE_HASH_SALT',
-  'TURNSTILE_SECRET',
   'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'GEMINI_API_KEY',

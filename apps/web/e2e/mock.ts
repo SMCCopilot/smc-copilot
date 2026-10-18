@@ -121,7 +121,6 @@ export const me = (over: Record<string, unknown> = {}) => ({
   email: null,
   workspace: { id: uuid(3), plan: 'free' },
   entitlements: { limits: {}, features: {} },
-  invite: { required: true, redeemed: true },
   disclaimer: { required: true, currentVersion: 'v1', acceptedVersion: 'v1' },
   ageConfirmed: true,
   ...over,

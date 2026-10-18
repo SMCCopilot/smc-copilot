@@ -23,20 +23,6 @@ update wallet_identities set unlinked_at=now() where chain='solana';
 insert into wallet_identities(user_id,chain,address_norm,address_display) values ('22222222-2222-2222-2222-222222222222','solana','7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV','x');
 select user_id::text like '2222%' as bob_has_it, count(*) from wallet_identities where chain='solana' and unlinked_at is null group by 1;
 
-\echo '--- 3 invites: first ok, repeat ok, bad code false'
-insert into invite_codes(code,max_uses) values ('T-1',1);
-select redeem_invite('T-1','11111111-1111-1111-1111-111111111111') as first, redeem_invite('T-1','11111111-1111-1111-1111-111111111111') as again, redeem_invite('T-1','22222222-2222-2222-2222-222222222222') as over_max, redeem_invite('NOPE','22222222-2222-2222-2222-222222222222') as bad_code;
-
-\echo '--- 3b invite grants raise the redeemer budget only'
-do $$
-declare a numeric; b numeric;
-begin
-  select (e.limits->>'daily_ai_budget_usd')::numeric into a from entitlements e join workspaces w on w.id=e.workspace_id where w.owner_id='11111111-1111-1111-1111-111111111111' and w.kind='personal';
-  select (e.limits->>'daily_ai_budget_usd')::numeric into b from entitlements e join workspaces w on w.id=e.workspace_id where w.owner_id='22222222-2222-2222-2222-222222222222' and w.kind='personal';
-  if a <> 1.00 or b <> 0.05 then raise exception 'invite grants wrong: redeemer %, non-redeemer %', a, b; end if;
-  raise notice 'grants ok: redeemer %, non-redeemer %', a, b;
-end $$;
-
 \echo '--- 4 seeds: venues, instruments, aliases'
 select count(*) venues from venues;
 select venue_id, market_type, count(*) from instruments group by 1,2 order by 1,2;

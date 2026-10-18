@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  Headers,
   HttpCode,
   Param,
   ParseUUIDPipe,
@@ -11,21 +10,13 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import {
-  AgeBodySchema,
-  DisclaimerBodySchema,
-  InviteBodySchema,
-  PatchMeSchema,
-} from '@smc/contracts';
+import { AgeBodySchema, DisclaimerBodySchema, PatchMeSchema } from '@smc/contracts';
 import { z } from 'zod';
 import { ApiProblemError } from '../common/problem.js';
 import { parseWith } from '../common/validation.js';
-import { AbuseService } from './abuse.service.js';
 import { type AccountRequest, UserOnly, UserStar, UserStepUp } from './account.guards.js';
 import { AccountService } from './account.service.js';
 import { FlagsService } from './flags.service.js';
-import { RATE_LIMITS, RateLimit } from './rate-limit.js';
-import { TurnstileVerifier } from './turnstile.js';
 
 /** POST /v1/me/wallets accepts an empty body only: an address in the body would be a claim we refuse to trust. */
 const NoBodySchema = z.strictObject({});
@@ -36,9 +27,7 @@ const ipOf = (req: AccountRequest): string | null => req.ip?.replace(/^::ffff:/i
 export class MeController {
   constructor(
     private readonly accounts: AccountService,
-    private readonly abuse: AbuseService,
     private readonly flags: FlagsService,
-    private readonly turnstile: TurnstileVerifier,
   ) {}
 
   /** Bootstrap: mirrors the wallet Supabase verified, runs the sanctions check, returns the whole account state. */
@@ -57,42 +46,13 @@ export class MeController {
   }
 
   @UserStar()
-  @RateLimit({ ...RATE_LIMITS.invite, limit: 30 })
-  @Post('invite')
-  @HttpCode(204)
-  async invite(
-    @Req() req: AccountRequest,
-    @Body() body: unknown,
-    @Headers('x-turnstile-token') turnstileToken?: string,
-  ): Promise<void> {
-    const ip = ipOf(req) ?? 'unknown';
-    if (await this.flags.killed('SIGNUP')) {
-      throw new ApiProblemError('KILL_SWITCH_ACTIVE', 'Sign-up is temporarily closed.');
-    }
-    if (await this.abuse.isBlocked('IP_HASH', ip)) {
-      throw new ApiProblemError('RATE_LIMITED', 'Too many failed attempts. Try again later.');
-    }
-    const { code } = parseWith(InviteBodySchema, body);
-    if (!(await this.turnstile.verify(turnstileToken, ip))) {
-      await this.abuse.flag('IP_HASH', ip, 'TURNSTILE_FAIL', 30);
-      throw new ApiProblemError('FORBIDDEN', 'The bot check failed. Try again.');
-    }
-    if (await this.accounts.redeemInvite(req.account.userId, code)) return;
-    const blocked = await this.abuse.recordFailure('IP_HASH', ip, 'INVITE_GUESS', {
-      limit: 10,
-      windowMs: 3_600_000,
-      blockMinutes: 60,
-    });
-    throw new ApiProblemError(
-      blocked ? 'RATE_LIMITED' : 'INVITE_REQUIRED',
-      blocked ? 'Too many failed attempts. Try again later.' : 'That invite code is not valid.',
-    );
-  }
-
-  @UserStar()
   @Post('disclaimer')
   @HttpCode(204)
   async disclaimer(@Req() req: AccountRequest, @Body() body: unknown): Promise<void> {
+    // The kill switch for finishing sign-up: stops new accounts from getting in during an abuse wave.
+    if (await this.flags.killed('SIGNUP')) {
+      throw new ApiProblemError('KILL_SWITCH_ACTIVE', 'Sign-up is temporarily closed.');
+    }
     const { version } = parseWith(DisclaimerBodySchema, body);
     await this.accounts.acceptDisclaimer(req.account.userId, version);
     await this.accounts.audit(

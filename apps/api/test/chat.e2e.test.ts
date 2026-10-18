@@ -148,7 +148,7 @@ async function boot(a: ProviderAdapter, env: Record<string, string> = {}) {
 async function newSession(http: unknown, opts: { limit?: number } = {}) {
   const id = randomUUID();
   await sql`insert into auth.users (id, raw_user_meta_data) values (${id}, '{}'::jsonb)`;
-  await sql`update profiles set invite_redeemed_at = now(), disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
+  await sql`update profiles set disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
   if (opts.limit !== undefined) {
     await sql`update entitlements set limits = limits || ${sql.json({ daily_ai_budget_usd: opts.limit })} where workspace_id = (select id from workspaces where owner_id = ${id})`;
   }

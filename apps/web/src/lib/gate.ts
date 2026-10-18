@@ -1,12 +1,9 @@
 import type { MeResponse } from '@smc/contracts';
 
-export type OnboardingStep = 'INVITE' | 'DISCLAIMER' | 'AGE' | 'DONE';
+export type OnboardingStep = 'DISCLAIMER' | 'AGE' | 'DONE';
 
 /** Which account gate is still open, in the order the API checks them. Display only; the API enforces them. */
-export function nextStep(
-  me: Pick<MeResponse, 'invite' | 'disclaimer' | 'ageConfirmed'>,
-): OnboardingStep {
-  if (me.invite.required && !me.invite.redeemed) return 'INVITE';
+export function nextStep(me: Pick<MeResponse, 'disclaimer' | 'ageConfirmed'>): OnboardingStep {
   if (me.disclaimer.required && me.disclaimer.acceptedVersion !== me.disclaimer.currentVersion) {
     return 'DISCLAIMER';
   }

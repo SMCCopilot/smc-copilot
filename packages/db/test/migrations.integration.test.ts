@@ -42,14 +42,14 @@ describe('MVP schema (migrations 0001-0009 with dev shims)', () => {
 
   it('applies every migration once and is idempotent on the second run', async () => {
     const first = await applyMigrations(sql, { withShims: true });
-    expect(first.applied).toHaveLength(12);
+    expect(first.applied).toHaveLength(13);
     const second = await applyMigrations(sql, { withShims: true });
     expect(second.applied).toEqual([]);
-    expect(second.skipped).toHaveLength(12);
+    expect(second.skipped).toHaveLength(13);
   });
 
-  it('creates the 55 MVP tables the plan promises (partition children excluded)', async () => {
-    expect(await tableCount(sql)).toBe(55);
+  it('creates the 53 MVP tables the plan promises (partition children excluded)', async () => {
+    expect(await tableCount(sql)).toBe(53);
   });
 
   it('enables row level security on every public table, partitions included', async () => {
@@ -78,7 +78,7 @@ describe('MVP schema (migrations 0001-0009 with dev shims)', () => {
 
   it('records the migrations in smc_meta and keeps that schema out of public', async () => {
     const [row] = await sql<{ n: number }[]>`select count(*)::int as n from smc_meta.migrations`;
-    expect(row?.n).toBe(12);
+    expect(row?.n).toBe(13);
   });
 
   it('refuses a migration whose content changed after it was applied (forward-only)', async () => {
@@ -122,11 +122,11 @@ describe('function privileges', () => {
 });
 
 describe('full schema (with upgrade/0010 and upgrade/0011)', () => {
-  it('has 62 tables with 0010, passes all 17 expected failures, and accepts the forex migration', async () => {
+  it('has 60 tables with 0010, passes all 17 expected failures, and accepts the forex migration', async () => {
     const url = await server.createDatabase();
     const sql = connect(url);
     await applyMigrations(sql, { withShims: true, withUpgrade: true });
-    expect(await tableCount(sql)).toBe(62);
+    expect(await tableCount(sql)).toBe(60);
 
     const report = await runSmokeTest(url);
     expect(report.problems).toEqual([]);
@@ -147,8 +147,8 @@ describe('concurrent runners', () => {
       applyMigrations(a, { withShims: true }),
       applyMigrations(b, { withShims: true }),
     ]);
-    expect(ra.applied.length + rb.applied.length).toBe(12);
+    expect(ra.applied.length + rb.applied.length).toBe(13);
     const [row] = await a<{ n: number }[]>`select count(*)::int as n from smc_meta.migrations`;
-    expect(row?.n).toBe(12);
+    expect(row?.n).toBe(13);
   });
 });

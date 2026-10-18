@@ -19,7 +19,6 @@ import {
   BlockUserSchema,
   EntitlementsPatchSchema,
   FlagBodySchema,
-  InviteCreateSchema,
   KillSwitchSchema,
   StrategyVersionCreateSchema,
 } from '@smc/contracts';
@@ -29,7 +28,7 @@ import { parseWith } from '../common/validation.js';
 import { ENV } from '../config/tokens.js';
 import { AdminOpsService } from './admin-ops.service.js';
 
-/** Operator endpoints beyond feed health: invites, blocklist, users, flags, kill switches, strategy versions. */
+/** Operator endpoints beyond feed health: blocklist, users, flags, kill switches, strategy versions. */
 @Controller('v1/admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminOpsController {
@@ -43,12 +42,6 @@ export class AdminOpsController {
       userId: req.principal.userId,
       ip: adminSourceIp(req, this.env.TRUST_PROXY_HEADERS) || null,
     };
-  }
-
-  /** The code is returned once, here, and nowhere else. */
-  @Post('invites')
-  invite(@Req() req: AuthenticatedRequest, @Body() body: unknown) {
-    return this.ops.createInvite(this.actor(req), parseWith(InviteCreateSchema, body));
   }
 
   @Post('blocklist')

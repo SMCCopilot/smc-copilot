@@ -13,7 +13,6 @@ const prod = {
   SUPABASE_JWKS_URL: 'https://abc.supabase.co/auth/v1/.well-known/jwks.json',
   WS_TOKEN_SECRET: 'x'.repeat(32),
   ABUSE_HASH_SALT: 'y'.repeat(16),
-  TURNSTILE_SECRET: 'z'.repeat(8),
   CORS_ORIGINS: 'https://app.example',
 };
 const dev = { NODE_ENV: 'development' };
@@ -123,7 +122,6 @@ describe('parseEnv', () => {
     'SUPABASE_JWKS_URL',
     'WS_TOKEN_SECRET',
     'ABUSE_HASH_SALT',
-    'TURNSTILE_SECRET',
     'CORS_ORIGINS',
   ])('rejects production without %s', (key) => {
     const { [key as keyof typeof prod]: _removed, ...rest } = prod;
@@ -133,7 +131,6 @@ describe('parseEnv', () => {
   it.each([
     ['WS_TOKEN_SECRET', 'short'],
     ['ABUSE_HASH_SALT', 'a'],
-    ['TURNSTILE_SECRET', 'b'],
   ])('rejects a too-short %s in production', (key, value) => {
     expect(() => parseEnv({ ...prod, [key]: value })).toThrow(new RegExp(key));
   });

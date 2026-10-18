@@ -19,7 +19,6 @@ export default defineConfig({
       NEXT_PUBLIC_API_URL: 'http://api.test',
       NEXT_PUBLIC_SUPABASE_URL: 'http://supabase.test',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',
-      NEXT_PUBLIC_TURNSTILE_SITE_KEY: '',
     },
   },
 });

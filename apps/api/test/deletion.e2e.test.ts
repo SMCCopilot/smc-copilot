@@ -52,7 +52,7 @@ async function fullUser(http: unknown) {
   await sql`insert into auth.users (id, raw_user_meta_data) values (${id}, '{}'::jsonb)`;
   await sql`insert into auth.identities (user_id, provider, identity_data, last_sign_in_at)
             values (${id}, 'web3', ${sql.json({ custom_claims: { address: `0x${randomUUID().replaceAll('-', '')}${'0'.repeat(8)}`, chain: 'ethereum' } })}, now())`;
-  await sql`update profiles set invite_redeemed_at = now(), disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
+  await sql`update profiles set disclaimer_version = '2026-10-01', disclaimer_accepted_at = now(), age_confirmed_at = now() where id = ${id}`;
   const auth = `Bearer ${await keys.sign({ sub: id })}`;
   const [ws] = await sql<{ id: string }[]>`select id from workspaces where owner_id = ${id}`;
   const workspaceId = ws?.id as string;

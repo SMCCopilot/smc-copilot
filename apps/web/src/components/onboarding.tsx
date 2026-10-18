@@ -2,17 +2,14 @@
 import type { MeResponse } from '@smc/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../lib/api';
 import { signOut } from '../lib/auth';
-import { TURNSTILE_SITE_KEY } from '../lib/env';
 import { ApiError } from '../lib/errors';
 import { nextStep } from '../lib/gate';
 import { DisclaimerText } from './disclaimer';
-import { Turnstile, type TurnstileHandle } from './turnstile';
 
 const STEPS = [
-  ['INVITE', 'Invite code'],
   ['DISCLAIMER', 'Disclaimer'],
   ['AGE', 'Age'],
 ] as const;
@@ -20,22 +17,12 @@ const STEPS = [
 export function Onboarding({ me }: { me: MeResponse }) {
   const qc = useQueryClient();
   const step = nextStep(me);
-  const [code, setCode] = useState('');
   const [agree, setAgree] = useState(false);
   const [adult, setAdult] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
-  const bot = useRef<TurnstileHandle>(null);
-  const onToken = useCallback((t: string | null) => setToken(t), []);
 
   const run = useMutation({
     mutationFn: async () => {
-      if (step === 'INVITE') {
-        await api('/v1/me/invite', {
-          method: 'POST',
-          body: { code: code.trim() },
-          headers: token ? { 'x-turnstile-token': token } : {},
-        });
-      } else if (step === 'DISCLAIMER') {
+      if (step === 'DISCLAIMER') {
         await api('/v1/me/disclaimer', {
           method: 'POST',
           body: { version: me.disclaimer.currentVersion },
@@ -45,14 +32,9 @@ export function Onboarding({ me }: { me: MeResponse }) {
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
-    onError: () => bot.current?.reset(),
   });
 
-  const needsBot = step === 'INVITE' && TURNSTILE_SITE_KEY !== '';
-  const ready =
-    (step === 'INVITE' && code.trim().length >= 3 && (!needsBot || token !== null)) ||
-    (step === 'DISCLAIMER' && agree) ||
-    (step === 'AGE' && adult);
+  const ready = (step === 'DISCLAIMER' && agree) || (step === 'AGE' && adult);
   const err =
     run.error instanceof ApiError
       ? run.error.message
@@ -71,8 +53,8 @@ export function Onboarding({ me }: { me: MeResponse }) {
       >
         <h1 className="text-lg font-semibold">Before you start</h1>
         <ol className="mt-3 flex gap-2 text-xs" aria-label="Steps">
-          {STEPS.filter(([k]) => k !== 'INVITE' || me.invite.required).map(([k, label]) => {
-            const order = ['INVITE', 'DISCLAIMER', 'AGE'];
+          {STEPS.map(([k, label]) => {
+            const order = ['DISCLAIMER', 'AGE'];
             const done = order.indexOf(k) < order.indexOf(step);
             return (
               <li
@@ -86,23 +68,6 @@ export function Onboarding({ me }: { me: MeResponse }) {
           })}
         </ol>
 
-        {step === 'INVITE' && (
-          <div className="mt-4">
-            <label htmlFor="invite" className="block font-medium">
-              Invite code
-            </label>
-            <input
-              id="invite"
-              autoComplete="off"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="mt-1 w-full rounded-ctl border border-line bg-s3 px-3 py-2"
-            />
-            <div className="mt-3">
-              <Turnstile ref={bot} onToken={onToken} />
-            </div>
-          </div>
-        )}
         {step === 'DISCLAIMER' && (
           <div className="mt-4">
             <DisclaimerText />

@@ -38,7 +38,7 @@ pnpm ai:session-hour --provider anthropic      # measure the cost of a replayed 
 pnpm voice:eval                                # voice correction + grammar on the 200-phrase set (offline); --print-script to read aloud, --results file.json to score an engine
 pnpm voice:pin-models                          # pin speech model files by revision and SHA-256 (--check, --verify)
 pnpm ops:preflight [--db]                      # is this environment fit to open to testers? (config + read-only database checks)
-pnpm local check|migrate|invite|admin|start    # run on this PC against your Supabase (docs/RUN-LOCALLY.md)
+pnpm local check|migrate|admin|start    # run on this PC against your Supabase (docs/RUN-LOCALLY.md)
 pnpm ops:backup key|backup|restore             # encrypted logical backup of the public schema (needs pg_dump)
 ```
 

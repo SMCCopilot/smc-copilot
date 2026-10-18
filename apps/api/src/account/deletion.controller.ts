@@ -18,7 +18,7 @@ export class DeletionController {
 
   /** Starts account deletion. Needs a fresh wallet signature and the exact confirmation phrase. */
   @UserStepUp()
-  @RateLimit(RATE_LIMITS.invite)
+  @RateLimit(RATE_LIMITS.accountAction)
   @Delete()
   async remove(@Req() req: AccountRequest, @Body() body: unknown) {
     parseWith(DeleteMeSchema, body);
@@ -30,7 +30,7 @@ export class DeletionController {
    * the sign-in, not the account state.
    */
   @UseGuards(JwtAuthGuard, RateLimitGuard)
-  @RateLimit(RATE_LIMITS.invite)
+  @RateLimit(RATE_LIMITS.accountAction)
   @Post('deletion/cancel')
   @HttpCode(204)
   async cancel(@Req() req: AuthenticatedRequest): Promise<void> {

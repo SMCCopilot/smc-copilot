@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type KillSwitchScope,
@@ -18,7 +17,6 @@ export interface Actor {
   ip: string | null;
 }
 
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
 const FLAG_KEY = /^[a-z0-9_.-]{1,64}$/;
 
 /** Operator actions. Every one writes `audit_log` (A07 section 9). */
@@ -42,34 +40,6 @@ export class AdminOpsService {
     detail: Record<string, unknown> = {},
   ) {
     return this.accounts.audit(a.userId, null, action, target, a.ip, detail);
-  }
-
-  async createInvite(
-    a: Actor,
-    input: {
-      code?: string | undefined;
-      note?: string | undefined;
-      maxUses: number;
-      expiresAt?: string | undefined;
-      grants?: Record<string, number> | undefined;
-    },
-  ): Promise<{ code: string }> {
-    const code =
-      input.code?.toUpperCase() ??
-      Array.from(randomBytes(12), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
-    try {
-      await this.sql`
-        insert into invite_codes (code, note, max_uses, expires_at, grants)
-        values (${code}, ${input.note ?? null}, ${input.maxUses}, ${input.expiresAt ?? null},
-                ${this.sql.json((input.grants ?? { daily_ai_budget_usd: 1 }) as never)})`;
-    } catch (e) {
-      if ((e as { code?: string }).code === '23505') {
-        throw new ApiProblemError('CONFLICT', 'That invite code already exists.');
-      }
-      throw e;
-    }
-    await this.audit(a, 'admin.invite.create', code, { maxUses: input.maxUses });
-    return { code };
   }
 
   async blocklist(
@@ -116,7 +86,7 @@ export class AdminOpsService {
 
   async user(userId: string) {
     const [p] = await this.sql<Record<string, unknown>[]>`
-      select p.id, p.display_name, p.created_at, p.invite_redeemed_at, p.disclaimer_version, p.age_confirmed_at,
+      select p.id, p.display_name, p.created_at, p.disclaimer_version, p.age_confirmed_at,
              p.blocked_at, p.block_reason, p.deleted_at, w.id as workspace_id, w.plan
         from profiles p left join workspaces w on w.owner_id = p.id and w.kind = 'personal'
        where p.id = ${userId}`;

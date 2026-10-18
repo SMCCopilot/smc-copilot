@@ -4,7 +4,6 @@ import type { MeResponse, WalletDto } from '@smc/contracts';
 import type { Sql } from '@smc/db';
 import { ApiProblemError } from '../common/problem.js';
 import { ENV, SQL } from '../config/tokens.js';
-import { FlagsService } from './flags.service.js';
 import { type Wallet, walletFromIdentity } from './wallet.js';
 
 export interface AccountContext {
@@ -17,7 +16,6 @@ export interface AccountContext {
     createdAt: Date;
     disclaimerVersion: string | null;
     ageConfirmedAt: Date | null;
-    inviteRedeemedAt: Date | null;
     blockedAt: Date | null;
     deletedAt: Date | null;
   };
@@ -46,7 +44,6 @@ export class AccountService {
   constructor(
     @Inject(SQL) private readonly sqlOrNull: Sql | null,
     @Inject(ENV) private readonly env: Env,
-    private readonly flags: FlagsService,
   ) {}
 
   private get sql(): Sql {
@@ -77,14 +74,13 @@ export class AccountService {
         created_at: Date;
         disclaimer_version: string | null;
         age_confirmed_at: Date | null;
-        invite_redeemed_at: Date | null;
         blocked_at: Date | null;
         deleted_at: Date | null;
         workspace_id: string;
       }[]
     >`
       select p.display_name, p.locale, p.timezone, p.created_at, p.disclaimer_version, p.age_confirmed_at,
-             p.invite_redeemed_at, p.blocked_at, p.deleted_at, w.id as workspace_id
+             p.blocked_at, p.deleted_at, w.id as workspace_id
         from profiles p
         join workspaces w on w.owner_id = p.id and w.kind = 'personal'
        where p.id = ${userId}`;
@@ -99,7 +95,6 @@ export class AccountService {
         createdAt: row.created_at,
         disclaimerVersion: row.disclaimer_version,
         ageConfirmedAt: row.age_confirmed_at,
-        inviteRedeemedAt: row.invite_redeemed_at,
         blockedAt: row.blocked_at,
         deletedAt: row.deleted_at,
       },
@@ -212,7 +207,6 @@ export class AccountService {
     const [ws] = await this.sql<
       { plan: 'free' | 'pro' | 'team' }[]
     >`select plan from workspaces where id = ${ctx.workspaceId}`;
-    const inviteRequired = !(await this.flags.isEnabled('signup.open'));
     const currentVersion = this.env.DISCLAIMER_VERSION;
     return {
       user: {
@@ -228,7 +222,6 @@ export class AccountService {
         : null,
       workspace: { id: ctx.workspaceId, plan: ws?.plan ?? 'free' },
       entitlements: { limits: ent?.limits ?? {}, features: ent?.features ?? {} },
-      invite: { required: inviteRequired, redeemed: ctx.profile.inviteRedeemedAt !== null },
       disclaimer: {
         required: ctx.profile.disclaimerVersion !== currentVersion,
         currentVersion,
@@ -282,18 +275,6 @@ export class AccountService {
   async confirmAge(userId: string): Promise<void> {
     await this
       .sql`update profiles set age_confirmed_at = coalesce(age_confirmed_at, now()) where id = ${userId}`;
-  }
-
-  async redeemInvite(userId: string, code: string): Promise<boolean> {
-    // One invite per account: a second code must not stack its grants.
-    const [p] = await this.sql<
-      { done: boolean }[]
-    >`select invite_redeemed_at is not null as done from profiles where id = ${userId}`;
-    if (p?.done) return true;
-    const [row] = await this.sql<
-      { ok: boolean }[]
-    >`select redeem_invite(${code.trim().toUpperCase()}, ${userId}) as ok`;
-    return row?.ok === true;
   }
 
   // ---- wallets
