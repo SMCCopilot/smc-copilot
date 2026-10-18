@@ -79,3 +79,15 @@ test('share screen: button, sharing indicator, self-view, privacy line, stop', a
   await expect(panel).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Share screen' })).toBeVisible();
 });
+
+test('the web app sends baseline security headers and allows mic and screen capture only for itself', async ({
+  page,
+}) => {
+  const res = await page.goto('/');
+  const h = res?.headers() ?? {};
+  expect(h['x-content-type-options']).toBe('nosniff');
+  expect(h['x-frame-options']).toBe('DENY');
+  expect(h['referrer-policy']).toBe('no-referrer');
+  expect(h['permissions-policy']).toContain('display-capture=(self)');
+  expect(h['permissions-policy']).toContain('microphone=(self)');
+});

@@ -14,10 +14,26 @@ const pick = (...keys) => {
   return '';
 };
 
+// Baseline response headers for the web app. No CSP yet: the speech and OCR workers need a tested allow-list (backlog).
+const securityHeaders = [
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'Referrer-Policy', value: 'no-referrer' },
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+  { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+  {
+    key: 'Permissions-Policy',
+    value: 'microphone=(self), display-capture=(self), camera=(), geolocation=(), payment=()',
+  },
+];
+
 /** @type {import('next').NextConfig} */
 export default {
   // Tests build into their own folder so they can run beside a developer's running server.
   distDir: process.env.NEXT_DIST_DIR || '.next',
+  async headers() {
+    return [{ source: '/:path*', headers: securityHeaders }];
+  },
   reactStrictMode: true,
   agentRules: false,
   poweredByHeader: false,

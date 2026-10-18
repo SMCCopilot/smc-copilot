@@ -95,3 +95,4 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 - Calibration job runs 24 h after start only; run once at start like cohorts (audit A11).
 - Engine start rebuilds from the beginning of history; resume from the last snapshot when history grows.
 - `apps/worker` is a stub; decide when ingest/engine/jobs leave the API process.
+- Add a Content-Security-Policy to the web app once the speech and OCR workers' needs are tested (audit A12).
