@@ -14,6 +14,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream, rmSync } from 'node:fs';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { fileURLToPath } from 'node:url';
 
 const MAGIC = Buffer.from('SMCBK1\n');
 const CHUNK = 1024 * 1024;
@@ -129,6 +130,18 @@ export function decryptStream(key) {
     flush(cb) {
       cb(ended ? null : new Error('the backup is incomplete'));
     },
+  });
+}
+
+function runPsqlFile(url, file) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('psql', ['--no-psqlrc', '-q', '-v', 'ON_ERROR_STOP=1', '-f', file, url], {
+      stdio: ['ignore', 'ignore', 'inherit'],
+    });
+    child.on('error', reject);
+    child.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error(`psql exited with code ${code}`)),
+    );
   });
 }
 
@@ -263,6 +276,17 @@ async function main() {
     ]);
     await pipeline(createReadStream(inp), decryptStream(key), restore.stdin);
     await restore.done;
+    // The dump carries no privileges (--no-privileges), so functions come back executable by PUBLIC. Re-apply the
+    // function lock-down from migration 0012 (it only revokes and grants EXECUTE, so it is safe to run again).
+    await runPsqlFile(
+      to,
+      fileURLToPath(
+        new URL(
+          '../../../packages/db/migrations/0012_revoke_function_execute.sql',
+          import.meta.url,
+        ),
+      ),
+    );
     console.log('restore finished');
   } else {
     console.log(

@@ -50,7 +50,9 @@ export class MeController {
   @HttpCode(204)
   async disclaimer(@Req() req: AccountRequest, @Body() body: unknown): Promise<void> {
     // The kill switch for finishing sign-up: stops new accounts from getting in during an abuse wave.
-    if (await this.flags.killed('SIGNUP')) {
+    // Only for accounts that have never accepted a disclaimer (new sign-ups); existing users re-accepting after a
+    // version bump are not locked out.
+    if (req.account.profile.disclaimerVersion === null && (await this.flags.killed('SIGNUP'))) {
       throw new ApiProblemError('KILL_SWITCH_ACTIVE', 'Sign-up is temporarily closed.');
     }
     const { version } = parseWith(DisclaimerBodySchema, body);

@@ -120,6 +120,8 @@ export const useShare = create<ShareStore>((set) => ({
 
 let loop: CaptureLoop | null = null;
 let engineRef: { dispose(): Promise<void> } | null = null;
+/** Kept at module level so every failure path can stop the capture tracks (the browser's sharing indicator). */
+let sourceRef: { stop(): void } | null = null;
 let lastCtx: OcrContext | null = null;
 
 export async function startShare(): Promise<void> {
@@ -133,6 +135,7 @@ export async function startShare(): Promise<void> {
     ]);
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
     const source = new ScreenSource(stream);
+    sourceRef = source;
     await source.start();
     const engine = new TesseractEngine();
     engineRef = engine;
@@ -177,6 +180,8 @@ export async function startShare(): Promise<void> {
 export async function stopShare(): Promise<void> {
   loop?.stop();
   loop = null;
+  sourceRef?.stop();
+  sourceRef = null;
   lastCtx = null;
   await engineRef?.dispose().catch(() => {});
   engineRef = null;

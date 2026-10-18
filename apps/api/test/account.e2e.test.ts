@@ -515,6 +515,14 @@ describe('admin operations', () => {
       .send({ version: '2026-10-01' });
     expect(closed.status).toBe(503);
     expect(closed.body.code).toBe('KILL_SWITCH_ACTIVE');
+    // An existing user re-accepting a newer disclaimer is not locked out by the sign-up switch.
+    const old = await newUser();
+    await sql`update profiles set disclaimer_version = '2025-01-01' where id = ${old}`;
+    const again = await request(http)
+      .post('/v1/me/disclaimer')
+      .set('Authorization', await bearer(old))
+      .send({ version: '2026-10-01' });
+    expect(again.status).toBe(204);
     expect((await call(http, 'post', '/v1/admin/flags/Bad Key!', { enabled: true })).status).toBe(
       422,
     );

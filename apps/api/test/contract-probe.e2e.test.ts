@@ -91,11 +91,12 @@ describe('contract probe', () => {
         const label = `${r.method.toUpperCase()} ${url} -> ${res.status}`;
         if (res.status >= 500) bad.push(`${label} (server error)`);
         else if (res.status >= 400 && !isProblem(res)) bad.push(`${label} (not problem+json)`);
-        if (id === 'not-a-uuid' && r.path.includes(':') && res.status === 200)
+        if (id === 'not-a-uuid' && r.path.includes(':') && res.status < 300)
           bad.push(`${label} (accepted a bad id)`);
       }
     }
-    console.log('status histogram', JSON.stringify(seen));
+    // Guard against a vacuous run: the signed-in, onboarded user must really get through to the routes.
+    expect(seen['200'] ?? 0).toBeGreaterThan(20);
     expect(bad).toEqual([]);
   }, 120_000);
 
