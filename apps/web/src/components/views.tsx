@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { ApiError } from '../lib/errors';
+import { formatPrice } from '../lib/overlays';
 import { useInstruments } from '../lib/queries';
 import {
   notificationText,
@@ -204,6 +205,11 @@ export function TradesView() {
   const inst = useInstruments(false);
   const [closing, setClosing] = useState<string | null>(null);
   const name = (id: string) => inst.data?.items.find((i) => i.id === id)?.canonical ?? 'Instrument';
+  // Prices are stored as the plan computed them (many decimals); show them at the market's own precision.
+  const price = (id: string, v: number | null) =>
+    v === null
+      ? '–'
+      : formatPrice(v, inst.data?.items.find((i) => i.id === id)?.pricePrecision ?? 2);
   return (
     <Page title="Trades">
       <p className="mb-3 text-muted">
@@ -234,15 +240,15 @@ export function TradesView() {
               <dl className="num mt-1 grid grid-cols-2 gap-x-4 text-sm sm:grid-cols-4">
                 <div>
                   <dt className="text-xs text-muted">Entry</dt>
-                  <dd>{r.entryPrice ?? '–'}</dd>
+                  <dd>{price(r.instrumentId, r.entryPrice)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted">Stop</dt>
-                  <dd>{r.stopPrice ?? '–'}</dd>
+                  <dd>{price(r.instrumentId, r.stopPrice)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted">Exit</dt>
-                  <dd>{r.exitPrice ?? '–'}</dd>
+                  <dd>{price(r.instrumentId, r.exitPrice)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted">Net R</dt>

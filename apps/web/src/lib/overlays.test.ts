@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildOverlays,
   DEFAULT_LAYERS,
+  focusOverlays,
   levelLayer,
+  type Overlay,
   overlayPrices,
+  stackLabels,
   visible,
   zoneLayer,
 } from './overlays';
@@ -63,5 +66,57 @@ describe('overlay mapping', () => {
     expect(shown.some((i) => i.layer === 'fvg')).toBe(false);
     expect(shown.some((i) => i.layer === 'sessions')).toBe(false);
     expect(shown.some((i) => i.layer === 'liquidity')).toBe(true);
+  });
+});
+
+describe('focusOverlays', () => {
+  const zone = (id: string, price: number): Overlay => ({
+    kind: 'zone',
+    layer: 'fvg',
+    id,
+    label: id,
+    top: price + 5,
+    bottom: price - 5,
+    tone: 'fvg',
+  });
+
+  it('keeps everything when there are few levels', () => {
+    const few = [zone('a', 100), zone('b', 200)];
+    expect(focusOverlays(few, 14)).toEqual({ shown: few, hidden: 0 });
+  });
+
+  it('keeps the plan lines and the levels nearest the price, and counts the rest', () => {
+    const many = Array.from({ length: 40 }, (_, i) => zone(`z${i}`, 60_000 + i * 1000));
+    const stop: Overlay = {
+      kind: 'line',
+      layer: 'plan',
+      id: 'stop',
+      label: 'Stop',
+      price: 99_000,
+      tone: 'stop',
+    };
+    const r = focusOverlays([...many, stop], 10);
+    expect(r.shown).toHaveLength(10);
+    expect(r.hidden).toBe(31);
+    expect(r.shown.some((o) => o.id === 'stop')).toBe(true);
+    // The median level is near 80,000, so the far ends are left out.
+    expect(r.shown.some((o) => o.id === 'z0')).toBe(false);
+    expect(r.shown.some((o) => o.id === 'z39')).toBe(false);
+  });
+});
+
+describe('stackLabels', () => {
+  it('spaces crowded labels apart in order and keeps lone ones where they are', () => {
+    const out = stackLabels([50, 50.5, 51, 10], 4);
+    expect(out[3]).toBe(10);
+    const crowded = [out[0] as number, out[1] as number, out[2] as number].sort((a, b) => a - b);
+    expect((crowded[1] as number) - (crowded[0] as number)).toBeGreaterThanOrEqual(4 - 1e-9);
+    expect((crowded[2] as number) - (crowded[1] as number)).toBeGreaterThanOrEqual(4 - 1e-9);
+  });
+
+  it('shifts the stack up when it would run off the bottom', () => {
+    const out = stackLabels([98, 99, 100], 5);
+    expect(Math.max(...out)).toBeLessThanOrEqual(100);
+    expect(Math.min(...out)).toBeGreaterThanOrEqual(0);
   });
 });

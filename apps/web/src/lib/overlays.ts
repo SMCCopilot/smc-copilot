@@ -169,6 +169,45 @@ export function visible(items: Overlay[], on: Record<LayerId, boolean>): Overlay
   return items.filter((o) => o.layer === 'plan' || on[o.layer]);
 }
 
+const midOf = (o: Overlay): number => (o.kind === 'zone' ? (o.top + o.bottom) / 2 : o.price);
+
+/**
+ * Overlay-only view: on a wide timeframe the engine tracks dozens of levels spread over tens of thousands of dollars,
+ * and drawing them all on one ruler is unreadable. Keep the plan lines (always) plus the levels nearest the price,
+ * and say how many were left out. The reference price is the plan's entry when there is one, else the median level
+ * (levels cluster around the market).
+ */
+export function focusOverlays(items: Overlay[], max = 14): { shown: Overlay[]; hidden: number } {
+  if (items.length <= max) return { shown: items, hidden: 0 };
+  const plan = items.filter((o) => o.layer === 'plan');
+  const entry = plan.find((o) => o.kind === 'zone');
+  const mids = items.map(midOf).sort((a, b) => a - b);
+  const ref = entry ? midOf(entry) : (mids[Math.floor(mids.length / 2)] as number);
+  const rest = items
+    .filter((o) => o.layer !== 'plan')
+    .sort((a, b) => Math.abs(midOf(a) - ref) - Math.abs(midOf(b) - ref));
+  const shown = [...plan, ...rest.slice(0, Math.max(0, max - plan.length))];
+  return { shown, hidden: items.length - shown.length };
+}
+
+/** Moves label positions (percent from the top) apart so none sit closer than `gap`, keeping the order. */
+export function stackLabels(positions: number[], gap: number): number[] {
+  const order = positions.map((p, i) => ({ p, i })).sort((a, b) => a.p - b.p);
+  const out = new Array<number>(positions.length);
+  let floor = Number.NEGATIVE_INFINITY;
+  for (const o of order) {
+    const y = Math.max(o.p, floor);
+    out[o.i] = y;
+    floor = y + gap;
+  }
+  const over = Math.max(...out) - 100;
+  if (over > 0) {
+    // Shift the whole stack up, then re-spread from the top if that pushed the first one off the screen.
+    for (let i = 0; i < out.length; i++) out[i] = (out[i] as number) - over;
+  }
+  return out;
+}
+
 export const overlayPrices = (items: Overlay[]): number[] =>
   items.flatMap((o) => (o.kind === 'zone' ? [o.top, o.bottom] : [o.price]));
 
