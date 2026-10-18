@@ -12,6 +12,9 @@ import { api } from './api';
 import { prepareSpeech, useSpeech } from './speech-loader';
 import { useUi } from './ui';
 
+/** The longest message the assistant accepts (a three-minute recording can run past it). */
+export const MAX_VOICE_TEXT = 2000;
+
 /** Same value as SILENCE_LEVEL in capture-kit (kept here so the page does not load the whole package up front). */
 const SILENCE_LEVEL = 0.002;
 
@@ -59,13 +62,17 @@ class MicCapture {
     return this.lvl;
   }
 
-  /** A copy of what has been recorded so far at 16 kHz, without stopping (for the live preview). */
-  peek(): Float32Array {
+  /** A copy of the latest `maxSamples` (16 kHz) of what has been recorded so far, without stopping (for the live preview). */
+  peek(maxSamples = Number.POSITIVE_INFINITY): Float32Array {
     const rate = this.ctx?.sampleRate ?? 16000;
-    const total = this.chunks.reduce((n, c) => n + c.length, 0);
+    const want = Math.ceil((maxSamples * rate) / 16000);
+    let total = 0;
+    let from = this.chunks.length;
+    while (from > 0 && total < want) total += (this.chunks[--from] as Float32Array).length;
     const pcm = new Float32Array(total);
     let at = 0;
-    for (const c of this.chunks) {
+    for (let i = from; i < this.chunks.length; i++) {
+      const c = this.chunks[i] as Float32Array;
       pcm.set(c, at);
       at += c.length;
     }
@@ -168,7 +175,8 @@ export function useVoice(sessionId: string | null) {
         minConfidence: speech.cfg.minConfidence,
         maxUtteranceMs: speech.cfg.maxUtteranceMs,
         onState: setState,
-        onTranscript: (t) => useTranscript.getState().set({ transcript: t, text: t.text }),
+        onTranscript: (t) =>
+          useTranscript.getState().set({ transcript: t, text: t.text.slice(0, MAX_VOICE_TEXT) }),
         onWarning: setWarning,
         onReport: report,
         onPartial: (t) => useTranscript.getState().set({ partial: t }),

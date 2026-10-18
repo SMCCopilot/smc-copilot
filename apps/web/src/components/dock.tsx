@@ -8,7 +8,7 @@ import { useAnalysis } from '../lib/market';
 import { sendChat, sendVoiceCommand } from '../lib/send';
 import { useSelection } from '../lib/sessions';
 import { pickSetup, useUi } from '../lib/ui';
-import { useTranscript, useVoice } from '../lib/voice';
+import { MAX_VOICE_TEXT, useTranscript, useVoice } from '../lib/voice';
 import { directionLabel } from '../lib/wording';
 import { GradeChip } from './canvas-tabs';
 import { ExplainDialog } from './explain-dialog';
@@ -169,11 +169,11 @@ function Bubble({ m }: { m: Msg }) {
 }
 
 const WARN_TEXT: Record<string, string> = {
-  NO_SPEECH: 'I could not make out any words. Speak a little closer, then try again.',
+  NO_SPEECH: 'I could not make out any words. Type what you meant below, or try again.',
   MIC_SILENT:
-    'Your microphone gave no sound. Check it is not muted and the right one is selected in your browser, then try again.',
+    'Your microphone gave no sound. Check it is not muted and the right one is selected in your browser. You can still type below.',
   LOW_CONFIDENCE: 'I may have misheard. Check the text before sending.',
-  TOO_LONG: 'That was too long, so recording stopped.',
+  TOO_LONG: 'Recording stopped after three minutes. Review the text below.',
   MIC_PERMISSION_DENIED: 'Microphone access is blocked. Allow it in your browser, or type instead.',
   STT_UNAVAILABLE: 'Speech recognition is not available right now. Type instead.',
 };
@@ -289,6 +289,9 @@ export function Dock() {
   }
 
   const forbidden = tr.transcript?.forbidden ?? null;
+  // While recording or reviewing, the conversation panel takes the room it needs and the chart gives way.
+  const voiceBusy =
+    ['RECORDING', 'TRANSCRIBING', 'REVIEW'].includes(voice.state) || tr.transcript !== null;
   const reasonOff = voice.confirmOpen
     ? 'Voice is off while the confirm dialog is open. Confirming is by tapping the Confirm button only.'
     : !connected
@@ -296,10 +299,13 @@ export function Dock() {
       : null;
 
   return (
-    <section aria-label="Conversation" className="flex min-h-0 flex-[3] flex-col p-3">
+    <section
+      aria-label="Conversation"
+      className={`flex min-w-0 flex-[3] flex-col overflow-hidden p-3 ${voiceBusy ? 'min-h-[18rem]' : 'min-h-[10rem]'}`}
+    >
       <div
         ref={scroller}
-        className="min-h-0 flex-1 space-y-3 overflow-auto pr-1"
+        className="min-h-8 flex-1 space-y-3 overflow-auto pr-1"
         aria-live="polite"
       >
         {messages.length === 0 ? (
@@ -313,97 +319,104 @@ export function Dock() {
         )}
       </div>
 
-      {voice.status === 'LOADING' && voice.progress > 0 && voice.progress < 1 && (
-        <p className="mt-2 text-xs text-muted" role="status">
-          Getting voice ready… {Math.round(voice.progress * 100)}% (once; it stays on this device)
-        </p>
-      )}
-      {voice.detail && (
-        <p className="mt-2 text-xs text-muted" role="status">
-          {voice.detail}
-        </p>
-      )}
-      {(voice.state === 'RECORDING' || voice.state === 'TRANSCRIBING') && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-2 rounded-card border border-bear-text bg-s2 p-3"
-        >
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <span className="size-2.5 animate-pulse rounded-full bg-bear" aria-hidden />
-            {voice.state === 'RECORDING'
-              ? 'Listening… click the mic when you are done'
-              : 'Working out what you said…'}
+      <div className="mt-2 min-h-0 shrink overflow-y-auto">
+        {voice.status === 'LOADING' && voice.progress > 0 && voice.progress < 1 && (
+          <p className="mt-2 text-xs text-muted" role="status">
+            Getting voice ready… {Math.round(voice.progress * 100)}% (once; it stays on this device)
           </p>
-          <p className="mt-1 min-h-5 text-fg">
-            {tr.partial || (voice.state === 'RECORDING' ? 'Speak now' : '')}
+        )}
+        {voice.detail && (
+          <p className="mt-2 text-xs text-muted" role="status">
+            {voice.detail}
           </p>
-          {voice.state === 'RECORDING' && (
-            <>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-s3" aria-hidden>
-                <div
-                  className="h-full rounded-full bg-bull transition-[width] duration-75"
-                  style={{ width: `${Math.min(100, Math.round(Math.sqrt(tr.level) * 140))}%` }}
-                />
-              </div>
-              {tr.quiet && (
-                <p className="mt-1 text-xs text-warn-text">
-                  I cannot hear your microphone. Check it is not muted and the right one is
-                  selected.
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      )}
-      {voice.warning && (
-        <p className="mt-2 text-xs text-warn-text" role="status">
-          {WARN_TEXT[voice.warning]}
-        </p>
-      )}
-
-      {tr.transcript && (
-        <div className="mt-2 rounded-card border border-line bg-s2 p-3">
-          <label htmlFor="transcript" className="text-xs text-muted">
-            Review what I heard, edit it, then send
-          </label>
-          <textarea
-            id="transcript"
-            value={tr.text}
-            maxLength={500}
-            rows={2}
-            onChange={(e) => tr.set({ text: e.target.value })}
-            className="mt-1 w-full resize-none rounded-ctl border border-line bg-s3 px-2 py-1.5"
-          />
-          {tr.transcript.corrected && (
-            <p className="mt-1 text-xs text-muted">Heard: “{tr.transcript.raw}”</p>
-          )}
-          {forbidden && (
-            <p role="alert" className="mt-1 text-warn-text">
-              Voice cannot confirm, log, change risk, delete data or pay. Use the buttons on screen.
+        )}
+        {(voice.state === 'RECORDING' || voice.state === 'TRANSCRIBING') && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-2 rounded-card border border-bear-text bg-s2 p-3"
+          >
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <span className="size-2.5 animate-pulse rounded-full bg-bear" aria-hidden />
+              {voice.state === 'RECORDING'
+                ? 'Listening… click the mic when you are done'
+                : 'Working out what you said…'}
             </p>
-          )}
-          <div className="mt-2 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={voice.done}
-              className="rounded-ctl border border-line px-3 py-1.5"
-            >
-              Discard
-            </button>
-            <button
-              type="button"
-              onClick={() => void sendTranscript()}
-              disabled={!tr.text.trim() || !connected}
-              className="rounded-ctl bg-accent-strong px-3 py-1.5 font-medium text-white disabled:opacity-50"
-            >
-              {forbidden ? 'Send for the record' : 'Send'}
-            </button>
+            <p className="mt-1 min-h-5 text-fg">
+              {tr.partial || (voice.state === 'RECORDING' ? 'Speak now' : '')}
+            </p>
+            {voice.state === 'RECORDING' && (
+              <>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-s3" aria-hidden>
+                  <div
+                    className="h-full rounded-full bg-bull transition-[width] duration-75"
+                    style={{ width: `${Math.min(100, Math.round(Math.sqrt(tr.level) * 140))}%` }}
+                  />
+                </div>
+                {tr.quiet && (
+                  <p className="mt-1 text-xs text-warn-text">
+                    I cannot hear your microphone. Check it is not muted and the right one is
+                    selected.
+                  </p>
+                )}
+              </>
+            )}
           </div>
-        </div>
-      )}
+        )}
+        {voice.warning && (
+          <p className="mt-2 text-xs text-warn-text" role="status">
+            {WARN_TEXT[voice.warning]}
+          </p>
+        )}
 
-      <form onSubmit={submit} className="mt-2 flex items-center gap-2">
+        {tr.transcript && (
+          <div className="mt-2 rounded-card border border-line bg-s2 p-3">
+            <label htmlFor="transcript" className="text-xs text-muted">
+              {tr.transcript.raw ? 'Review what I heard, edit it, then send' : 'Type your message'}
+            </label>
+            <div className="mt-1 flex items-start gap-2">
+              <textarea
+                id="transcript"
+                value={tr.text}
+                maxLength={MAX_VOICE_TEXT}
+                rows={tr.text.length > 120 ? 3 : 2}
+                onChange={(e) => tr.set({ text: e.target.value })}
+                // biome-ignore lint/a11y/noAutofocus: the box opens right after a recording so it can be fixed at once
+                autoFocus
+                className="min-w-0 flex-1 resize-none rounded-ctl border border-line bg-s3 px-2 py-1.5"
+              />
+              <div className="flex shrink-0 flex-col gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void sendTranscript()}
+                  disabled={!tr.text.trim() || !connected}
+                  className="rounded-ctl bg-accent-strong px-3 py-1.5 font-medium text-white disabled:opacity-50"
+                >
+                  {forbidden ? 'Send for the record' : 'Send'}
+                </button>
+                <button
+                  type="button"
+                  onClick={voice.done}
+                  className="rounded-ctl border border-line px-3 py-1.5"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+            {tr.transcript.corrected && (
+              <p className="mt-1 text-xs text-muted">Heard: “{tr.transcript.raw}”</p>
+            )}
+            {forbidden && (
+              <p role="alert" className="mt-1 text-warn-text">
+                Voice cannot confirm, log, change risk, delete data or pay. Use the buttons on
+                screen.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={submit} className="mt-2 flex shrink-0 items-center gap-2">
         <label className="sr-only" htmlFor="chat">
           Message
         </label>

@@ -204,8 +204,8 @@ export interface AudioCapture {
   start(): Promise<void>;
   /** Stops and returns the audio recorded since `start`, as 16 kHz mono samples. Kept in memory only. */
   stop(): Promise<Float32Array>;
-  /** A copy of the audio so far (16 kHz mono) without stopping, so words can be shown while the key is held. */
-  peek?(): Float32Array;
+  /** A copy of the latest audio (16 kHz mono, at most `maxSamples` of it) without stopping, so words can be shown while recording. */
+  peek?(maxSamples?: number): Float32Array;
   /** How loud the microphone is right now (0 to 1), for the level meter. */
   level?(): number;
 }
@@ -366,13 +366,13 @@ export class PushToTalk {
           errorCode: 'CAPTURE_FAILED',
         });
         this.o.onWarning('NO_SPEECH');
-        this.set('IDLE');
+        this.emptyReview(this.firstEngine(), 0);
         return;
       }
       if (pcm.length < (this.o.minSamples ?? 4800)) {
         this.report({ engine: this.firstEngine(), outcome: 'NO_SPEECH', durationMs });
         this.o.onWarning('NO_SPEECH');
-        this.set('IDLE');
+        this.emptyReview(this.firstEngine(), 0);
         return;
       }
       if (normalizeLevel(pcm) < SILENCE_LEVEL) {
@@ -384,7 +384,7 @@ export class PushToTalk {
           errorCode: 'MIC_SILENT',
         });
         this.o.onWarning('MIC_SILENT');
-        this.set('IDLE');
+        this.emptyReview(this.firstEngine(), 0);
         return;
       }
       for (const engine of this.o.engines) {
@@ -393,7 +393,7 @@ export class PushToTalk {
         let stopTimer: () => void = () => {};
         // An engine that ignores the abort signal must not hang the controller: the deadline wins the race.
         const deadline = new Promise<never>((_, reject) => {
-          stopTimer = this.o.clock.after(15_000, () => {
+          stopTimer = this.o.clock.after(20_000 + durationMs, () => {
             ctl.abort();
             reject(new Error('engine deadline'));
           });
@@ -464,7 +464,7 @@ export class PushToTalk {
     const engine = this.o.engines.find((e) => !this.failed.has(e.tag));
     const peek = this.o.capture.peek;
     if (!engine || !peek || this.partialBusy) return;
-    const pcm = peek.call(this.o.capture);
+    const pcm = peek.call(this.o.capture, MAX_PARTIAL_SAMPLES);
     if (pcm.length < MIN_PARTIAL_SAMPLES) return;
     // Only the last stretch: a long utterance must not make every pass slower.
     const recent =
@@ -486,6 +486,21 @@ export class PushToTalk {
     }
   }
 
+  /** Nothing was recognised: the review box still opens (empty) so the user can type, or discard. */
+  private emptyReview(engine: SttEngineTag, latencyMs: number): void {
+    this.o.onTranscript({
+      raw: '',
+      text: '',
+      confidence: 0,
+      engine,
+      corrected: false,
+      forbidden: null,
+      command: null,
+      latencyMs,
+    });
+    this.set('REVIEW');
+  }
+
   private firstEngine(): SttEngineTag {
     return this.o.engines[0]?.tag ?? 'typed';
   }
@@ -501,7 +516,7 @@ export class PushToTalk {
     if (!trimmed) {
       this.report({ engine, outcome: 'NO_SPEECH', durationMs, latencyMs });
       this.o.onWarning('NO_SPEECH');
-      this.set('IDLE');
+      this.emptyReview(engine, latencyMs);
       return;
     }
     const fixed = correctTranscript(trimmed, this.o.glossary());

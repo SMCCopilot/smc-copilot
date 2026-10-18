@@ -52,7 +52,7 @@ export function loadManifest(): Manifest {
 }
 
 const GLOSSARY_TTL_MS = 60_000;
-const MAX_UTTERANCE_MS = 15_000;
+const MAX_UTTERANCE_MS = 180_000; // three minutes
 const MIN_CONFIDENCE = 0.6;
 
 const pinned = (g: ManifestGroup): boolean =>

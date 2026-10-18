@@ -310,7 +310,8 @@ describe('push to talk', () => {
     expect(eng.calls).toBe(0);
     expect(log.warnings).toEqual(['MIC_SILENT']);
     expect(log.reports[0]).toMatchObject({ outcome: 'NO_SPEECH', errorCode: 'MIC_SILENT' });
-    expect(log.states.at(-1)).toBe('IDLE');
+    expect(log.states.at(-1)).toBe('REVIEW');
+    expect(log.transcripts[0]?.text).toBe('');
   });
 
   it('reports whole milliseconds even when the clock has fractions (the server refuses fractions)', async () => {
@@ -401,7 +402,9 @@ describe('push to talk', () => {
     await short.p.press();
     await short.p.release();
     expect(short.log.warnings).toContain('NO_SPEECH');
-    expect(short.p.current).toBe('IDLE');
+    // The review box still opens, empty, so the user can type instead.
+    expect(short.p.current).toBe('REVIEW');
+    expect(short.log.transcripts[0]).toMatchObject({ raw: '', text: '' });
 
     const low = rig([engine('whisper-web', 'explain this chart', 0.3)]);
     await low.p.press();
@@ -528,7 +531,7 @@ describe('push to talk: review regressions', () => {
     });
     await r.p.press();
     await r.p.release();
-    expect(r.p.current).toBe('IDLE');
+    expect(r.p.current).toBe('REVIEW');
     await r.p.press();
     expect(r.p.current).toBe('RECORDING');
   });
@@ -538,7 +541,7 @@ describe('push to talk: review regressions', () => {
     await r.p.press();
     const releasing = r.p.release();
     await Promise.resolve();
-    r.advance(15001);
+    r.advance(20001);
     await releasing;
     expect(r.warnings).toContain('STT_UNAVAILABLE');
     expect(r.p.current).not.toBe('TRANSCRIBING');

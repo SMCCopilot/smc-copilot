@@ -68,7 +68,7 @@ export const VoiceEventBodySchema = z.strictObject({
   sessionId: z.uuid().optional(),
   engine: SttEngineTagSchema,
   outcome: z.enum(['OK', 'LOW_CONFIDENCE', 'NO_SPEECH', 'ERROR']),
-  durationMs: z.number().int().min(0).max(120_000).optional(),
+  durationMs: z.number().int().min(0).max(200_000).optional(),
   latencyMs: z.number().int().min(0).max(120_000).optional(),
   confidence: z.number().min(0).max(1).optional(),
   language: z.string().max(8).optional(),
