@@ -132,6 +132,43 @@ export function decryptStream(key) {
   });
 }
 
+function runPsql(url, sql) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('psql', ['--no-psqlrc', '-q', '-v', 'ON_ERROR_STOP=1', '-c', sql, url], {
+      stdio: ['ignore', 'ignore', 'inherit'],
+    });
+    child.on('error', reject);
+    child.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error(`psql exited with code ${code}`)),
+    );
+  });
+}
+
+/** Number of tables in the target's public schema (0 for an empty scratch database). */
+function countPublicTables(url) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'psql',
+      [
+        '--no-psqlrc',
+        '-Atq',
+        '-c',
+        "select count(*) from pg_tables where schemaname = 'public'",
+        url,
+      ],
+      { stdio: ['ignore', 'pipe', 'inherit'] },
+    );
+    let out = '';
+    child.stdout.on('data', (d) => {
+      out += d;
+    });
+    child.on('error', reject);
+    child.on('close', (code) =>
+      code === 0 ? resolve(Number(out.trim())) : reject(new Error(`psql exited with code ${code}`)),
+    );
+  });
+}
+
 function run(cmd, args, opts) {
   const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'inherit'], ...opts });
   child.done = new Promise((resolve, reject) => {
@@ -175,12 +212,16 @@ async function main() {
     if (!url) throw new Error('DATABASE_URL_SESSION or DATABASE_URL must be set');
     const out = arg('--out');
     if (!out) throw new Error('--out <file> is required');
-    // Plain schema "public" only: Supabase manages the other schemas. -Fc is the compressed custom format.
+    // Schemas "public" (the data) and "smc_meta" (which migrations are applied): Supabase manages the other schemas.
+    // Loaded through the partition root so a restore does not need the same monthly partitions to exist.
+    // -Fc is the compressed custom format.
     const dump = run('pg_dump', [
       '--format=custom',
       '--no-owner',
       '--no-privileges',
       '--schema=public',
+      '--schema=smc_meta',
+      '--load-via-partition-root',
       '--dbname',
       url,
     ]);
@@ -204,11 +245,18 @@ async function main() {
           );
       }
     }
+    // The dump is a full copy of the schema and the data, so the target must be empty: do not run the migrations
+    // first (a database that already has the tables cannot take it, and "--clean" cannot drop partitioned tables).
+    const existing = await countPublicTables(to);
+    if (existing > 0)
+      throw new Error(
+        `the target already has ${existing} tables in "public"; restore into an empty scratch database without running the migrations first`,
+      );
+    // The dump creates schema "public" itself; the empty default one must go first.
+    await runPsql(to, 'drop schema public');
     const restore = run('pg_restore', [
       '--no-owner',
       '--no-privileges',
-      '--clean',
-      '--if-exists',
       '--exit-on-error',
       '--dbname',
       to,
