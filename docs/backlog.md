@@ -96,3 +96,6 @@ Anything not in `docs/plan/set-b/B01` section 3 goes here with a reason. Nothing
 - Engine start rebuilds from the beginning of history; resume from the last snapshot when history grows.
 - `apps/worker` is a stub; decide when ingest/engine/jobs leave the API process.
 - Add a Content-Security-Policy to the web app once the speech and OCR workers' needs are tested (audit A12).
+- Generate an OpenAPI document from the Zod contracts and bring A07/B04 route lists in line with the implemented API (audit A15).
+- Clean `dist` before `tsc` in package builds (audit A16).
+- Generate the web's instrument and other DTO types from `packages/contracts` instead of hand-written copies.
