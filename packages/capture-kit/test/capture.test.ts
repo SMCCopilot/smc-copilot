@@ -83,6 +83,58 @@ describe('classification', () => {
     expect(items.find((i) => i.kind === 'TIMEFRAME')?.text).toBe(tf);
   });
 
+  it('reads the symbol, timeframe, venue and last price from the messy legend lines of a live 1920 px TradingView tab', () => {
+    // Lines as Tesseract returned them for a real Bitcoin/USDT 1D chart (OKX): noise around the legend, a stray "00"
+    // after the first symbol, a watchlist and a second legend lower down.
+    const live: OcrLine[] = [
+      {
+        text: '(A) BTCUSDT 00 (® D [6 4&7 Indicators 83 (0) Alert dq Replay © [J Unnamed + & ©) 3 ©) @ Tr',
+        conf: 0.7,
+        box: [10, 3, 1500, 22],
+      },
+      {
+        text: 'A. © Bitcoin/USDT - 1D - OKX ® = 081,489.5 H82,072.4 L81,398.8 C81,689.0 +199.6 (+0.24%) 1',
+        conf: 0.63,
+        box: [40, 62, 1200, 80],
+      },
+      { text: 'J SELL. BUY Symbol Last Chg Chgh ©', conf: 0.66, box: [1500, 110, 1900, 125] },
+      { text: '@ SPX e 7,659.44 84.62 -1.09% ~', conf: 0.48, box: [1500, 200, 1900, 215] },
+      { text: 'f Bitcoin/USDT [7 - OKX =', conf: 0.55, box: [60, 490, 400, 505] },
+      { text: '96,000.0', conf: 0.9, box: [1830, 139, 1900, 155] },
+      { text: '72,000.0', conf: 0.92, box: [1830, 501, 1900, 517] },
+    ];
+    const ctx = buildOcrContext(live, {
+      roi: { w: 1920, h: 858 },
+      capturedAt: 1,
+      engine: ENGINE,
+      ms: 1,
+      tradingView: true,
+    });
+    expect(ctx.derived).toMatchObject({
+      symbolText: 'BTCUSDT',
+      tfText: '1D',
+      venueText: 'OKX',
+      lastPrice: 81689,
+    });
+  });
+
+  it('does not take a chart that has no trading pair for one (a TVL chart)', () => {
+    const ctx = buildOcrContext(
+      [
+        {
+          text: 'All chains Total Value Locked - 1D - DefiLlama',
+          conf: 0.66,
+          box: [40, 62, 900, 80],
+        },
+        { text: 'TOTAL_TVL', conf: 0.56, box: [60, 300, 200, 316] },
+        { text: '175.47B', conf: 0.59, box: [1830, 400, 1900, 416] },
+      ],
+      { roi: { w: 1920, h: 858 }, capturedAt: 1, engine: ENGINE, ms: 1 },
+    );
+    expect(ctx.derived?.symbolText).toBeUndefined();
+    expect(ctx.derived?.lastPrice).toBeUndefined();
+  });
+
   it('ignores low-confidence lines and plain words', () => {
     expect(
       classifyLines(
