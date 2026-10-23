@@ -61,6 +61,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
                 where user_id = ${userId} and action = 'ISSUED'`;
       await this.accounts.audit(userId, workspaceId, 'account.delete_request', null, ip, {}, db);
     });
+    this.accounts.forget(userId);
     const [p] = await this.db<{ at: Date }[]>`
       select deleted_at + ${this.env.ACCOUNT_DELETION_GRACE_HOURS} * interval '1 hour' as at from profiles where id = ${userId}`;
     return { purgeAfter: (p?.at ?? new Date()).toISOString() };
@@ -75,6 +76,7 @@ export class DeletionService implements OnModuleInit, OnModuleDestroy {
       returning id`;
     if (r.length === 0)
       throw new ApiProblemError('NOT_FOUND', 'There is no pending deletion to cancel.');
+    this.accounts.forget(userId);
     await this.accounts.audit(userId, null, 'account.delete_cancel', null, ip, {});
   }
 

@@ -10,7 +10,15 @@ import { SignIn } from './sign-in';
 
 const Splash = ({ text }: { text: string }) => (
   <main className="grid min-h-dvh place-items-center text-muted" aria-busy="true">
-    {text}
+    <div className="flex flex-col items-center gap-4">
+      <span
+        className="brand-bg grid size-12 animate-pulse place-items-center rounded-2xl text-xl font-bold text-white shadow-[0_12px_30px_-10px_rgb(79_91_255/0.9)]"
+        aria-hidden
+      >
+        S
+      </span>
+      {text}
+    </div>
   </main>
 );
 
@@ -30,21 +38,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const e = me.error;
     return (
       <main className="grid min-h-dvh place-items-center p-4">
-        <div className="max-w-sm rounded-card border border-line bg-s1 p-6 text-center">
+        <div className="surface-card max-w-sm p-6 text-center">
           <p role="alert">{e instanceof ApiError ? e.message : 'Could not load your account.'}</p>
           <div className="mt-4 flex justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => me.refetch()}
-              className="rounded-ctl bg-accent-strong px-3 py-2 text-white"
-            >
+            <button type="button" onClick={() => me.refetch()} className="btn-primary px-4 py-2">
               Try again
             </button>
-            <button
-              type="button"
-              onClick={() => signOut()}
-              className="rounded-ctl border border-line px-3 py-2"
-            >
+            <button type="button" onClick={() => signOut()} className="btn-ghost px-4 py-2">
               Sign out
             </button>
           </div>

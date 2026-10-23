@@ -82,7 +82,20 @@ export class MarketsService {
   }
 
   /** Instruments users may analyse: crypto on analysis-enabled venues only (cross-check series stay internal). */
+  private listCache: { at: number; value: InstrumentDto[] } | null = null;
+  private readonly oneCache = new Map<string, { at: number; value: InstrumentDto | undefined }>();
+  private static readonly TTL_MS = 30_000;
+
   async list(): Promise<InstrumentDto[]> {
+    if (this.listCache && Date.now() - this.listCache.at < MarketsService.TTL_MS) {
+      return this.listCache.value;
+    }
+    const value = await this.readList();
+    this.listCache = { at: Date.now(), value };
+    return value;
+  }
+
+  private async readList(): Promise<InstrumentDto[]> {
     const rows = await this.db()<InstrumentRowDb[]>`
       select i.id, i.canonical, i.venue_id, i.market_type, i.display, i.base, i.quote, i.price_precision,
              i.tick_size, l.effective_class
@@ -95,6 +108,14 @@ export class MarketsService {
   }
 
   async get(id: string): Promise<InstrumentDto | undefined> {
+    const hit = this.oneCache.get(id);
+    if (hit && Date.now() - hit.at < MarketsService.TTL_MS) return hit.value;
+    const value = await this.readOne(id);
+    this.oneCache.set(id, { at: Date.now(), value });
+    return value;
+  }
+
+  private async readOne(id: string): Promise<InstrumentDto | undefined> {
     const [row] = await this.db()<InstrumentRowDb[]>`
       select i.id, i.canonical, i.venue_id, i.market_type, i.display, i.base, i.quote, i.price_precision,
              i.tick_size, l.effective_class

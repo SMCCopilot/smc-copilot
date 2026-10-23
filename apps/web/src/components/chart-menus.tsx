@@ -46,7 +46,7 @@ export function Popover({
         title={label}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-8 items-center gap-1.5 rounded-ctl border border-line bg-s2 px-2.5 text-xs hover:bg-s3 aria-expanded:bg-s3"
+        className="flex h-9 items-center gap-1.5 rounded-xl border border-line bg-s2 px-3 text-xs font-medium transition-colors hover:bg-s3 aria-expanded:bg-s3"
       >
         {button}
       </button>
@@ -54,7 +54,7 @@ export function Popover({
         <div
           role="dialog"
           aria-label={label}
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-30 ${width} max-w-[calc(100vw-1.5rem)] rounded-card border border-line bg-s1 p-3 text-xs shadow-lg`}
+          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-11 z-30 ${width} max-w-[calc(100vw-1.5rem)] rise surface-card p-4 text-xs shadow-pop`}
         >
           {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>

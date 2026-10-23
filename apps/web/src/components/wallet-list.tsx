@@ -14,7 +14,7 @@ export function WalletList({ onDone }: { onDone?: () => void }) {
               type="button"
               disabled={busy !== null || !AUTH_CONFIGURED}
               onClick={() => connect(w)}
-              className="flex w-full items-center gap-3 rounded-ctl border border-line bg-s2 px-3 py-2.5 text-left hover:bg-s3 disabled:opacity-60"
+              className="surface-card flex w-full items-center gap-3 px-3.5 py-3 text-left font-medium transition-colors hover:border-accent/50 disabled:opacity-60"
             >
               {w.icon ? (
                 // biome-ignore lint/performance/noImgElement: wallet-supplied data URI icon

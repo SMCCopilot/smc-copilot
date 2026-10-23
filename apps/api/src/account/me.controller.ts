@@ -34,7 +34,7 @@ export class MeController {
   @UserStar()
   @Get()
   async me(@Req() req: AccountRequest) {
-    const wallets = await this.accounts.syncWallets(req.account.userId, ipOf(req));
+    const wallets = await this.accounts.syncWalletsSoon(req.account.userId, ipOf(req));
     return this.accounts.me(req.account, wallets);
   }
 

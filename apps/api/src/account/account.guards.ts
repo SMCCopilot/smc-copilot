@@ -22,7 +22,9 @@ export class AccountGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AccountRequest>();
-    const ctx = await this.accounts.loadContext(req.principal.userId);
+    // /v1/me is the bootstrap that decides what the app shows, so it always reads the current profile.
+    const fresh = req.method === 'GET' && req.path === '/v1/me';
+    const ctx = await this.accounts.loadContext(req.principal.userId, { fresh });
     if (!ctx || ctx.profile.deletedAt) {
       throw new ApiProblemError('AUTH_REQUIRED', 'This account is not available.');
     }

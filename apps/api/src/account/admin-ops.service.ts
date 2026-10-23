@@ -128,6 +128,7 @@ export class AdminOpsService {
       update profiles set blocked_at = ${blocked ? this.sql`now()` : null}, block_reason = ${blocked ? (reason ?? 'ADMIN') : null}
        where id = ${userId} returning id`;
     if (res.length === 0) throw new ApiProblemError('NOT_FOUND');
+    this.accounts.forget(userId); // a block must apply to the very next request
     if (blocked) {
       // A blocked user keeps nothing open: gates are voided and sessions ended at once.
       await this

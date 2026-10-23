@@ -9,6 +9,14 @@ import { type FetchLike, num, postJson } from './http.js';
  */
 export const GEMINI_THINKING_HEADROOM = 2048;
 
+/**
+ * Thinking is switched off for text-only calls to Flash models: measured live on the owner's account, the same chat
+ * question took 3.6 s with the default dynamic thinking (555 thinking tokens) and 1.3 s without, with an answer of the
+ * same quality. Image reading keeps the model's own thinking. A model that refuses the setting is retried without it.
+ */
+const thinksOff = (model: string, hasImages: boolean): boolean =>
+  /flash/i.test(model) && !hasImages;
+
 /** Gemini generateContent. */
 export class GeminiAdapter implements ProviderAdapter {
   readonly id = 'gemini' as const;
@@ -18,7 +26,8 @@ export class GeminiAdapter implements ProviderAdapter {
   ) {}
 
   async call({ apiKey, model, req, signal }: ProviderCallArgs): Promise<ProviderCallResult> {
-    const body = {
+    const off = thinksOff(model, (req.images ?? []).length > 0);
+    const build = (noThinking: boolean) => ({
       systemInstruction: { parts: [{ text: req.system }] },
       contents: [
         ...(req.history ?? []).map((t) => ({
@@ -38,15 +47,20 @@ export class GeminiAdapter implements ProviderAdapter {
       generationConfig: {
         maxOutputTokens: req.maxTokens + GEMINI_THINKING_HEADROOM,
         ...(req.json ? { responseMimeType: 'application/json' } : {}),
+        ...(noThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
       },
-    };
-    const json = (await postJson(
-      this.fetchImpl,
-      `${this.baseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      { 'x-goog-api-key': apiKey },
-      body,
-      signal,
-    )) as {
+    });
+    const url = `${this.baseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const post = (noThinking: boolean) =>
+      postJson(this.fetchImpl, url, { 'x-goog-api-key': apiKey }, build(noThinking), signal);
+    let raw: unknown;
+    try {
+      raw = await post(off);
+    } catch (e) {
+      if (off && e instanceof LlmError && e.status === 400) raw = await post(false);
+      else throw e;
+    }
+    const json = raw as {
       candidates?: {
         content?: { parts?: { text?: string; thought?: boolean }[] };
         finishReason?: string;

@@ -27,6 +27,7 @@ import { SetupsService } from '../setups/setups.service.js';
 
 const STALE_AFTER_MS = 30 * 60_000;
 const STRATEGY_TTL_MS = 30_000;
+const SNAPSHOT_TTL_MS = 4_000;
 const MAX_SWINGS = 12;
 
 export interface LoadedState {
@@ -59,6 +60,11 @@ export class AnalysisService {
     return this.sqlOrNull;
   }
 
+  private readonly snapCache = new Map<
+    string,
+    { at: number; state: Promise<EngineState | undefined> }
+  >();
+
   async activeStrategy(): Promise<{ id: string; config: StrategyConfig }> {
     const now = Date.now();
     if (this.strategy && now - this.strategy.at < STRATEGY_TTL_MS) return this.strategy.value;
@@ -73,8 +79,18 @@ export class AnalysisService {
     const strategy = await this.activeStrategy();
     let state = this.runner?.stateOf(instrumentId);
     if (!state) {
-      const snap = await new EngineStore(this.sql).latestSnapshot(instrumentId, strategy.id);
-      state = snap?.state;
+      // The stored snapshot is large and changes only when a candle closes: read it at most every few seconds.
+      const key = `${instrumentId}:${strategy.id}`;
+      const hit = this.snapCache.get(key);
+      if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) state = await hit.state;
+      else {
+        const read = new EngineStore(this.sql)
+          .latestSnapshot(instrumentId, strategy.id)
+          .then((snap) => snap?.state);
+        this.snapCache.set(key, { at: Date.now(), state: read });
+        read.catch(() => this.snapCache.delete(key));
+        state = await read;
+      }
     }
     if (!state || state.v !== STATE_VERSION) {
       throw new ApiProblemError(

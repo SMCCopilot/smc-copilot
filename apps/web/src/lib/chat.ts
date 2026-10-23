@@ -48,6 +48,9 @@ export interface BudgetView {
 
 interface ChatStore {
   messages: Msg[];
+  /** True from the moment a question is sent until the answer (or a refusal) arrives: drives the typing indicator. */
+  waiting: boolean;
+  setWaiting: (w: boolean) => void;
   budget: BudgetView | null;
   push: (m: Msg) => void;
   patch: (id: string, fn: (m: Msg) => Msg) => void;
@@ -59,11 +62,13 @@ interface ChatStore {
 const MAX = 200;
 export const useChat = create<ChatStore>((set) => ({
   messages: [],
+  waiting: false,
+  setWaiting: (waiting) => set({ waiting }),
   budget: null,
   push: (m) => set((s) => ({ messages: [...s.messages, m].slice(-MAX) })),
   patch: (id, fn) => set((s) => ({ messages: s.messages.map((m) => (m.id === id ? fn(m) : m)) })),
   remove: (id) => set((s) => ({ messages: s.messages.filter((m) => m.id !== id) })),
-  reset: () => set({ messages: [] }),
+  reset: () => set({ messages: [], waiting: false }),
   setBudget: (budget) => set({ budget }),
 }));
 
@@ -97,6 +102,7 @@ export function applyChatEvent(type: string, p: Record<string, unknown>): boolea
   const { messages, push, patch, remove, setBudget } = useChat.getState();
   switch (type) {
     case 'chat.chunk': {
+      useChat.getState().setWaiting(false);
       const id = msgIdFor(String(p.clientMsgId));
       if (messages.some((m) => m.id === id)) {
         patch(id, (m) =>
@@ -116,6 +122,7 @@ export function applyChatEvent(type: string, p: Record<string, unknown>): boolea
       return true;
     }
     case 'chat.done': {
+      useChat.getState().setWaiting(false);
       const id = msgIdFor(String(p.clientMsgId));
       const done = {
         kind: 'assistant',
@@ -131,6 +138,7 @@ export function applyChatEvent(type: string, p: Record<string, unknown>): boolea
       return true;
     }
     case 'chat.retract': {
+      useChat.getState().setWaiting(false);
       const id = msgIdFor(String(p.clientMsgId ?? ''));
       remove(id);
       say('A reply was withdrawn because it did not pass a safety check.');

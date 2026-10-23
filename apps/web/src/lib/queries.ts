@@ -33,5 +33,6 @@ export const useInstruments = (enabled = true) =>
   useQuery({
     queryKey: ['instruments'],
     enabled,
+    staleTime: 5 * 60_000, // the list of markets changes rarely
     queryFn: () => api<{ items: InstrumentDto[] }>('/v1/instruments'),
   });

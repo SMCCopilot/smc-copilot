@@ -207,7 +207,7 @@ export function ChartPanel() {
 
   return (
     <section aria-label="Chart" className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-line px-3 py-1.5">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-line bg-s1 px-3 py-2">
         <label className="sr-only" htmlFor="market">
           Chart market
         </label>
@@ -217,7 +217,7 @@ export function ChartPanel() {
           value={sel.instrumentId ?? ''}
           disabled={!inst.data?.items.length}
           onChange={(e) => setMarket({ instrumentId: e.target.value })}
-          className="num max-w-56 rounded-ctl border border-line bg-s3 px-2 py-1 text-sm font-medium"
+          className="num max-w-56 rounded-xl border border-line bg-s2 px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-s3"
         >
           {inst.data?.items.map((i) => (
             <option key={i.id} value={i.id}>
@@ -226,14 +226,18 @@ export function ChartPanel() {
           ))}
         </select>
         {/* biome-ignore lint/a11y/useSemanticElements: a segmented control of toggle buttons, not a form group */}
-        <div role="group" aria-label="Timeframe" className="flex rounded-ctl border border-line">
+        <div
+          role="group"
+          aria-label="Timeframe"
+          className="flex rounded-xl border border-line bg-s2 p-0.5"
+        >
           {TF_BAR.map(({ tf, label }) => (
             <button
               key={tf}
               type="button"
               aria-pressed={sel.tf === tf}
               onClick={() => setMarket({ tf })}
-              className={`px-2 py-1 text-xs first:rounded-l-ctl last:rounded-r-ctl ${sel.tf === tf ? 'accent-soft font-semibold text-accent-text' : 'text-muted hover:bg-s3'}`}
+              className={`rounded-[9px] px-2.5 py-1 text-xs font-medium transition-colors ${sel.tf === tf ? 'brand-bg text-white shadow-sm' : 'text-muted hover:bg-s3 hover:text-fg'}`}
             >
               {label}
             </button>
@@ -241,7 +245,7 @@ export function ChartPanel() {
         </div>
 
         {currentPrice !== undefined && (
-          <div className="flex items-baseline gap-1.5 border-l border-line/60 pl-2">
+          <div className="hidden items-baseline gap-1.5 border-l border-line/60 pl-2.5 2xl:flex">
             <span className="num text-sm font-bold tracking-tight text-fg">
               {formatPrice(currentPrice, precision)}
             </span>
@@ -325,7 +329,7 @@ export function ChartPanel() {
               aria-label="Fit chart to the latest candles"
               title="Jump to the latest candles"
               onClick={() => setFit((n) => n + 1)}
-              className="grid size-8 place-items-center rounded-ctl border border-line text-muted hover:bg-s3"
+              className="grid size-9 place-items-center rounded-xl border border-line bg-s2 text-muted transition-colors hover:bg-s3 hover:text-fg"
             >
               <Maximize2 className="size-3.5" aria-hidden />
             </button>

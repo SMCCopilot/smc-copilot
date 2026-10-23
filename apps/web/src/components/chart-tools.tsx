@@ -85,7 +85,7 @@ export function loadDrawings(chart: Chart, key: string): void {
 }
 
 const btn =
-  'grid size-8 shrink-0 place-items-center rounded-ctl text-muted hover:bg-s3 hover:text-fg aria-pressed:bg-s3 aria-pressed:text-accent-text';
+  'grid size-8 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-s3 hover:text-fg aria-pressed:brand-soft aria-pressed:text-accent-text disabled:opacity-40';
 
 export function ChartTools({
   chart,

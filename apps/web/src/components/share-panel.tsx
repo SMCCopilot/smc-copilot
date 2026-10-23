@@ -34,7 +34,7 @@ export function ShareButton() {
       disabled={share.starting || !sel.sessionId}
       title={sel.sessionId ? undefined : 'Start a session first'}
       onClick={() => void startShare()}
-      className="inline-flex items-center gap-1.5 rounded-ctl bg-accent-strong px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
+      className="btn-primary inline-flex h-9 items-center gap-1.5 px-3.5 text-xs disabled:opacity-50"
     >
       <MonitorUp className="size-3.5" aria-hidden /> {share.starting ? 'Starting…' : 'Share screen'}
     </button>
@@ -127,7 +127,7 @@ export function SharePanel() {
                       source: 'manual',
                     })
                   }
-                  className="rounded-ctl border border-line bg-s3 px-1.5 py-1 text-fg"
+                  className="field w-auto px-2 py-1 text-fg"
                 >
                   {!current && <option value="">Choose…</option>}
                   {inst.data?.items.map((i) => (
@@ -150,7 +150,7 @@ export function SharePanel() {
                         source: 'manual',
                       });
                   }}
-                  className="rounded-ctl border border-line bg-s3 px-1.5 py-1 text-fg"
+                  className="field w-auto px-2 py-1 text-fg"
                 >
                   {TIMEFRAMES.map((t) => (
                     <option key={t}>{t}</option>
@@ -160,7 +160,7 @@ export function SharePanel() {
               <button
                 type="button"
                 onClick={() => void explainShared({})}
-                className="inline-flex items-center gap-1.5 rounded-ctl bg-accent-strong px-2.5 py-1 text-xs font-medium text-white"
+                className="inline-flex items-center gap-1.5 btn-primary px-2.5 py-1 text-xs"
               >
                 <Sparkles className="size-3.5" aria-hidden /> Explain now
               </button>

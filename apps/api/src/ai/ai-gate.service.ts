@@ -59,13 +59,15 @@ export class AiGateService {
    * (shared narratives) only the switches and the global cap do.
    */
   async check(scopes: readonly KillSwitchScope[], workspaceId?: string): Promise<GateVerdict> {
-    for (const s of scopes) {
-      if (await this.flags.killed(s))
-        return { allowed: false, reason: 'KILL_SWITCH', budget: null };
-    }
-    if (await this.globalTripped()) return { allowed: false, reason: 'GLOBAL_CAP', budget: null };
-    if (!workspaceId) return { allowed: true, soft: false, budget: null };
-    const budget = await this.budget(workspaceId);
+    // The checks do not depend on each other, so they run together instead of one round trip after another.
+    const [killed, tripped, budget] = await Promise.all([
+      Promise.all(scopes.map((s) => this.flags.killed(s))),
+      this.globalTripped(),
+      workspaceId ? this.budget(workspaceId) : Promise.resolve(null),
+    ]);
+    if (killed.some(Boolean)) return { allowed: false, reason: 'KILL_SWITCH', budget: null };
+    if (tripped) return { allowed: false, reason: 'GLOBAL_CAP', budget: null };
+    if (!budget) return { allowed: true, soft: false, budget: null };
     if (budget.state === 'HARD') return { allowed: false, reason: 'USER_BUDGET', budget };
     return { allowed: true, soft: budget.state === 'SOFT', budget };
   }

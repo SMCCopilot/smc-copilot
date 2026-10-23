@@ -37,6 +37,7 @@ export const useMe = (enabled: boolean) =>
   useQuery({
     queryKey: ['me'],
     enabled,
+    staleTime: 5 * 60_000, // changes only when the user does something (accepts, links a wallet), which refetches it
     queryFn: async (): Promise<MeResponse> => {
       const { MeResponseSchema } = await import('@smc/contracts');
       return MeResponseSchema.parse(await api('/v1/me'));

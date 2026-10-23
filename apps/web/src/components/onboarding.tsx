@@ -45,13 +45,14 @@ export function Onboarding({ me }: { me: MeResponse }) {
   return (
     <main className="grid min-h-dvh place-items-center p-4">
       <form
-        className="w-full max-w-lg rounded-card border border-line bg-s1 p-6"
+        className="surface-card w-full max-w-lg p-7 shadow-pop"
         onSubmit={(e) => {
           e.preventDefault();
           if (ready) run.mutate();
         }}
       >
-        <h1 className="text-lg font-semibold">Before you start</h1>
+        <h1 className="text-xl font-semibold">Before you start</h1>
+        <p className="mt-1 text-muted">Two quick things, then you are in.</p>
         <ol className="mt-3 flex gap-2 text-xs" aria-label="Steps">
           {STEPS.map(([k, label]) => {
             const order = ['DISCLAIMER', 'AGE'];
@@ -60,7 +61,7 @@ export function Onboarding({ me }: { me: MeResponse }) {
               <li
                 key={k}
                 aria-current={k === step ? 'step' : undefined}
-                className={`flex items-center gap-1 rounded-full border border-line px-2.5 py-1 ${k === step ? 'accent-soft text-accent-text' : 'text-muted'}`}
+                className={`flex items-center gap-1 rounded-full border px-3 py-1 font-medium ${k === step ? 'brand-soft border-accent/40 text-accent-text' : 'border-line text-muted'}`}
               >
                 {done && <Check className="size-3" aria-hidden />} {label}
               </li>
@@ -108,7 +109,7 @@ export function Onboarding({ me }: { me: MeResponse }) {
           <button
             type="submit"
             disabled={!ready || run.isPending}
-            className="rounded-ctl bg-accent-strong px-4 py-2 font-medium text-white disabled:opacity-50"
+            className="btn-primary px-5 py-2"
           >
             {run.isPending ? 'Saving…' : 'Continue'}
           </button>

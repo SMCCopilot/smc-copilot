@@ -201,6 +201,7 @@ export function useLiveSession(sessionId: string | null): void {
                   ? FRIENDLY[code as keyof typeof FRIENDLY].message
                   : 'Something went wrong.';
               set({ error: friendly });
+              useChat.getState().setWaiting(false);
               say(friendly);
             }
           } else if (type === 'setup.event') {

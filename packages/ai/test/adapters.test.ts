@@ -203,3 +203,55 @@ describe('errors', () => {
     ).rejects.toMatchObject({ kind: 'TIMEOUT' });
   });
 });
+
+describe('Gemini thinking is off for text-only Flash calls', () => {
+  const ok = { candidates: [{ content: { parts: [{ text: 'hi' }] } }], usageMetadata: {} };
+  const cfg = (s: Seen) => s.body.generationConfig as Record<string, unknown>;
+
+  it('turns thinking off for a Flash model without images, and leaves other calls alone', async () => {
+    const a = fake(ok);
+    await new GeminiAdapter(a.f).call({ apiKey: 'K', model: 'gemini-3.5-flash', req: REQ, signal });
+    expect(cfg(a.seen[0] as Seen).thinkingConfig).toEqual({ thinkingBudget: 0 });
+
+    const withImage = fake(ok);
+    await new GeminiAdapter(withImage.f).call({
+      apiKey: 'K',
+      model: 'gemini-3.5-flash',
+      req: { ...REQ, images: [IMG] },
+      signal,
+    });
+    expect(cfg(withImage.seen[0] as Seen).thinkingConfig).toBeUndefined();
+
+    const pro = fake(ok);
+    await new GeminiAdapter(pro.f).call({ apiKey: 'K', model: 'gemini-3.1-pro', req: REQ, signal });
+    expect(cfg(pro.seen[0] as Seen).thinkingConfig).toBeUndefined();
+  });
+
+  it('retries once without the setting when the model refuses it', async () => {
+    const seen: Seen[] = [];
+    let n = 0;
+    const f: FetchLike = async (url, init) => {
+      seen.push({
+        url,
+        headers: init.headers,
+        body: JSON.parse(init.body) as Record<string, unknown>,
+      });
+      n++;
+      return {
+        ok: n > 1,
+        status: n > 1 ? 200 : 400,
+        headers: { get: () => null },
+        json: async () => ok,
+      };
+    };
+    const r = await new GeminiAdapter(f).call({
+      apiKey: 'K',
+      model: 'gemini-3.5-flash',
+      req: REQ,
+      signal,
+    });
+    expect(r.text).toBe('hi');
+    expect(seen).toHaveLength(2);
+    expect(cfg(seen[1] as Seen).thinkingConfig).toBeUndefined();
+  });
+});

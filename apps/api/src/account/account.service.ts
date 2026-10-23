@@ -65,7 +65,34 @@ export class AccountService {
       values (${actorId}, ${workspaceId}, ${action}, ${target}, ${ip}::inet, ${db.json(detail as never)})`;
   }
 
-  async loadContext(userId: string): Promise<AccountContext | null> {
+  /** Context loads are shared for a few seconds (every request of a page load asks for the same row). */
+  private readonly ctxCache = new Map<
+    string,
+    { at: number; value: Promise<AccountContext | null> }
+  >();
+  private static readonly CTX_TTL_MS = 3_000;
+
+  /** Drops the cached context so the next request sees a profile change at once. */
+  forget(userId: string): void {
+    this.ctxCache.delete(userId);
+    this.walletSyncAt.delete(userId);
+  }
+
+  async loadContext(
+    userId: string,
+    opts: { fresh?: boolean } = {},
+  ): Promise<AccountContext | null> {
+    const now = Date.now();
+    const hit = this.ctxCache.get(userId);
+    if (!opts.fresh && hit && now - hit.at < AccountService.CTX_TTL_MS) return hit.value;
+    const value = this.readContext(userId);
+    this.ctxCache.set(userId, { at: now, value });
+    if (this.ctxCache.size > 5_000) this.ctxCache.clear();
+    value.catch(() => this.ctxCache.delete(userId));
+    return value;
+  }
+
+  private async readContext(userId: string): Promise<AccountContext | null> {
     const [row] = await this.sql<
       {
         display_name: string | null;
@@ -106,6 +133,17 @@ export class AccountService {
    * blocklist check, drops mirrors whose identity no longer exists and keeps exactly one primary wallet.
    * The wallet comes from the identity Supabase verified, never from anything the client sends.
    */
+  private readonly walletSyncAt = new Map<string, number>();
+
+  /** The page-load path: the mirror and sanctions check run at most once a minute per user, not on every reload. */
+  async syncWalletsSoon(userId: string, ip: string | null): Promise<WalletRow[] | null> {
+    const last = this.walletSyncAt.get(userId);
+    if (last !== undefined && Date.now() - last < 60_000) return null;
+    const rows = await this.syncWallets(userId, ip);
+    this.walletSyncAt.set(userId, Date.now());
+    return rows;
+  }
+
   async syncWallets(userId: string, ip: string | null): Promise<WalletRow[]> {
     const identities = await this.sql<
       { provider: string; identity_data: unknown; last_sign_in_at: Date | null }[]
@@ -122,6 +160,7 @@ export class AccountService {
       if (hit) {
         await this
           .sql`update profiles set blocked_at = now(), block_reason = ${hit.source} where id = ${userId} and blocked_at is null`;
+        this.forget(userId);
         await this.audit(userId, null, 'wallet.blocked', wallet.chain, ip, { source: hit.source });
         throw new ApiProblemError('ADDRESS_BLOCKED', 'This account cannot be used.');
       }
@@ -197,16 +236,16 @@ export class AccountService {
   }
 
   async me(ctx: AccountContext, wallets: WalletRow[] | null = null): Promise<MeResponse> {
-    const walletDtos = wallets ? wallets.map(toDto) : await this.walletsOf(ctx.userId);
-    const [auth] = await this.sql<{ email: string | null; email_confirmed_at: Date | null }[]>`
-      select email, email_confirmed_at from auth.users where id = ${ctx.userId}`;
-    const [ent] = await this.sql<
-      { limits: Record<string, number>; features: Record<string, boolean> }[]
-    >`
-      select limits, features from entitlements where workspace_id = ${ctx.workspaceId}`;
-    const [ws] = await this.sql<
-      { plan: 'free' | 'pro' | 'team' }[]
-    >`select plan from workspaces where id = ${ctx.workspaceId}`;
+    const [walletDtos, [auth], [ent], [ws]] = await Promise.all([
+      wallets ? Promise.resolve(wallets.map(toDto)) : this.walletsOf(ctx.userId),
+      this.sql<{ email: string | null; email_confirmed_at: Date | null }[]>`
+        select email, email_confirmed_at from auth.users where id = ${ctx.userId}`,
+      this.sql<{ limits: Record<string, number>; features: Record<string, boolean> }[]>`
+        select limits, features from entitlements where workspace_id = ${ctx.workspaceId}`,
+      this.sql<
+        { plan: 'free' | 'pro' | 'team' }[]
+      >`select plan from workspaces where id = ${ctx.workspaceId}`,
+    ]);
     const currentVersion = this.env.DISCLAIMER_VERSION;
     return {
       user: {
@@ -260,6 +299,7 @@ export class AccountService {
         locale = coalesce(${patch.locale ?? null}, locale),
         timezone = coalesce(${patch.timezone ?? null}, timezone)
        where id = ${userId}`;
+    this.forget(userId);
   }
 
   async acceptDisclaimer(userId: string, version: string): Promise<void> {
@@ -270,11 +310,13 @@ export class AccountService {
     }
     await this
       .sql`update profiles set disclaimer_accepted_at = now(), disclaimer_version = ${version} where id = ${userId}`;
+    this.forget(userId);
   }
 
   async confirmAge(userId: string): Promise<void> {
     await this
       .sql`update profiles set age_confirmed_at = coalesce(age_confirmed_at, now()) where id = ${userId}`;
+    this.forget(userId);
   }
 
   // ---- wallets

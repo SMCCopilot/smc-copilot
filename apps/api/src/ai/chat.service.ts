@@ -117,7 +117,23 @@ export class ChatService {
       this.env.AI_USER_MESSAGES_PER_MINUTE,
       this.env.AI_USER_MESSAGES_PER_DAY,
     );
-    const verdict = await this.gate.check(['AI', 'CHAT'], c.workspaceId);
+    // The gate, the conversation so far and the market facts do not depend on each other: ask for all three at once.
+    const verdictP = this.gate.check(['AI', 'CHAT'], c.workspaceId);
+    const historyP = (async () => {
+      const t = await this.thread(c);
+      return { thread: t, ...(await this.window(t.id)) };
+    })();
+    const factsP = c.instrumentId
+      ? this.narratives.factsFor(c.instrumentId).catch((e: unknown) => {
+          if (!(e instanceof ApiProblemError) || e.code !== 'ANALYSIS_UNAVAILABLE') throw e;
+          return null;
+        })
+      : Promise.resolve(null);
+    // A refusal below must not leave these as unhandled rejections.
+    historyP.catch(() => undefined);
+    factsP.catch(() => undefined);
+
+    const verdict = await verdictP;
     if (!verdict.allowed) {
       if (verdict.reason === 'USER_BUDGET') {
         if (verdict.budget) sink.budget(verdict.budget);
@@ -131,23 +147,16 @@ export class ChatService {
       throw new ApiProblemError('AI_TEMPORARILY_UNAVAILABLE', 'AI features are paused for today.');
     }
 
-    const thread = await this.thread(c);
-    const { turns, total } = await this.window(thread.id);
-    await this.db`
+    const { thread, turns, total } = await historyP;
+    // Saving the question runs while the model works on the answer; it is awaited before the answer is saved.
+    const saved = this.db`
       insert into chat_messages (thread_id, role, content, input_mode, stt_engine, stt_confidence)
       values (${thread.id}, 'user', ${b.text}, ${b.inputMode === 'voice' ? 'VOICE' : 'TEXT'}, ${b.sttEngine ?? (b.inputMode === 'voice' ? null : 'typed')}, ${b.sttConfidence ?? null})`;
+    saved.catch(() => undefined);
 
-    let facts = null;
-    let precision = 2;
-    if (c.instrumentId) {
-      try {
-        const f = await this.narratives.factsFor(c.instrumentId);
-        facts = f.facts;
-        precision = f.instrument.pricePrecision;
-      } catch (e) {
-        if (!(e instanceof ApiProblemError) || e.code !== 'ANALYSIS_UNAVAILABLE') throw e;
-      }
-    }
+    const known = await factsP;
+    const facts = known ? known.facts : null;
+    const precision = known ? known.instrument.pricePrecision : 2;
     const result = await withAiContext(
       {
         workspaceId: c.workspaceId,
@@ -172,6 +181,7 @@ export class ChatService {
       text = await this.journalReply(c.workspaceId);
     }
 
+    await saved;
     const [msg] = await this.db<{ id: string }[]>`
       insert into chat_messages (thread_id, role, content, meta)
       values (${thread.id}, 'assistant', ${text}, ${this.db.json({ ...result.meta, kind: result.kind } as never)})

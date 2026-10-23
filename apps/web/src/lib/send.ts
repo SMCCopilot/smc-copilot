@@ -1,6 +1,6 @@
 'use client';
 import type { SttEngineTag } from '@smc/contracts';
-import { addUserMessage, say } from './chat';
+import { addUserMessage, say, useChat } from './chat';
 import { emitEvent } from './live';
 
 export interface SttInfo {
@@ -22,6 +22,9 @@ export function sendChat(text: string, via: 'text' | 'voice', stt?: SttInfo): bo
     return false;
   }
   addUserMessage(text, via);
+  // The typing indicator shows at once; it clears when the answer arrives, or after a minute in case it never does.
+  useChat.getState().setWaiting(true);
+  setTimeout(() => useChat.getState().setWaiting(false), 60_000);
   return true;
 }
 

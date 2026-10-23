@@ -112,6 +112,8 @@ export function GateDialog({
       });
       keys.current.release();
       qc.invalidateQueries({ queryKey: ['trades'] });
+      qc.invalidateQueries({ queryKey: ['journal'] });
+      qc.invalidateQueries({ queryKey: ['journal-summary'] });
       setPhase('done');
     } catch (e) {
       setErr(
@@ -127,15 +129,15 @@ export function GateDialog({
   return (
     <Dialog.Root open onOpenChange={(o) => !o && (phase === 'done' ? onClose() : cancel())}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,26rem)] -translate-x-1/2 -translate-y-1/2 rounded-card border border-line bg-s1 p-5">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,26rem)] -translate-x-1/2 -translate-y-1/2 surface-card p-6 shadow-pop">
           <Dialog.Title className="text-base font-semibold">Log this trade</Dialog.Title>
           <Dialog.Description className="mt-1 text-muted">
             This only records the trade in your journal. Nothing is sent to any exchange. Review the
             plan, then tap Confirm.
           </Dialog.Description>
           {plan && (
-            <dl className="num mt-3 rounded-card border border-line bg-s2 p-3">
+            <dl className="num mt-3 rounded-card border border-line bg-s2 p-3.5">
               <div className="flex justify-between py-0.5">
                 <dt className="text-muted">Scenario</dt>
                 <dd>{directionLabel(plan.direction)}</dd>
@@ -182,28 +184,16 @@ export function GateDialog({
           )}
           <div className="mt-4 flex justify-end gap-2">
             {phase === 'done' ? (
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-ctl bg-accent-strong px-3 py-2 font-medium text-white"
-              >
+              <button type="button" onClick={onClose} className="btn-primary px-3 py-2">
                 Close
               </button>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={cancel}
-                  className="rounded-ctl border border-line px-3 py-2"
-                >
+                <button type="button" onClick={cancel} className="btn-ghost px-3 py-2">
                   Cancel
                 </button>
                 {(expired || err?.recovery === 'REFRESH_PLAN') && (
-                  <button
-                    type="button"
-                    onClick={refreshAndClose}
-                    className="rounded-ctl border border-line px-3 py-2"
-                  >
+                  <button type="button" onClick={refreshAndClose} className="btn-ghost px-3 py-2">
                     Review updated plan
                   </button>
                 )}
@@ -211,7 +201,7 @@ export function GateDialog({
                   type="button"
                   onClick={confirm}
                   disabled={phase !== 'ready' || expired}
-                  className="rounded-ctl bg-accent-strong px-3 py-2 font-medium text-white disabled:opacity-50"
+                  className="btn-primary px-3 py-2 disabled:opacity-50"
                 >
                   Confirm (tap)
                 </button>

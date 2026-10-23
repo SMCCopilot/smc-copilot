@@ -9,11 +9,12 @@ import { useInstruments } from '../lib/queries';
 import { useSelection } from '../lib/sessions';
 import { useUi } from '../lib/ui';
 import { CONDITION, directionLabel, percent, reasonText, SCENARIO_KIND } from '../lib/wording';
+import { Pill, SkeletonList } from './kit';
 
 type Setup = NonNullable<AnalysisResponse['setups']>[number];
 
 const Empty = ({ children }: { children: React.ReactNode }) => (
-  <p className="text-muted">{children}</p>
+  <p className="rounded-ctl border border-dashed border-line px-3 py-3 text-muted">{children}</p>
 );
 const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
   <div className="flex items-baseline justify-between gap-3 py-1">
@@ -22,15 +23,17 @@ const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
   </div>
 );
 const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <section className="mb-3 rounded-card border border-line bg-s2 p-3">
-    <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{title}</h3>
+  <section className="surface-card mb-3 p-3.5">
+    <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+      {title}
+    </h3>
     {children}
   </section>
 );
 export const GradeChip = ({ grade }: { grade: string | null }) =>
   grade ? (
     <span
-      className="rounded-full bg-grade-bg px-2 py-0.5 text-xs font-medium text-grade"
+      className="rounded-full bg-grade-bg px-2 py-0.5 text-xs font-semibold text-grade"
       title="Setup quality: A is the strongest. A grade is not a prediction."
     >
       Quality {grade}
@@ -94,20 +97,17 @@ export function PlanTab({ setup }: { setup: Setup | null }) {
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-semibold">{directionLabel(setup.direction)}</h2>
-        <GradeChip grade={setup.grade} />
-        <span
-          className="rounded-full border border-line px-2 py-0.5 text-xs text-muted"
-          title={
-            setup.state === 'ARMED'
-              ? 'All the rules are met; waiting for price to reach the entry zone'
-              : 'Price reached the entry zone and confirmed'
-          }
+        <h3
+          className={`rounded-full px-3 py-1 text-sm font-semibold ${setup.direction === 'LONG' ? 'bg-bull/12 text-bull-text' : 'bg-bear/12 text-bear-text'}`}
         >
+          {directionLabel(setup.direction)}
+        </h3>
+        <GradeChip grade={setup.grade} />
+        <Pill tone={setup.state === 'ARMED' ? 'accent' : 'bull'}>
           {setup.state === 'ARMED' ? 'Ready, waiting for price' : setup.state.toLowerCase()}
-        </span>
+        </Pill>
       </div>
-      <section className="mb-3 rounded-card border border-accent-text/40 bg-s2 p-3">
+      <section className="brand-soft mb-3 rounded-card border border-accent-text/30 p-3.5">
         <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">In short</h3>
         <p className="text-fg">
           {setup.direction === 'LONG' ? 'A buy idea (long)' : 'A sell idea (short)'}: wait for price
@@ -246,8 +246,10 @@ export function EvidenceTab({
               </li>
             ))}
           </ul>
+        ) : rejected.isPending ? (
+          <SkeletonList rows={2} />
         ) : (
-          <Empty>{rejected.isPending ? 'Loading…' : 'Nothing rejected recently.'}</Empty>
+          <Empty>Nothing rejected recently.</Empty>
         )}
       </Card>
     </div>
@@ -299,8 +301,10 @@ export function ChangesTab({ analysis }: { analysis: AnalysisResponse | undefine
               );
             })}
           </ul>
+        ) : events.isPending ? (
+          <SkeletonList rows={4} />
         ) : (
-          <Empty>{events.isPending ? 'Loading…' : 'No events yet.'}</Empty>
+          <Empty>No events yet.</Empty>
         )}
       </Card>
     </div>
@@ -312,7 +316,7 @@ export function StatsTab({ setup }: { setup: Setup | null }) {
   const h = setup?.historical;
   return (
     <div>
-      <p className="mb-3 flex gap-2 rounded-card border border-line bg-s2 p-3">
+      <p className="mb-3 flex gap-2 rounded-card border border-warn/30 bg-warn/10 p-3">
         <Info className="mt-0.5 size-4 shrink-0 text-warn-text" aria-hidden />
         <span>
           <strong>No proven edge yet.</strong> Rules-based scenarios are shown for study. Past
@@ -353,8 +357,10 @@ export function StatsTab({ setup }: { setup: Setup | null }) {
                 </li>
               ))}
           </ul>
+        ) : cohorts.isPending ? (
+          <SkeletonList rows={2} />
         ) : (
-          <Empty>{cohorts.isPending ? 'Loading…' : 'Not enough history in any cohort yet.'}</Empty>
+          <Empty>Not enough history in any cohort yet.</Empty>
         )}
       </Card>
     </div>
