@@ -18,10 +18,14 @@ export default function ChartRuler({
   overlays,
   marks,
   precision,
+  refPrice,
+  currency,
 }: {
   overlays: Overlay[];
   marks: StructureMark[] | null;
   precision: number;
+  refPrice?: number;
+  currency?: string;
 }) {
   const [pal, setPal] = useState<Palette | null>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -41,8 +45,13 @@ export default function ChartRuler({
     return () => mo.disconnect();
   }, []);
 
-  const { shown, hidden } = useMemo(() => focusOverlays(overlays), [overlays]);
-  const prices = overlayPrices(shown);
+  const maxAllowed = height > 0 ? Math.max(3, Math.min(8, Math.floor(height / 36))) : 6;
+  const { shown, hidden } = useMemo(
+    () => focusOverlays(overlays, maxAllowed, refPrice),
+    [overlays, maxAllowed, refPrice],
+  );
+  const basePrices = overlayPrices(shown);
+  const prices = refPrice !== undefined ? [...basePrices, refPrice] : basePrices;
   if (!pal || prices.length === 0) {
     return <p className="grid size-full place-items-center text-muted">No levels to show yet.</p>;
   }
@@ -117,6 +126,16 @@ export default function ChartRuler({
               />
             );
           })}
+          {refPrice !== undefined && (
+            <div
+              className="pointer-events-none absolute inset-x-0 z-20 flex items-center border-t border-dashed border-accent-text"
+              style={{ top: `${pct(refPrice)}%` }}
+            >
+              <span className="num ml-2 -translate-y-1/2 rounded bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent-text shadow-sm">
+                Current {formatPrice(refPrice, precision)} {currency ?? ''}
+              </span>
+            </div>
+          )}
           {shown.map((o, i) => {
             const zone = o.kind === 'zone';
             const st = zone ? zoneStyle(o.tone, pal) : lineStyle(o.tone, pal, o.up);
@@ -132,7 +151,10 @@ export default function ChartRuler({
                   color: zone ? undefined : (st as { color: string }).color,
                 }}
               >
-                {st.glyph} {o.label} <span className="num text-muted">{price}</span>
+                {st.glyph} {o.label}{' '}
+                <span className="num text-muted">
+                  {price} {currency ? <span className="text-[10px]">{currency}</span> : null}
+                </span>
               </span>
             );
           })}

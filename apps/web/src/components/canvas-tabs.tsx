@@ -33,7 +33,7 @@ export const GradeChip = ({ grade }: { grade: string | null }) =>
       className="rounded-full bg-grade-bg px-2 py-0.5 text-xs font-medium text-grade"
       title="Setup quality: A is the strongest. A grade is not a prediction."
     >
-      Grade {grade}
+      Quality {grade}
     </span>
   ) : null;
 
@@ -98,12 +98,6 @@ export function PlanTab({ setup }: { setup: Setup | null }) {
         <GradeChip grade={setup.grade} />
         <span
           className="rounded-full border border-line px-2 py-0.5 text-xs text-muted"
-          title="Which of the strategy's three setup patterns this is"
-        >
-          Pattern {setup.template}
-        </span>
-        <span
-          className="rounded-full border border-line px-2 py-0.5 text-xs text-muted"
           title={
             setup.state === 'ARMED'
               ? 'All the rules are met; waiting for price to reach the entry zone'
@@ -113,7 +107,27 @@ export function PlanTab({ setup }: { setup: Setup | null }) {
           {setup.state === 'ARMED' ? 'Ready, waiting for price' : setup.state.toLowerCase()}
         </span>
       </div>
-      <Card title="Levels">
+      <section className="mb-3 rounded-card border border-accent-text/40 bg-s2 p-3">
+        <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">In short</h3>
+        <p className="text-fg">
+          {setup.direction === 'LONG' ? 'A buy idea (long)' : 'A sell idea (short)'}: wait for price
+          to come back into <span className="num">{f(plan.entry.bottom)}</span> to{' '}
+          <span className="num">{f(plan.entry.top)}</span>. The idea is wrong if price{' '}
+          {plan.invalidation.rule.includes('ABOVE') ? 'closes above' : 'closes below'}{' '}
+          <span className="num">{f(plan.invalidation.level)}</span>.
+          {plan.targets[0] && (
+            <>
+              {' '}
+              The first target is <span className="num">{f(plan.targets[0].price)}</span>, about{' '}
+              <span className="num">{plan.targets[0].rr.toFixed(1)}</span> times the risk.
+            </>
+          )}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          This is a scenario to study, not a prediction or advice. You decide.
+        </p>
+      </section>
+      <Card title="The levels">
         <dl>
           <Row k="Entry zone" v={`${f(plan.entry.bottom)} – ${f(plan.entry.top)}`} />
           <Row k="Reference price" v={f(plan.entry.refPrice)} />
@@ -131,13 +145,13 @@ export function PlanTab({ setup }: { setup: Setup | null }) {
           Invalidation rule: {plan.invalidation.rule.replaceAll('_', ' ').toLowerCase()}
         </p>
       </Card>
-      <Card title="Scenarios">
+      <Card title="What could happen next">
         <dl>
           {scen('Primary', plan.scenarios.primary)}
           {scen('Alternate', plan.scenarios.alternate)}
         </dl>
       </Card>
-      <Card title="Costs assumed">
+      <Card title="Costs the plan allows for">
         <dl>
           <Row k="Spread" v={f(plan.assumptions.spread)} />
           <Row k="Slippage" v={f(plan.assumptions.slippage)} />

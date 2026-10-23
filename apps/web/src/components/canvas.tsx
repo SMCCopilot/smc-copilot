@@ -7,10 +7,31 @@ import { useInstruments } from '../lib/queries';
 import { useSelection } from '../lib/sessions';
 import { type CanvasTab, pickSetup, useUi } from '../lib/ui';
 import { ChangesTab, EvidenceTab, PlanTab, SetupPicker, StatsTab } from './canvas-tabs';
+import { Dock } from './dock';
 import { GateDialog } from './gate-dialog';
 import { NoteForm } from './views';
 
-const TABS = ['Plan', 'Evidence', 'Changes', 'Stats', 'Journal'] as const;
+/** The tabs of the right-hand panel: what each is called on screen, and what it is for. */
+const TABS: { key: CanvasTab; label: string; hint: string }[] = [
+  {
+    key: 'Assistant',
+    label: 'Assistant',
+    hint: 'Ask questions about the chart, by typing or by voice',
+  },
+  {
+    key: 'Plan',
+    label: 'Setup',
+    hint: 'The trade idea the analysis found: where to enter, where it is wrong, where to aim',
+  },
+  {
+    key: 'Evidence',
+    label: 'Why',
+    hint: 'The reasons behind the idea, and ideas that were rejected',
+  },
+  { key: 'Changes', label: 'Changes', hint: 'What changed on the chart recently' },
+  { key: 'Stats', label: 'Stats', hint: 'How often similar ideas worked in the past' },
+  { key: 'Journal', label: 'Notes', hint: 'Write a note about this idea' },
+];
 
 export function Canvas() {
   const sel = useSelection();
@@ -36,19 +57,29 @@ export function Canvas() {
       >
         <Tabs.List
           aria-label="Canvas"
-          className="flex gap-1 overflow-x-auto border-b border-line px-3 pt-3 pr-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex gap-1 overflow-x-auto border-b border-line px-2 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {TABS.map((t) => (
             <Tabs.Trigger
-              key={t}
-              value={t}
-              className="shrink-0 whitespace-nowrap rounded-t-md px-2.5 py-2 text-muted data-[state=active]:accent-soft data-[state=active]:text-accent-text"
+              key={t.key}
+              value={t.key}
+              title={t.hint}
+              className="shrink-0 whitespace-nowrap rounded-t-md px-2 py-2 text-[13px] text-muted data-[state=active]:accent-soft data-[state=active]:text-accent-text"
             >
-              {t}
+              {t.label}
             </Tabs.Trigger>
           ))}
         </Tabs.List>
-        <div className="min-h-0 flex-1 overflow-auto p-4">
+        <Tabs.Content
+          value="Assistant"
+          forceMount
+          className="min-h-0 flex-1 flex-col data-[state=active]:flex data-[state=inactive]:hidden"
+        >
+          <Dock />
+        </Tabs.Content>
+        <div
+          className={`min-h-0 flex-1 overflow-auto p-4 ${ui.tab === 'Assistant' ? 'hidden' : ''}`}
+        >
           {!sel.instrumentId ? (
             <p className="text-muted">Pick an instrument to see its analysis.</p>
           ) : (
@@ -73,7 +104,9 @@ export function Canvas() {
           )}
         </div>
       </Tabs.Root>
-      <footer className="flex items-center justify-between gap-3 border-t border-line p-3">
+      <footer
+        className={`items-center justify-between gap-3 border-t border-line p-3 ${ui.tab === 'Plan' || ui.tab === 'Evidence' ? 'flex' : 'hidden'}`}
+      >
         <p className="text-xs text-muted">
           {setup
             ? 'Rules check: all hard filters passed. This is not a prediction.'

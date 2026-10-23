@@ -24,6 +24,17 @@ export const LAYER_HINT: Record<LayerId, string> = {
   ranges: 'The current range with its midpoint, premium and discount halves',
   sessions: 'Daily, weekly and monthly opens and session highs and lows',
 };
+/** One line each on why a trader looks at it, shown beside the switch. */
+export const LAYER_WHY: Record<LayerId, string> = {
+  structure:
+    'a break up or down shows who is in control; a CHoCH is the first sign a trend may be turning.',
+  fvg: 'price often comes back to fill these gaps, so they mark likely places to pause or bounce.',
+  ob: 'big players often placed orders here before a strong move, so price tends to react when it returns.',
+  liquidity: 'price is often pulled toward clusters of stop orders and reverses after taking them.',
+  ranges:
+    'below the middle is the cheaper half, above it the expensive half; buy ideas usually start from the cheap side.',
+  sessions: 'many traders watch these opens, highs and lows, so price often reacts to them.',
+};
 export const DEFAULT_LAYERS: Record<LayerId, boolean> = {
   structure: true,
   fvg: true,

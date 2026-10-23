@@ -5,7 +5,7 @@ import { DEFAULT_LAYERS, type LayerId } from './overlays';
 
 type Setup = NonNullable<AnalysisResponse['setups']>[number];
 
-export type CanvasTab = 'Plan' | 'Evidence' | 'Changes' | 'Stats' | 'Journal';
+export type CanvasTab = 'Assistant' | 'Plan' | 'Evidence' | 'Changes' | 'Stats' | 'Journal';
 export type View = 'room' | 'journal' | 'trades' | 'notifications' | 'settings';
 
 interface Ui {
@@ -39,7 +39,7 @@ export const useUi = create<Ui>((set) => ({
   dismiss: (id) => set((s) => ({ dismissed: [...s.dismissed, id], setupId: null })),
   confirmOpen: false,
   setConfirmOpen: (confirmOpen) => set({ confirmOpen }),
-  tab: 'Plan',
+  tab: 'Assistant',
   setTab: (tab) => set({ tab }),
   drawer: false,
   setDrawer: (drawer) => set({ drawer }),

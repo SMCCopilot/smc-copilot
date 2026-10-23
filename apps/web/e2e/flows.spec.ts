@@ -62,7 +62,7 @@ test('a licence-restricted instrument switches to overlay-only and never asks fo
 }) => {
   const calls = await openRoom(page);
   await page.getByLabel('Chart market').selectOption(INST_RAW_OFF);
-  await expect(page.getByText(/Prices are not available for this market/).first()).toBeVisible();
+  await expect(page.getByText(/Live candles for this market are restricted/).first()).toBeVisible();
   expect(calls.paths.some((p) => p.includes(INST_RAW_OFF) && p.endsWith('/candles'))).toBe(false);
   await page.getByLabel('Chart market').selectOption(INST_FULL);
   await expect.poll(() => calls.paths.some((p) => p.endsWith('/candles'))).toBe(true);
@@ -88,19 +88,19 @@ test('where our servers hold no price terms, the user can show live prices strai
   );
   const calls = await openRoom(page);
   await page.getByLabel('Chart market').selectOption(INST_BINANCE_NO_RAW);
-  await expect(page.getByRole('button', { name: 'Binance prices' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Price source' })).toContainText('Binance');
   await expect(page.locator('section[aria-label="Chart"] canvas').first()).toBeVisible();
   // Our own candle route is never asked: the prices do not come through our servers.
   expect(calls.paths.some((p) => p.includes(INST_BINANCE_NO_RAW) && p.endsWith('/candles'))).toBe(
     false,
   );
-  await expect(page.getByText(/Prices are not available for this market/)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Binance prices' }).click();
-  await page.getByRole('button', { name: 'Turn prices off' }).click();
-  await expect(page.getByRole('button', { name: 'Prices off' })).toBeVisible();
+  await expect(page.getByText(/Live candles for this market are restricted/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Price source' }).click();
+  await page.getByRole('button', { name: 'Turn off live prices' }).click();
+  await expect(page.getByRole('button', { name: 'Price source' })).toContainText('Prices off');
   await expect(page.locator('section[aria-label="Chart"] canvas')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Prices off' }).click();
-  await page.getByRole('button', { name: 'Turn prices on' }).click();
+  await page.getByRole('button', { name: 'Price source' }).click();
+  await page.getByRole('button', { name: 'Turn on live prices' }).click();
   await expect(page.locator('section[aria-label="Chart"] canvas').first()).toBeVisible();
 });
 
@@ -155,6 +155,7 @@ test.describe('confirm gate', () => {
   async function toDialog(page: Page, opts: Parameters<typeof mockApi>[1] = {}, pick = true) {
     const calls = await openRoom(page, { withSetup: true, ...opts });
     if (pick) await page.getByLabel('Chart market').selectOption(INST_FULL);
+    await page.getByRole('tab', { name: 'Setup' }).click();
     await expect(page.getByText('Long scenario').first()).toBeVisible();
     await expect(
       page.getByText('Rules check: all hard filters passed. This is not a prediction.'),
@@ -245,19 +246,20 @@ test('journal quick note is saved with tags', async ({ page }) => {
     .toEqual({ notes: 'Waited for the sweep', tags: ['patience', 'sweep'] });
 });
 
-test('small screens use a menu and a plan drawer', async ({ page }) => {
+test('small screens use a menu and an assistant drawer', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await openRoom(page);
   await page.getByRole('button', { name: 'Open menu' }).click();
   await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible();
   await page.getByRole('button', { name: 'Close menu' }).click();
-  await page.getByRole('button', { name: 'Open plan panel' }).click();
-  await expect(page.getByRole('dialog', { name: 'Plan panel' })).toBeVisible();
+  await page.getByRole('button', { name: 'Show the assistant panel' }).click();
+  await expect(page.getByRole('dialog', { name: 'Assistant panel' })).toBeVisible();
 });
 
 test('no serious accessibility violations on the main screens', async ({ page }) => {
   await openRoom(page, { withSetup: true });
   await page.getByLabel('Chart market').selectOption(INST_FULL);
+  await page.getByRole('tab', { name: 'Setup' }).click();
   await expect(page.getByText('Long scenario').first()).toBeVisible();
   for (const theme of ['dark', 'light']) {
     await page.evaluate((t) => {

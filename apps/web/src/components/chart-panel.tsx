@@ -10,9 +10,7 @@ import { chartTitle, marketName } from '../lib/market-label';
 import {
   buildOverlays,
   focusOverlays,
-  LAYER_HINT,
-  LAYER_LABEL,
-  LAYERS,
+  formatPrice,
   relevantForTf,
   structureMarks,
   visible,
@@ -21,6 +19,7 @@ import { useInstruments } from '../lib/queries';
 import { useChangeMarket } from '../lib/room';
 import { useSelection } from '../lib/sessions';
 import { pickSetup, useUi } from '../lib/ui';
+import { GuideMenu, LayersMenu, Popover } from './chart-menus';
 import { ShareButton, SharePanel } from './share-panel';
 
 // Chart code loads only when needed, so the first load stays small.
@@ -53,7 +52,6 @@ export function ChartPanel() {
   const inst = useInstruments();
   const setMarket = useChangeMarket();
   const [fit, setFit] = useState(0);
-  const [menu, setMenu] = useState(false);
   const instrument = inst.data?.items.find((i) => i.id === sel.instrumentId);
   const analysis = useAnalysis(sel.instrumentId, sel.tf);
   const wantRaw = instrument?.rawDataAllowed === true;
@@ -87,8 +85,15 @@ export function ChartPanel() {
   const priceCandles = directMode ? direct.candles : serverRaw ? (candles.data ?? null) : null;
   const refPrice = useMemo(() => {
     const closed = priceCandles?.filter((c) => c.status === 'CLOSED').at(-1);
-    return (closed ?? priceCandles?.at(-1))?.c;
-  }, [priceCandles]);
+    const candlePrice = (closed ?? priceCandles?.at(-1))?.c;
+    if (candlePrice !== undefined) return candlePrice;
+    const dailyOpen = analysis.data?.context?.openLevels?.find((l) => l.kind === 'OPEN_D')?.price;
+    if (dailyOpen !== undefined) return dailyOpen;
+    const rangeEq = analysis.data?.structure?.range?.eq;
+    if (rangeEq !== undefined) return rangeEq;
+    return analysis.data?.structure?.swings?.at(-1)?.price;
+  }, [priceCandles, analysis.data]);
+
   const focused = useMemo(
     () =>
       refPrice === undefined
@@ -102,21 +107,31 @@ export function ChartPanel() {
     [analysis.data, ui.layers.structure],
   );
 
+  const lastCandle =
+    priceCandles && priceCandles.length > 0 ? priceCandles[priceCandles.length - 1] : null;
+  const firstCandle = priceCandles && priceCandles.length > 0 ? priceCandles[0] : null;
+  const currentPrice = lastCandle?.c ?? refPrice;
+  const priceChange =
+    lastCandle && firstCandle && firstCandle.o > 0
+      ? ((lastCandle.c - firstCandle.o) / firstCandle.o) * 100
+      : lastCandle && lastCandle.o > 0
+        ? ((lastCandle.c - lastCandle.o) / lastCandle.o) * 100
+        : null;
+
+  const lastUpdatedIso = lastCandle?.openTime ?? analysis.data?.asOf;
+  const lastUpdatedText = lastUpdatedIso
+    ? `${new Date(lastUpdatedIso).toLocaleTimeString('en-US', {
+        timeZone: 'UTC',
+        hour12: false,
+      })} UTC`
+    : null;
+
+  const quoteCurrency = instrument?.canonical ? instrument.canonical.split('/')[1] : 'USDT';
   const title = instrument ? chartTitle(instrument, sel.tf) : '';
   const barMs = TIMEFRAME_MS[sel.tf];
   let body: React.ReactNode;
   if (!instrument) body = <Message text="Loading markets…" />;
-  else if (analysis.isPending) body = <Message text="Loading analysis…" />;
-  else if (analysis.isError) {
-    body = (
-      <Message
-        text={
-          analysis.error instanceof ApiError ? analysis.error.message : 'Could not load analysis.'
-        }
-        tone="warn"
-      />
-    );
-  } else if (directMode && direct.candles) {
+  else if (directMode && direct.candles && direct.candles.length > 0) {
     body = (
       <ChartFull
         key={`${sel.instrumentId}:${sel.tf}:direct`}
@@ -131,47 +146,74 @@ export function ChartPanel() {
       />
     );
   } else if (canDirect && pref.on && direct.state === 'LOADING') {
-    body = <Message text="Loading prices…" />;
+    body = <Message text="Loading prices from Binance…" />;
   } else if (serverRaw) {
-    body = candles.data ? (
-      <ChartFull
-        key={`${sel.instrumentId}:${sel.tf}`}
-        candles={candles.data}
+    if (candles.data && candles.data.length > 0) {
+      body = (
+        <ChartFull
+          key={`${sel.instrumentId}:${sel.tf}`}
+          candles={candles.data}
+          overlays={overlays}
+          marks={marks}
+          precision={precision}
+          title={title}
+          barMs={barMs}
+          fitSignal={fit}
+          drawingsKey={sel.instrumentId ?? 'default'}
+        />
+      );
+    } else if (candles.isPending) {
+      body = <Message text="Loading live candles…" />;
+    } else {
+      body = (
+        <ChartRuler
+          overlays={overlays}
+          marks={marks}
+          precision={precision}
+          refPrice={refPrice}
+          currency={quoteCurrency}
+        />
+      );
+    }
+  } else {
+    body = (
+      <ChartRuler
         overlays={overlays}
         marks={marks}
         precision={precision}
-        title={title}
-        barMs={barMs}
-        fitSignal={fit}
-        drawingsKey={sel.instrumentId ?? 'default'}
+        refPrice={refPrice}
+        currency={quoteCurrency}
       />
-    ) : (
-      <Message text={candles.isError ? 'Could not load candles.' : 'Loading candles…'} />
     );
-  } else {
-    body = <ChartRuler overlays={overlays} marks={marks} precision={precision} />;
   }
 
   const priceNote =
     canDirect && pref.on && direct.state === 'BLOCKED'
       ? 'Binance does not serve prices to your location, so only the levels are shown. You can still share your own chart.'
       : canDirect && pref.on && direct.state === 'ERROR'
-        ? 'Could not load prices from Binance. Retrying…'
+        ? 'Could not connect directly to Binance public endpoints from this network. Showing SMC structure and levels.'
         : instrument && !rawMode && !canDirect
-          ? 'Prices are not available for this market, so only the levels are shown. Share your own chart to have it explained.'
+          ? 'Live candles for this market are restricted to internal analysis only; showing verified SMC levels.'
           : null;
 
+  const sourceText = serverRaw
+    ? 'Live'
+    : directMode
+      ? 'Live · Binance'
+      : canDirect
+        ? 'Prices off'
+        : 'Levels only';
+  const sourceOk = rawMode && (analysis.data?.dataQuality ?? 'OK') === 'OK';
+
   return (
-    <section
-      aria-label="Chart"
-      className="flex min-h-[280px] flex-[7] flex-col border-b border-line"
-    >
-      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-1.5">
+    <section aria-label="Chart" className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-line px-3 py-1.5">
         <label className="sr-only" htmlFor="market">
           Chart market
         </label>
         <select
           id="market"
+          title="The market: the coin pair, its type (Perp = perpetual futures, Spot = the coin itself) and the exchange the prices come from"
           value={sel.instrumentId ?? ''}
           disabled={!inst.data?.items.length}
           onChange={(e) => setMarket({ instrumentId: e.target.value })}
@@ -197,82 +239,100 @@ export function ChartPanel() {
             </button>
           ))}
         </div>
-        <span className="relative ml-auto flex items-center gap-2">
+
+        {currentPrice !== undefined && (
+          <div className="flex items-baseline gap-1.5 border-l border-line/60 pl-2">
+            <span className="num text-sm font-bold tracking-tight text-fg">
+              {formatPrice(currentPrice, precision)}
+            </span>
+            <span className="text-[11px] font-medium text-muted">{quoteCurrency}</span>
+            {priceChange !== null && (
+              <span
+                className={`num rounded px-1.5 text-[11px] font-medium ${priceChange >= 0 ? 'bg-bull/10 text-bull-text' : 'bg-bear/10 text-bear-text'}`}
+              >
+                {priceChange >= 0 ? '+' : ''}
+                {priceChange.toFixed(2)}%
+              </span>
+            )}
+          </div>
+        )}
+
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <LayersMenu hidden={rawMode ? focused.hidden : 0} />
+          <Popover
+            label="Where the prices come from"
+            name={`Price source: ${sourceText}`}
+            button={
+              <>
+                <span
+                  className={`size-2 rounded-full ${sourceOk ? 'bg-bull' : 'bg-warn'}`}
+                  aria-hidden
+                />
+                {sourceText}
+              </>
+            }
+          >
+            {(close) => (
+              <>
+                <p className="font-medium text-fg">Where the prices come from</p>
+                {serverRaw ? (
+                  <p className="mt-1 text-muted">
+                    Candles come from our servers' verified market feed.
+                  </p>
+                ) : directMode ? (
+                  <p className="mt-1 text-muted">
+                    Live candles come straight from Binance to your browser, the same as opening
+                    Binance's own chart. They do not pass through our servers, and Binance can see
+                    your internet address as on any Binance page.
+                  </p>
+                ) : canDirect ? (
+                  <p className="mt-1 text-muted">
+                    Live prices are off, so only the analysis levels are shown. Turn them on to see
+                    candles.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-muted">
+                    Live candles for this market are not available to us, so only the analysis
+                    levels are shown. You can share your own chart to have it explained.
+                  </p>
+                )}
+                {analysis.data?.dataQuality && analysis.data.dataQuality !== 'OK' && (
+                  <p className="mt-1 text-warn-text">
+                    Data quality: {analysis.data.dataQuality.toLowerCase()}.
+                  </p>
+                )}
+                {lastUpdatedText && (
+                  <p className="mt-1 text-muted">Last candle: {lastUpdatedText}</p>
+                )}
+                {canDirect && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pref.set(!pref.on);
+                      close();
+                    }}
+                    className="mt-2 rounded-ctl border border-line px-2.5 py-1 hover:bg-s3"
+                  >
+                    {pref.on ? 'Turn off live prices' : 'Turn on live prices'}
+                  </button>
+                )}
+              </>
+            )}
+          </Popover>
           {rawMode && (
             <button
               type="button"
               aria-label="Fit chart to the latest candles"
-              title="Fit chart to the latest candles"
+              title="Jump to the latest candles"
               onClick={() => setFit((n) => n + 1)}
-              className="grid size-7 place-items-center rounded-ctl border border-line text-muted hover:bg-s3"
+              className="grid size-8 place-items-center rounded-ctl border border-line text-muted hover:bg-s3"
             >
               <Maximize2 className="size-3.5" aria-hidden />
             </button>
           )}
-          {canDirect && (
-            <button
-              type="button"
-              aria-expanded={menu}
-              onClick={() => setMenu((o) => !o)}
-              className="flex items-center gap-1.5 rounded-ctl border border-line px-2 py-1 text-xs hover:bg-s3"
-            >
-              <span
-                className={`size-2 rounded-full ${pref.on && direct.state === 'LIVE' ? 'bg-bull' : 'bg-warn'}`}
-                aria-hidden
-              />
-              {pref.on ? 'Binance prices' : 'Prices off'}
-            </button>
-          )}
-          {menu && canDirect && (
-            <div
-              role="dialog"
-              aria-label="Price source"
-              className="absolute right-0 top-9 z-20 w-72 rounded-card border border-line bg-s1 p-3 text-xs shadow-lg"
-            >
-              <p className="font-medium text-fg">Where the prices come from</p>
-              <p className="mt-1 text-muted">
-                Live candles come straight from Binance to your browser, the same as opening
-                Binance's own chart. They do not pass through our servers, and Binance can see your
-                address as on any Binance page.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  pref.set(!pref.on);
-                  setMenu(false);
-                }}
-                className="mt-2 rounded-ctl border border-line px-2.5 py-1 hover:bg-s3"
-              >
-                {pref.on ? 'Turn prices off' : 'Turn prices on'}
-              </button>
-            </div>
-          )}
+          <GuideMenu />
           <ShareButton />
         </span>
-      </div>
-      {/* biome-ignore lint/a11y/useSemanticElements: a toolbar of toggle buttons, not a form group */}
-      <div
-        className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-1"
-        role="group"
-        aria-label="Chart layers"
-      >
-        {LAYERS.map((l) => (
-          <button
-            key={l}
-            type="button"
-            title={LAYER_HINT[l]}
-            aria-pressed={ui.layers[l]}
-            onClick={() => ui.toggleLayer(l)}
-            className={`rounded-full border px-2.5 py-0.5 text-xs ${ui.layers[l] ? 'accent-soft border-transparent text-accent-text' : 'border-line text-muted hover:bg-s3'}`}
-          >
-            {LAYER_LABEL[l]}
-          </button>
-        ))}
-        {rawMode && focused.hidden > 0 && (
-          <span className="ml-auto text-[11px] text-muted">
-            Showing the {focused.shown.length} levels nearest the price
-          </span>
-        )}
       </div>
       <SharePanel />
       {instrument?.devRawPrices && (

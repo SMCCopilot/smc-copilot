@@ -289,9 +289,6 @@ export function Dock() {
   }
 
   const forbidden = tr.transcript?.forbidden ?? null;
-  // While recording or reviewing, the conversation panel takes the room it needs and the chart gives way.
-  const voiceBusy =
-    ['RECORDING', 'TRANSCRIBING', 'REVIEW'].includes(voice.state) || tr.transcript !== null;
   const reasonOff = voice.confirmOpen
     ? 'Voice is off while the confirm dialog is open. Confirming is by tapping the Confirm button only.'
     : !connected
@@ -299,21 +296,40 @@ export function Dock() {
       : null;
 
   return (
-    <section
-      aria-label="Conversation"
-      className={`flex min-w-0 flex-[3] flex-col overflow-hidden p-3 ${voiceBusy ? 'min-h-[18rem]' : 'min-h-[10rem]'}`}
-    >
+    <section aria-label="Conversation" className="flex min-h-0 min-w-0 flex-1 flex-col p-3">
       <div
         ref={scroller}
         className="min-h-8 flex-1 space-y-3 overflow-auto pr-1"
         aria-live="polite"
       >
         {messages.length === 0 ? (
-          <p className="text-muted">
-            {sel.sessionId
-              ? 'Waiting for the first analysis. Scenario updates and your conversation appear here.'
-              : 'Start a session to see scenario updates and chat.'}
-          </p>
+          <div className="text-muted">
+            <p className="font-medium text-fg">Ask about this chart</p>
+            <p className="mt-1">
+              {sel.sessionId
+                ? 'The assistant explains what the analysis found. It never invents prices and never trades for you. Type, or click the microphone and speak.'
+                : 'Connecting to the analysis…'}
+            </p>
+            {connected && (
+              <ul className="mt-3 flex flex-col gap-1.5">
+                {[
+                  'What is the daily structure?',
+                  'Where are the key levels near the price?',
+                  'Is there a trade idea right now?',
+                ].map((q) => (
+                  <li key={q}>
+                    <button
+                      type="button"
+                      onClick={() => sendChat(q, 'text')}
+                      className="w-full rounded-ctl border border-line bg-s2 px-3 py-1.5 text-left text-fg hover:bg-s3"
+                    >
+                      {q}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         ) : (
           messages.map((m) => <Bubble key={m.id} m={m} />)
         )}

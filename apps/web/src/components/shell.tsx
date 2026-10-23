@@ -13,9 +13,8 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { type PointerEvent, useCallback, useState } from 'react';
+import { type PointerEvent, useCallback, useState, useSyncExternalStore } from 'react';
 import { signOut, useMe } from '../lib/auth';
-import { useChat } from '../lib/chat';
 import { shortAddress } from '../lib/gate';
 import { useLive, useLiveSession } from '../lib/live';
 import { useFeedStatus } from '../lib/queries';
@@ -24,9 +23,10 @@ import { useAutoRoom, useSpeechPrefetch } from '../lib/room';
 import { useAdoptLiveSession, useSelection, useSessions } from '../lib/sessions';
 import { useTheme } from '../lib/theme';
 import { useUi } from '../lib/ui';
+
+import { BudgetMeter } from './budget-meter';
 import { Canvas } from './canvas';
 import { ChartPanel } from './chart-panel';
-import { Dock } from './dock';
 import { SettingsView } from './settings';
 import { JournalView, NotificationsView, TradesView } from './views';
 
@@ -86,47 +86,8 @@ function FeedChip() {
   );
 }
 
-function BudgetMeter() {
-  const b = useChat((s) => s.budget);
-  // Shown only when it matters: close to the daily AI limit or past it.
-  if (!b || (b.state !== 'SOFT' && b.state !== 'HARD')) return null;
-  const pct = b && b.limitUsd > 0 ? Math.min(100, Math.round((b.spentUsd / b.limitUsd) * 100)) : 0;
-  const warn = b?.state === 'SOFT' || b?.state === 'HARD';
-  return (
-    <div className="rounded-card border border-line bg-s2 p-3">
-      <div className="flex justify-between text-xs">
-        <span>AI budget today</span>
-        <span className={`num ${warn ? 'text-warn-text' : 'text-muted'}`}>
-          {b ? `${b.spentUsd.toFixed(2)} of ${b.limitUsd.toFixed(2)}` : 'no AI use yet'}
-        </span>
-      </div>
-      <div
-        className="mt-2 h-1.5 rounded-full bg-s3"
-        role="progressbar"
-        aria-label="AI budget used"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={pct}
-      >
-        <div
-          className={`h-full rounded-full ${warn ? 'bg-warn' : 'bg-accent-strong'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      {b?.state === 'HARD' && (
-        <p className="mt-1 text-xs text-warn-text">Limit reached. Analysis still works.</p>
-      )}
-      {b?.state === 'SOFT' && (
-        <p className="mt-1 text-xs text-warn-text">Close to today's limit.</p>
-      )}
-    </div>
-  );
-}
-
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const me = useMe(true);
-  const sessions = useSessions(true);
-  useAdoptLiveSession(sessions);
   const current = useUi((s) => s.view);
   const setView = useUi((s) => s.setView);
   const wallet = me.data?.wallets.find((w) => w.primary) ?? me.data?.wallets[0];
@@ -180,19 +141,53 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void }) {
+function TopBar({
+  onMenu,
+  onPanel,
+  panelOpen,
+}: {
+  onMenu: () => void;
+  onPanel: () => void;
+  panelOpen: boolean;
+}) {
   const [theme, toggleTheme] = useTheme();
   const notes = useNotifications();
+  const me = useMe(true);
+  const current = useUi((s) => s.view);
   const setView = useUi((s) => s.setView);
   const unread = notes.data?.filter((n) => !n.read).length ?? 0;
-  const btn = 'grid size-9 place-items-center rounded-ctl border border-line bg-s2 hover:bg-s3';
+  const wallet = me.data?.wallets.find((w) => w.primary) ?? me.data?.wallets[0];
+  const btn =
+    'grid size-9 place-items-center rounded-ctl border border-line bg-s2 hover:bg-s3 aria-pressed:accent-soft aria-pressed:text-accent-text';
   return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-line bg-s1 px-3 py-2">
+    <header className="flex items-center gap-2 border-b border-line bg-s1 px-3 py-1.5">
       <button type="button" aria-label="Open menu" onClick={onMenu} className={`${btn} lg:hidden`}>
         <Menu className="size-4" aria-hidden />
       </button>
-      <FeedChip />
-      <div className="ml-auto flex gap-2">
+      <div className="flex items-center gap-2 font-semibold">
+        <span
+          className="grid size-7 place-items-center rounded-ctl bg-accent-strong text-white"
+          aria-hidden
+        >
+          S
+        </span>
+        <span className="hidden sm:inline">SMC Copilot</span>
+      </div>
+      <nav aria-label="Main" className="ml-3 hidden gap-0.5 lg:flex">
+        {NAV.map(({ label, icon: Icon, view }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => setView(view)}
+            aria-current={current === view ? 'page' : undefined}
+            className={`flex items-center gap-1.5 rounded-ctl px-3 py-1.5 hover:bg-s3 ${current === view ? 'accent-soft text-accent-text' : 'text-muted'}`}
+          >
+            <Icon className="size-4" aria-hidden /> {label}
+          </button>
+        ))}
+      </nav>
+      <div className="ml-auto flex items-center gap-2">
+        <FeedChip />
         <button
           type="button"
           aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
@@ -219,14 +214,33 @@ function Header({ onMenu, onCanvas }: { onMenu: () => void; onCanvas: () => void
             <Moon className="size-4" aria-hidden />
           )}
         </button>
-        <button
-          type="button"
-          aria-label="Open plan panel"
-          onClick={onCanvas}
-          className={`${btn} lg:hidden`}
-        >
-          <PanelRight className="size-4" aria-hidden />
-        </button>
+        {current === 'room' && (
+          <button
+            type="button"
+            aria-label={panelOpen ? 'Hide the assistant panel' : 'Show the assistant panel'}
+            title={panelOpen ? 'Hide the assistant panel' : 'Show the assistant panel'}
+            aria-pressed={panelOpen}
+            onClick={onPanel}
+            className={btn}
+          >
+            <PanelRight className="size-4" aria-hidden />
+          </button>
+        )}
+        <div className="hidden items-center gap-1 border-l border-line pl-2 md:flex">
+          <Wallet className="size-4 shrink-0 text-muted" aria-hidden />
+          <span className="num text-xs text-muted" title={wallet?.address}>
+            {wallet ? shortAddress(wallet.address) : 'No wallet'}
+          </span>
+          <button
+            type="button"
+            aria-label="Sign out"
+            title="Sign out"
+            onClick={() => signOut()}
+            className="rounded-ctl p-1.5 text-muted hover:bg-s3"
+          >
+            <LogOut className="size-4" aria-hidden />
+          </button>
+        </div>
       </div>
     </header>
   );
@@ -240,7 +254,7 @@ function Centre() {
   if (view === 'notifications') return <NotificationsView />;
   if (view === 'settings') return <SettingsView />;
   return (
-    <main id="main" tabIndex={-1} className="flex min-h-0 flex-1 flex-col">
+    <main id="main" tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col">
       {live.state === 'TAKEN' && (
         <p
           role="alert"
@@ -262,20 +276,36 @@ function Centre() {
         </p>
       )}
       <ChartPanel />
-      <Dock />
     </main>
+  );
+}
+
+/** True on a wide screen (where the assistant sits beside the chart), false on a phone or small tablet. */
+function useWide(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia('(min-width: 1024px)');
+      m.addEventListener('change', cb);
+      return () => m.removeEventListener('change', cb);
+    },
+    () => window.matchMedia('(min-width: 1024px)').matches,
+    () => true,
   );
 }
 
 export function Shell() {
   useLiveSession(useSelection((s) => s.sessionId));
+  // Picks up the account's live session after a reload or in another tab, whichever screen is showing.
+  useAdoptLiveSession(useSessions(true));
   useAutoRoom();
   useSpeechPrefetch();
   const [menu, setMenu] = useState(false);
+  const view = useUi((s) => s.view);
   const drawer = useUi((s) => s.drawer);
   const setDrawer = useUi((s) => s.setDrawer);
   const [open, setOpen] = useState(true);
   const [width, setWidth] = useState(380);
+  const wide = useWide();
   const drag = useCallback((e: PointerEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     el.setPointerCapture(e.pointerId);
@@ -288,40 +318,40 @@ export function Shell() {
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
   }, []);
+  // On a wide screen the button hides or shows the side panel; on a phone it opens the panel from the bottom.
+  const togglePanel = () => {
+    if (wide) setOpen((o) => !o);
+    else setDrawer(!drawer);
+  };
 
   return (
     <div className="flex h-dvh flex-col">
-      <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-[232px] shrink-0 border-r border-line bg-s1 lg:block">
-          <Nav />
-        </aside>
-        {menu && (
-          <div
-            className="fixed inset-0 z-30 flex lg:hidden"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Menu"
-          >
-            <div className="w-[260px] border-r border-line bg-s1">
-              <Nav onNavigate={() => setMenu(false)} />
-            </div>
-            <button
-              type="button"
-              aria-label="Close menu"
-              className="flex-1 bg-black/50"
-              onClick={() => setMenu(false)}
-            />
+      <TopBar onMenu={() => setMenu(true)} onPanel={togglePanel} panelOpen={wide ? open : drawer} />
+      {menu && (
+        <div
+          className="fixed inset-0 z-30 flex lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+        >
+          <div className="w-[260px] border-r border-line bg-s1">
+            <Nav onNavigate={() => setMenu(false)} />
           </div>
-        )}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Header onMenu={() => setMenu(true)} onCanvas={() => setDrawer(true)} />
-          <Centre />
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="flex-1 bg-black/50"
+            onClick={() => setMenu(false)}
+          />
         </div>
-        {open ? (
+      )}
+      <div className="flex min-h-0 flex-1">
+        <Centre />
+        {view === 'room' && open && (
           <aside
             style={{ width }}
             className="relative hidden shrink-0 border-l border-line lg:block"
-            aria-label="Plan panel"
+            aria-label="Assistant panel"
           >
             {/* biome-ignore lint/a11y/useSemanticElements: draggable splitter, an <hr> cannot take pointer events sensibly */}
             <div
@@ -331,46 +361,34 @@ export function Shell() {
               onPointerDown={drag}
               className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize"
             />
-            <button
-              type="button"
-              aria-label="Collapse panel"
-              onClick={() => setOpen(false)}
-              className="absolute right-2 top-2 z-10 rounded-ctl p-1 text-muted hover:bg-s3"
-            >
-              <X className="size-4" aria-hidden />
-            </button>
             <Canvas />
           </aside>
-        ) : (
-          <button
-            type="button"
-            aria-label="Expand panel"
-            onClick={() => setOpen(true)}
-            className="hidden w-9 shrink-0 place-items-center border-l border-line bg-s1 text-muted hover:bg-s3 lg:grid"
-          >
-            <PanelRight className="size-4" aria-hidden />
-          </button>
         )}
       </div>
       {drawer && (
         <div
-          className="fixed inset-x-0 bottom-0 z-30 h-[75dvh] rounded-t-card border-t border-line shadow-lg lg:hidden"
+          className="fixed inset-x-0 bottom-0 z-30 flex h-[80dvh] flex-col rounded-t-card border-t border-line bg-s1 shadow-lg lg:hidden"
           role="dialog"
           aria-modal="true"
-          aria-label="Plan panel"
+          aria-label="Assistant panel"
         >
-          <button
-            type="button"
-            aria-label="Close plan panel"
-            onClick={() => setDrawer(false)}
-            className="absolute right-2 top-2 z-10 rounded-ctl p-1 text-muted hover:bg-s3"
-          >
-            <X className="size-4" aria-hidden />
-          </button>
-          <Canvas />
+          <div className="flex items-center justify-between border-b border-line bg-s1 px-3 py-1.5">
+            <span className="text-sm font-medium">Assistant and trade idea</span>
+            <button
+              type="button"
+              aria-label="Close the assistant panel"
+              onClick={() => setDrawer(false)}
+              className="rounded-ctl p-1.5 text-muted hover:bg-s3"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <Canvas />
+          </div>
         </div>
       )}
-      <p className="border-t border-line bg-s1 px-3 py-1 text-center text-xs text-muted">
+      <p className="border-t border-line bg-s1 px-3 py-0.5 text-center text-[11px] text-muted">
         {DISCLAIMER}
       </p>
     </div>
