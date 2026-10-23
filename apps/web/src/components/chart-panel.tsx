@@ -127,6 +127,7 @@ export function ChartPanel() {
         title={title}
         barMs={barMs}
         fitSignal={fit}
+        drawingsKey={sel.instrumentId ?? 'default'}
       />
     );
   } else if (canDirect && pref.on && direct.state === 'LOADING') {
@@ -142,6 +143,7 @@ export function ChartPanel() {
         title={title}
         barMs={barMs}
         fitSignal={fit}
+        drawingsKey={sel.instrumentId ?? 'default'}
       />
     ) : (
       <Message text={candles.isError ? 'Could not load candles.' : 'Loading candles…'} />
