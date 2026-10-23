@@ -23,6 +23,7 @@
     "ai:session-hour": "node tools/ai-eval/src/session-hour.mjs",
     "voice:pin-models": "node tools/voice-eval/src/pin-models.mjs",
     "voice:eval": "node tools/voice-eval/src/eval.mjs",
+    "api": "node tools/dev/src/local.mjs api",
     "local": "node tools/dev/src/local.mjs",
     "ops:preflight": "node tools/ops/src/preflight.mjs",
     "ops:backup": "node tools/ops/src/backup.mjs"

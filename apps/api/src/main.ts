@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import * as Faultline from '@getfaultline/node';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { EnvError, loadDotEnv, parseEnv } from '@smc/config';
@@ -9,6 +10,9 @@ import { configureApp } from './bootstrap.js';
 function fatal(kind: string, error: unknown): never {
   const name = error instanceof Error ? error.constructor.name : typeof error;
   process.stderr.write(`fatal ${kind}: ${name}\n`);
+  try {
+    Faultline.captureException(error);
+  } catch {}
   process.exit(1);
 }
 process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason));
@@ -26,6 +30,12 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
+
+  const faultlineKey = env.FAULTLINE_API_KEY || 'flt_ingest_wRZUOY2Bkw6DRbVCxNfsIFwW6GmkJ7SP';
+  Faultline.init({
+    apiKey: faultlineKey,
+    environment: env.NODE_ENV,
+  });
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule.register({ env }), {
     bufferLogs: true,

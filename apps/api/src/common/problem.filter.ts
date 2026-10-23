@@ -1,3 +1,4 @@
+import * as Faultline from '@getfaultline/node';
 import { type ArgumentsHost, Catch, type ExceptionFilter } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { PinoLogger } from 'nestjs-pino';
@@ -23,6 +24,12 @@ export class ProblemFilter implements ExceptionFilter {
         { err: exception, correlationId: problem.correlationId },
         'unhandled exception',
       );
+      try {
+        Faultline.withScope((scope) => {
+          scope.setTag('correlationId', problem.correlationId);
+          Faultline.captureException(exception);
+        });
+      } catch {}
     }
     if (res.headersSent) {
       res.end();

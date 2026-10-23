@@ -142,7 +142,7 @@ async function main() {
         INGEST_ENABLED: flag('--no-ingest') ? 'false' : 'true',
       },
     });
-    const web = spawn('pnpm', ['--filter', '@smc/web', 'dev'], {
+    const web = spawn(pnpm, ['--filter', '@smc/web', 'dev'], {
       cwd: root,
       stdio: 'inherit',
       shell: true,
@@ -153,9 +153,30 @@ async function main() {
       web.kill();
     });
     child.on('exit', (code) => process.exit(code ?? 0));
+  } else if (cmd === 'api') {
+    if (!check()) {
+      process.exitCode = 1;
+      return;
+    }
+    if (!flag('--no-build') && !existsSync(resolve(root, 'apps/api/dist/main.js'))) build();
+    const port = process.env.PORT || '3002';
+    console.log(`\nStarting backend API on port ${port}. Stop with Ctrl+C.\n`);
+    const child = spawn('node', ['apps/api/dist/main.js'], {
+      cwd: root,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        NODE_ENV: 'development',
+        DNS_SERVERS: process.env.DNS_SERVERS || '1.1.1.1',
+        ENGINE_ENABLED: 'true',
+        INGEST_ENABLED: flag('--no-ingest') ? 'false' : 'true',
+      },
+    });
+    process.on('exit', () => child.kill());
+    child.on('exit', (code) => process.exit(code ?? 0));
   } else {
     console.log(
-      'usage: pnpm local check | migrate | admin [user-id] | start [--no-ingest] [--no-build]',
+      'usage: pnpm local check | migrate | admin [user-id] | start [--no-ingest] [--no-build] | api',
     );
   }
 }

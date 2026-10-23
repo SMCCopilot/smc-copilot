@@ -217,9 +217,12 @@ export class ManagedConnection {
     this.reconnects += 1;
     this.options.onStatus('RECONNECTING', `in ${delay} ms`);
     if (this.failures >= CLASSIFY_AFTER_FAILURES && this.options.classifyFailure) {
-      void this.options.classifyFailure().then((status) => {
-        if (status && !this.closed) this.options.onStatus(status);
-      });
+      void this.options
+        .classifyFailure()
+        .then((status) => {
+          if (status && !this.closed) this.options.onStatus(status);
+        })
+        .catch(() => {});
     }
     this.reconnectCancel = this.clock.setTimeout(() => {
       if (!this.closed) this.connect(false);

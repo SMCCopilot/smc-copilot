@@ -1,3 +1,4 @@
+import * as Faultline from '@getfaultline/node';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { Env } from '@smc/config';
 import helmet from 'helmet';
@@ -10,6 +11,7 @@ export const JSON_BODY_LIMIT = '64kb';
 
 /** Everything the server needs besides its modules; shared by `main.ts` and the e2e tests so they cannot drift. */
 export function configureApp(app: NestExpressApplication, env: Env): void {
+  app.use(Faultline.Handlers.requestHandler());
   app.useLogger(app.get(Logger));
   // Before the body parsers, so even a rejected body carries the caller's correlation id (M1).
   app.use((req: { id?: unknown }, res: unknown, next: () => void) => {
@@ -39,5 +41,6 @@ export function configureApp(app: NestExpressApplication, env: Env): void {
   }
   // One trusted hop (the platform proxy): req.ip is the real client for rate limits, abuse flags and audit.
   if (env.NODE_ENV === 'production') app.set('trust proxy', 1);
+  app.use(Faultline.Handlers.errorHandler());
   app.enableShutdownHooks();
 }

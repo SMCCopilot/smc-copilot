@@ -113,6 +113,7 @@ const EnvSchema = z
     DNS_SERVERS: csv.pipe(z.array(z.ipv4())),
 
     SENTRY_DSN: optionalUrl,
+    FAULTLINE_API_KEY: optionalString,
     // Bearer token for GET /metrics (Prometheus). Without it the endpoint does not exist.
     METRICS_TOKEN: optionalString,
     OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
@@ -178,6 +179,7 @@ const SECRET_KEYS = [
   'OPENAI_API_KEY',
   'GEMINI_API_KEY',
   'SENTRY_DSN',
+  'FAULTLINE_API_KEY',
   'METRICS_TOKEN',
 ] as const satisfies readonly (keyof Env)[];
 

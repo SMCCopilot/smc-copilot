@@ -32,6 +32,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@getfaultline/node':
+        specifier: ^0.1.1
+        version: 0.1.1
       '@nestjs/common':
         specifier: ^11.2.7
         version: 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -529,6 +532,10 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@getfaultline/node@0.1.1':
+    resolution: {integrity: sha512-uUaSgcXu6J4TGVqRaK+4z5ZvtnupbE4VJX1ovDMUZNW4fUobd3Nc5jK1afNYa6KFQGImSz29sMo0CZ0GQbOElA==}
+    engines: {node: '>=18'}
 
   '@huggingface/jinja@0.5.10':
     resolution: {integrity: sha512-SgS1D1bglQ94ceD4ZCL6eayUDy9uV1xuyk61OjgSxU5GJh7upqZCKII0JoTYMc6wWsg3JUgaPRX0ElQzXPk3Cw==}
@@ -3292,6 +3299,8 @@ snapshots:
       react-dom: 19.3.1(react@19.3.1)
 
   '@floating-ui/utils@0.2.12': {}
+
+  '@getfaultline/node@0.1.1': {}
 
   '@huggingface/jinja@0.5.10': {}
 

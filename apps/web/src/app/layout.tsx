@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static, first-party theme bootstrap */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-ctl focus:bg-s1 focus:px-3 focus:py-2"
