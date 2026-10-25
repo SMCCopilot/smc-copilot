@@ -319,3 +319,30 @@ describe('retention', () => {
     expect((await sql`select 1 from audit_log where action = 'new.thing'`).length).toBe(1);
   });
 });
+
+describe('market data retention', () => {
+  it('keeps the newest candles per market and timeframe and drops old engine events', async () => {
+    const inst = (
+      await sql<
+        { id: string }[]
+      >`select id from instruments where canonical = 'BINANCE:PERP:BTCUSDT'`
+    )[0]?.id as string;
+    await sql`select ensure_candle_partition(date_trunc('month', now())::date)`;
+    await sql`delete from candles where instrument_id = ${inst}`;
+    // Ten 5-minute candles ending a few minutes ago, so they sit in the current month's partition.
+    for (let i = 0; i < 10; i++) {
+      await sql`insert into candles (instrument_id, tf, open_time, o, h, l, c, v, provider_id)
+        values (${inst}, '5m', now() - ${(i + 1) * 5} * interval '1 minute', 1, 2, 1, 1, 1, 'test')`;
+    }
+    const { trimMarketData } = await import('../src/ops/retention.service.js');
+    const first = await trimMarketData(sql, { candlesKept: 4 });
+    expect(first.candles).toBe(6);
+    const left = await sql<
+      { open_time: Date }[]
+    >`select open_time from candles where instrument_id = ${inst} order by open_time desc`;
+    expect(left).toHaveLength(4);
+    // Nothing more to trim, and a series shorter than the limit is untouched.
+    expect((await trimMarketData(sql, { candlesKept: 4 })).candles).toBe(0);
+    expect((await trimMarketData(sql, { candlesKept: 50 })).candles).toBe(0);
+  });
+});

@@ -45,6 +45,15 @@ export class EngineStore {
     return row ? { id: row.id, config: parseStrategyConfig(row.id, row.config) } : null;
   }
 
+  /** When the newest snapshot was taken, without downloading it (the state is about 160 KB). */
+  async latestSnapshotAsOf(instrumentId: string, strategyId: string): Promise<number | null> {
+    const [row] = await this.sql<{ as_of: Date }[]>`
+      select as_of from engine_snapshots
+       where instrument_id = ${instrumentId} and strategy_version_id = ${strategyId}
+       order by as_of desc limit 1`;
+    return row ? row.as_of.getTime() : null;
+  }
+
   async latestSnapshot(
     instrumentId: string,
     strategyId: string,

@@ -68,6 +68,11 @@ class IngestLifecycle implements OnApplicationBootstrap, OnApplicationShutdown {
       useFactory: (env: Env, sql: Sql | null, bus: EventBus): IngestRuntime | null => {
         if (!env.INGEST_ENABLED) return null;
         const log = new Logger('Ingest');
+        if (env.NODE_ENV !== 'production' && /supabase\.(com|co)/i.test(env.DATABASE_URL ?? '')) {
+          log.warn(
+            'Live ingest is writing to a hosted Supabase project from a development process. Every candle, event and read counts toward its limits; use the local database (node tools/dev/src/dev-db.mjs) for long runs.',
+          );
+        }
         if (env.APP_ROLE === 'api') return null; // only the worker role ingests (APP_ROLE=all in the MVP)
         if (!sql) {
           log.warn('INGEST_ENABLED is set but DATABASE_URL is not: live ingest stays off');

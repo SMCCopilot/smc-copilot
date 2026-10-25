@@ -27,7 +27,7 @@ import { SetupsService } from '../setups/setups.service.js';
 
 const STALE_AFTER_MS = 30 * 60_000;
 const STRATEGY_TTL_MS = 30_000;
-const SNAPSHOT_TTL_MS = 4_000;
+const SNAPSHOT_CHECK_MS = 4_000;
 const MAX_SWINGS = 12;
 
 export interface LoadedState {
@@ -62,7 +62,7 @@ export class AnalysisService {
 
   private readonly snapCache = new Map<
     string,
-    { at: number; state: Promise<EngineState | undefined> }
+    { checkedAt: number; asOf: number; state: EngineState }
   >();
 
   async activeStrategy(): Promise<{ id: string; config: StrategyConfig }> {
@@ -79,17 +79,25 @@ export class AnalysisService {
     const strategy = await this.activeStrategy();
     let state = this.runner?.stateOf(instrumentId);
     if (!state) {
-      // The stored snapshot is large and changes only when a candle closes: read it at most every few seconds.
+      // The stored snapshot is about 160 KB and changes only when a candle closes: ask cheaply whether it changed,
+      // and download it only then. (Reading it on every request used a lot of a hosted database's data allowance.)
       const key = `${instrumentId}:${strategy.id}`;
       const hit = this.snapCache.get(key);
-      if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) state = await hit.state;
+      const store = new EngineStore(this.sql);
+      if (hit && Date.now() - hit.checkedAt < SNAPSHOT_CHECK_MS) state = hit.state;
       else {
-        const read = new EngineStore(this.sql)
-          .latestSnapshot(instrumentId, strategy.id)
-          .then((snap) => snap?.state);
-        this.snapCache.set(key, { at: Date.now(), state: read });
-        read.catch(() => this.snapCache.delete(key));
-        state = await read;
+        const asOf = await store.latestSnapshotAsOf(instrumentId, strategy.id);
+        if (hit && asOf !== null && asOf === hit.asOf) {
+          hit.checkedAt = Date.now();
+          state = hit.state;
+        } else {
+          const snap = await store.latestSnapshot(instrumentId, strategy.id);
+          state = snap?.state;
+          if (snap && state) {
+            this.snapCache.set(key, { checkedAt: Date.now(), asOf: snap.asOf, state });
+            if (this.snapCache.size > 64) this.snapCache.clear();
+          }
+        }
       }
     }
     if (!state || state.v !== STATE_VERSION) {
