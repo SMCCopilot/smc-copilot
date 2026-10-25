@@ -33,7 +33,7 @@ jobs:
         run: node tools/voice-eval/src/pin-models.mjs --verify
       - name: No audio or image storage anywhere in the schema, and frames never persist
         run: pnpm --filter @smc/api test -- explain.e2e voice.e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: eval-reports
           path: |
