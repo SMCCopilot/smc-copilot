@@ -16,7 +16,7 @@
     "@smc/market-data": "workspace:*",
     "@smc/smc-engine": "workspace:*",
     "postgres": "^3.4.9",
-    "undici": "^8.11.2"
+    "undici": "^8.12.3"
   },
   "devDependencies": {
     "vitest": "^4.1.11"
